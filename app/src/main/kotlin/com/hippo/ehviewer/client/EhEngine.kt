@@ -277,8 +277,10 @@ object EhEngine {
 
     suspend fun getPreviewList(url: String) = ehRequest(url, EhUrl.referer).fetchUsingAsByteBuffer(GalleryDetailParser::parsePreviews)
 
-    suspend fun getFavorites(url: String) = ehRequest(url, EhUrl.referer).fetchUsingAsByteBuffer(FavoritesParser::parse)
-        .apply { galleryInfoList.fillInfo(url) }
+    suspend fun getFavorites(url: String) = getFavoritesPage(url).apply { galleryInfoList.fillInfo(url) }
+
+    /** A favorites page as parsed, without the API lookups [getFavorites] may make for every gallery of it. */
+    suspend fun getFavoritesPage(url: String) = ehRequest(url, EhUrl.referer).fetchUsingAsByteBuffer(FavoritesParser::parse)
 
     suspend fun signIn(username: String, password: String): String {
         val referer = "https://forums.e-hentai.org/index.php?act=Login&CODE=00"

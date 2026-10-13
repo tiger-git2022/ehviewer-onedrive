@@ -151,9 +151,11 @@ object FavoritesIndexSync {
      * Updates the store off the caller's coroutine, and schedules a sync of the index if it changed. The store is kept
      * up to date while the export is off too: the count check cannot see a favorite replaced by another in one slot.
      */
-    private fun updateLater(transform: (CloudFavorites) -> CloudFavorites) {
+    private fun updateLater(
         // The account the change was made with, not the one signed in when it runs
-        val user = userKey()
+        user: String? = userKey(),
+        transform: (CloudFavorites) -> CloudFavorites,
+    ) {
         scope.launch {
             runCatching { update(user, transform) }
                 .onFailure { logcat(TAG, it) }
@@ -184,8 +186,11 @@ object FavoritesIndexSync {
         }
     }
 
-    /** A page of the cloud favorites was loaded in the favorites screen. */
-    fun onPageLoaded(favCat: Int, result: FavParserResult) = updateLater(pageUpdate(favCat, result))
+    /** The E-Hentai account to pass to [onPageLoaded], taken when a page is requested. */
+    fun accountKey(): String? = userKey()
+
+    /** A page of the cloud favorites requested with the E-Hentai account [user] was loaded in the favorites screen. */
+    fun onPageLoaded(favCat: Int, result: FavParserResult, user: String?) = updateLater(user, pageUpdate(favCat, result))
 
     /** A favorite was changed through [com.hippo.ehviewer.util.FavouriteStatusRouter]. */
     fun onFavoriteChanged(info: GalleryInfo) {
@@ -231,7 +236,9 @@ object FavoritesIndexSync {
         withContext(Dispatchers.IO) { mutex.withLock { journal = ArrayList() } }
         try {
             val user = userKey()
-            val first = EhEngine.getFavorites(FavListUrlBuilder().build())
+            val first = EhEngine.getFavoritesPage(FavListUrlBuilder().build())
+            // Each page is checked: another account, even one signed in and out again, makes the pages unusable
+            if (userKey() != user) return
             val slotNames = first.catArray
             updateSettings(first)
             val galleries = ArrayList<IndexedGallery>()
@@ -242,7 +249,8 @@ object FavoritesIndexSync {
                     delay(PAGE_INTERVAL_MILLIS)
                     val cursor = next
                     val url = FavListUrlBuilder(favCat = slot).apply { if (cursor != null) setIndex(cursor, isNext = true) }.build()
-                    val page = EhEngine.getFavorites(url)
+                    val page = EhEngine.getFavoritesPage(url)
+                    if (userKey() != user) return
                     page.galleryInfoList.mapTo(galleries) { it.toIndexed(slot) }
                     next = page.next
                 } while (next != null)
@@ -275,12 +283,13 @@ object FavoritesIndexSync {
         val elapsed = SystemClock.elapsedRealtime()
         val user = userKey()
         if (lastCheck != 0L && lastCheckUser == user && elapsed - lastCheck < CHECK_INTERVAL_MILLIS) return
-        val first = EhEngine.getFavorites(FavListUrlBuilder().build())
+        val first = EhEngine.getFavoritesPage(FavListUrlBuilder().build())
+        if (userKey() != user) return
         lastCheck = elapsed
         lastCheckUser = user
         updateSettings(first)
         // The newest favorites are on the first page of "all"
-        update(transform = pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
+        update(user, pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
         if (FavoritesIndexMerger.needsRefresh(current(), first.countArray, now())) {
             refreshCloudFavorites()
         }
