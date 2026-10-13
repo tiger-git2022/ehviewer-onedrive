@@ -167,7 +167,7 @@ object SettingsSection : SyncSection<Map<String, SyncSetting>>(
 /** The DataStore key and value of a synced setting, null value for a removed key. */
 fun SyncSetting.toPreference(key: String): Pair<Preferences.Key<*>, Any?>? {
     val element: JsonElement? = value
-    return runCatching {
+    return runCatching<Pair<Preferences.Key<*>, Any?>?> {
         when (type) {
             SyncSetting.TYPE_BOOLEAN -> booleanPreferencesKey(key) to element!!.jsonPrimitive.boolean
             SyncSetting.TYPE_INT -> intPreferencesKey(key) to element!!.jsonPrimitive.int
