@@ -1,0 +1,125 @@
+name: Build APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.forgejo/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build default release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool m4
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version-file: .java-version
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-07
+          targets: aarch64-linux-android, thumbv7neon-linux-androideabi, x86_64-linux-android
+          components: rust-src
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./app/src/main/rust"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: CMake Cache
+        uses: actions/cache@v5
+        with:
+          path: app/.cxx
+          key: cmake-default-${{ hashFiles('rust-toolchain.toml', 'settings.gradle.kts', 'app/src/main/cpp/CMakeLists.txt', 'app/src/main/rust/Cargo.lock') }}
+          restore-keys: cmake-default-
+
+      - name: Build
+        run: ./gradlew assembleDefaultRelease
+
+      - name: Collect APKs
+        id: collect
+        run: |
+          set -e
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="nightly-${GITHUB_SHA::7}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          OUT=app/build/outputs/apk/default/release
+          mkdir release
+          mv "$OUT/app-default-arm64-v8a-release.apk"   "release/EhViewer-$VERSION-arm64-v8a.apk"
+          mv "$OUT/app-default-universal-release.apk"   "release/EhViewer-$VERSION-universal.apk"
+          mv "$OUT/app-default-armeabi-v7a-release.apk" "release/EhViewer-$VERSION-armeabi-v7a.apk"
+          mv "$OUT/app-default-x86_64-release.apk"      "release/EhViewer-$VERSION-x86_64.apk"
+          ls -lh release
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: EhViewer-${{ steps.collect.outputs.version }}
+          path: release/*.apk
+
+      - name: Upload mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: mapping-${{ steps.collect.outputs.version }}
+          path: app/build/outputs/mapping/defaultRelease/*.txt
+
+      - name: Publish nightly release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly release/*.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Nightly ${GITHUB_SHA::7}" \
+            --notes "main 分支最新自动构建（${GITHUB_SHA::7}）。手机一般下载 arm64-v8a 版本；不确定就下载 universal。"
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/*.apk \
+            --title "EhViewer $GITHUB_REF_NAME" \
+            --generate-notes
