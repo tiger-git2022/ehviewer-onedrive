@@ -21,6 +21,7 @@ import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -68,6 +69,7 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                             Settings.favCat = result.catArray.toTypedArray()
                             Settings.favCount = result.countArray.toIntArray()
                             Settings.favCloudCount = result.countArray.sum()
+                            FavoritesIndexSync.onPageLoaded(urlBuilder.value.favCat, result)
                             LoadResult.Page(result.galleryInfoList, result.prev, result.next)
                         }
                     }

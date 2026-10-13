@@ -392,3 +392,45 @@ suggestions.json.gz  List<{query, date}>          // search_database.db 中的 s
    - 签名哈希填 `oCaXb5ekeLseg+5DxDHor8aINqE=`。
 2. 在手机上安装 APK。可以直接覆盖安装到官方 EhViewer 上，数据保留。
 3. 每台设备登录同一个微软账户，然后逐台各同步一次。
+
+## 12. 给其他应用读的收藏索引（Mihon 改版用）
+
+**目的**：让登录同一个微软账号的 Mihon 改版（tiger-git2022/mihon）知道哪些漫画在 EhViewer 里收藏过，在浏览页和详情页标出「本地收藏」「云端：收藏夹名」。Mihon 只读，不写。
+
+**文件**：`ehviewer/export/favorites-index.json.gz`（gzip 压缩的 JSON）。不放在 `ehviewer/v1/`，因为它不参与三方合并，只是导出结果。
+
+```jsonc
+{
+  "version": 1,                  // 读取方遇到更高版本就跳过
+  "updatedAt": 1760000000000,    // 写入时间（毫秒）
+  "deviceId": "…", "deviceName": "…",
+  "cloudUpdatedAt": 1760000000000,   // 云端收藏部分最后一次变化
+  "cloudRefreshedAt": 1760000000000, // 最后一次逐页全量读取云端收藏，0 表示从没读全过
+  "slotNames": ["Favorites 0", "…"], // 10 个云端收藏夹的名字；没登录 E 站时为空
+  "galleries": [
+    {
+      "gid": 123, "token": "abcdef1234",
+      "title": "(C102) [社团 (作者)] 标题 [中国翻訳]", // 列表页显示的标题（英文/罗马音）
+      "titleJpn": "…",           // 日文标题；缺省 = 还没查到，空字符串 = 这本没有日文标题
+      "uploader": "…", "category": 2,
+      "local": true,             // 是否在本地收藏
+      "slot": 3                  // 云端收藏夹 0..9，-1 = 不在云端收藏
+    }
+  ]
+}
+```
+
+同一本画廊只出现一次，同时在本地收藏和云端收藏时 `local = true` 且 `slot >= 0`。
+
+**云端收藏怎么得到**（E 站没有列出收藏的接口，只能翻收藏页，所以尽量少翻）：
+1. 在 EhViewer 里加入、移动、删除收藏（单本经 `FavouriteStatusRouter`，收藏页的批量操作单独接入）：直接更新，不请求 E 站。
+2. 打开云端收藏页时，加载到的每一页顺带记下（「全部」页按收藏夹名换算编号，名字重复时跳过）。
+3. 每次 OneDrive 同步：请求一次收藏页首页（一小时最多一次），核对 10 个收藏夹的数量。数量对不上（比如在网页上改过）、从没读全过或超过 7 天没读全，才逐页读取所有收藏夹，页与页之间隔 1 秒。
+4. 日文标题：收藏列表页只有一个标题，所以每次同步最多用 gdata 接口补 500 本，结果存下来不再重复查；不写回数据库（空标题会显示在应用里）。
+5. 设置页「重新读取云端收藏」可以手动触发第 3 步的逐页读取。
+
+**存放**：云端收藏清单存在 `files/cloud_favorites.json.gz`，它属于 E 站账号，不放在 `files/onedrive_sync/` 里（换微软账号时那里会被清空）。
+
+**多设备**：每台设备同步结束时写一次索引，带 ETag 条件上传，412 时重新读取再写。本地收藏部分来自刚合并好的本地数据库，各设备一致；云端收藏部分以 `cloudUpdatedAt` 较新的为准，较旧的设备会先采用较新的那份。
+
+**开关**：OneDrive 同步设置里的「把收藏共享给其他应用」，默认开启。代码在 `sync/FavoritesIndexSync.kt`、`FavoritesIndexMerger.kt`、`FavoritesIndexModels.kt`，单元测试在 `FavoritesIndexMergerTest.kt`。

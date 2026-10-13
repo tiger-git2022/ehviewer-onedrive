@@ -67,6 +67,7 @@ data class SyncReport(
     val categories: List<CategoryResult>,
     val imported: Int,
     val devicesError: Throwable?,
+    val indexError: Throwable? = null,
 )
 
 data class RemoteDevice(
@@ -138,6 +139,11 @@ object OneDriveSync {
     suspend fun notifyChanged(category: SyncCategory) {
         if (currentCoroutineContext()[SyncWrite] != null) return
         markDirty(category)
+        scheduleChangeSync()
+    }
+
+    /** Called when the cloud favorites known to [FavoritesIndexSync] changed. */
+    fun notifyFavoritesIndexChanged() {
         scheduleChangeSync()
     }
 
@@ -390,7 +396,9 @@ object OneDriveSync {
             it[OneDriveSyncState.remoteDeviceETags] = "{}"
             it[OneDriveSyncState.subscriptions] = "{}"
             it[OneDriveSyncState.downloadsDirty] = true
+            it[OneDriveSyncState.favoritesIndexETag] = null
         }
+        FavoritesIndexSync.onCloudStateReset()
     }
 
     // endregion
@@ -417,7 +425,7 @@ object OneDriveSync {
         result.onSuccess { report ->
             OneDriveSyncState.withMutableSnapshot {
                 it[OneDriveSyncState.lastSyncTime] = now()
-                it[OneDriveSyncState.lastSyncFailed] = report.devicesError != null
+                it[OneDriveSyncState.lastSyncFailed] = report.devicesError != null || report.indexError != null
                 it[OneDriveSyncState.lastSyncSummary] = summarize(report)
             }
         }.onFailure { e ->
@@ -446,7 +454,11 @@ object OneDriveSync {
         val devicesError = runCatching { imported = syncDevices(deviceId) }.exceptionOrNull()
         if (devicesError is CancellationException) throw devicesError
         devicesError?.let { logcat(TAG, it) }
-        return SyncReport(results, imported, devicesError)
+        // Last: it reads the local favorites the favorites step just merged
+        val indexError = runCatching { FavoritesIndexSync.sync(deviceId, deviceName) }.exceptionOrNull()
+        if (indexError is CancellationException) throw indexError
+        indexError?.let { logcat(TAG, it) }
+        return SyncReport(results, imported, devicesError, indexError)
     }
 
     private suspend fun <T> syncSection(section: SyncSection<T>, remote: RemoteItem?, deviceId: String): CategoryResult {
@@ -560,6 +572,7 @@ object OneDriveSync {
         }.toMutableList()
         if (report.imported > 0) lines += appCtx.getString(R.string.onedrive_sync_downloads_imported, report.imported)
         report.devicesError?.let { lines += appCtx.getString(R.string.onedrive_sync_devices_failed, it.message ?: it.toString()) }
+        report.indexError?.let { lines += appCtx.getString(R.string.onedrive_sync_favorites_index_failed, it.message ?: it.toString()) }
         return lines.joinToString("\n").ifEmpty { appCtx.getString(R.string.onedrive_sync_no_changes) }
     }
 
