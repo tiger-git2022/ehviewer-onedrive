@@ -53,14 +53,14 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                 object : PagingSource<String, BaseGalleryInfo>() {
                     override fun getRefreshKey(state: PagingState<String, BaseGalleryInfo>): String? = null
                     override suspend fun load(params: LoadParams<String>) = withIOContext {
-                        val url = mutex.withLock {
+                        val (url, favCat) = mutex.withLock {
                             with(urlBuilder.value) {
                                 when (params) {
                                     is LoadParams.Prepend -> setIndex(params.key, isNext = false)
                                     is LoadParams.Append -> setIndex(params.key, isNext = true)
                                     is LoadParams.Refresh -> params.key?.let { setIndex(it, false) }
                                 }
-                                build()
+                                build() to favCat
                             }
                         }
                         runSuspendCatching {
@@ -69,7 +69,8 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                             Settings.favCat = result.catArray.toTypedArray()
                             Settings.favCount = result.countArray.toIntArray()
                             Settings.favCloudCount = result.countArray.sum()
-                            FavoritesIndexSync.onPageLoaded(urlBuilder.value.favCat, result)
+                            // The slot of this request: the user may have switched slots meanwhile
+                            FavoritesIndexSync.onPageLoaded(favCat, result)
                             LoadResult.Page(result.galleryInfoList, result.prev, result.next)
                         }
                     }

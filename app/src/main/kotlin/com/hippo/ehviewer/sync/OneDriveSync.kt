@@ -373,6 +373,9 @@ object OneDriveSync {
         OneDriveSyncState.withMutableSnapshot {
             it[OneDriveSyncState.accountId] = null
             it[OneDriveSyncState.accountName] = null
+            // The next account is unknown: its index may need deleting if sharing stays off
+            it[OneDriveSyncState.favoritesIndexETag] = null
+            it[OneDriveSyncState.favoritesIndexRemoved] = false
         }
     }
 

@@ -126,10 +126,15 @@ object FavoritesIndexSync {
 
     /**
      * Applies [transform] to the list of the signed in E-Hentai account (an empty one after switching accounts) and
-     * saves the result; returns true if the list changed.
+     * saves the result; returns true if the list changed. With [user], a change made for another account than the
+     * signed in one is dropped.
      */
-    private suspend fun update(transform: (CloudFavorites) -> CloudFavorites): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun update(
+        user: String? = userKey(),
+        transform: (CloudFavorites) -> CloudFavorites,
+    ): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
+            if (userKey() != user) return@withLock false
             journal?.add(transform)
             saveLocked(transform(FavoritesIndexMerger.forUser(loadLocked(), userKey())))
         }
@@ -147,8 +152,10 @@ object FavoritesIndexSync {
      * up to date while the export is off too: the count check cannot see a favorite replaced by another in one slot.
      */
     private fun updateLater(transform: (CloudFavorites) -> CloudFavorites) {
+        // The account the change was made with, not the one signed in when it runs
+        val user = userKey()
         scope.launch {
-            runCatching { update(transform) }
+            runCatching { update(user, transform) }
                 .onFailure { logcat(TAG, it) }
                 .onSuccess { changed -> if (changed && enabled) OneDriveSync.notifyFavoritesIndexChanged() }
         }
@@ -273,7 +280,7 @@ object FavoritesIndexSync {
         lastCheckUser = user
         updateSettings(first)
         // The newest favorites are on the first page of "all"
-        update(pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
+        update(transform = pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
         if (FavoritesIndexMerger.needsRefresh(current(), first.countArray, now())) {
             refreshCloudFavorites()
         }
