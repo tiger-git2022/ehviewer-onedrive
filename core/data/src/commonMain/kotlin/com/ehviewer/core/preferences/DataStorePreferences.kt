@@ -1,6 +1,7 @@
 package com.ehviewer.core.preferences
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.byteArrayPreferencesKey
@@ -29,6 +30,14 @@ abstract class DataStorePreferences(private val dataStore: DataStore<Preferences
         dataStore.edit {
             block(MutableSnapshot(it))
         }
+    }
+
+    /** All stored values by key name, for code that handles every key generically (OneDrive sync). */
+    val rawData: Flow<Preferences>
+        get() = dataStore.data
+
+    suspend fun editRaw(block: (MutablePreferences) -> Unit) {
+        dataStore.edit { block(it) }
     }
 
     protected fun boolPref(

@@ -21,4 +21,13 @@ interface SearchDao {
 
     @Insert
     suspend fun insert(search: Search)
+
+    @Insert
+    suspend fun insert(searches: List<Search>)
+
+    @Query("SELECT * FROM suggestions")
+    suspend fun listAll(): List<Search>
+
+    @Query("DELETE FROM suggestions WHERE `query` IN (:queries)")
+    suspend fun deleteQueries(queries: List<String>)
 }

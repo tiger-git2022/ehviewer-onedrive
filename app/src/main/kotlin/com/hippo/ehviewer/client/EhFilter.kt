@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val regex = { p: Filter -> Regex(p.text) }.memoize()
 
@@ -30,6 +31,15 @@ object EhFilter : CoroutineScope {
     fun Filter.forget(callback: (suspend (Unit) -> Unit)? = null) = launchOps(callback) {
         EhDB.deleteFilter(this)
         filters.await().remove(this)
+    }
+
+    /** Reloads the filters after OneDrive sync changed them in the database. */
+    suspend fun reload() = withContext(this@EhFilter.coroutineContext) {
+        val list = EhDB.getAllFilter()
+        filters.await().run {
+            clear()
+            addAll(list)
+        }
     }
 
     private fun spiltTag(tag: String) = tag.run {

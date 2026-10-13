@@ -66,6 +66,7 @@ import com.hippo.ehviewer.ktor.Cronet
 import com.hippo.ehviewer.ktor.configureClient
 import com.hippo.ehviewer.ktor.configureCommon
 import com.hippo.ehviewer.ktor.isCronetAvailable
+import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.ui.keepNoMediaFileStatus
 import com.hippo.ehviewer.ui.screen.detailCache
 import com.hippo.ehviewer.ui.tools.dataStateFlow
@@ -111,6 +112,7 @@ class EhApplication : Application(), SingletonImageLoader.Factory {
         CrashHandler.install()
         super.onCreate()
         System.loadLibrary("ehviewer")
+        OneDriveSync.init()
         launch {
             FavouriteStatusRouter.collect { info ->
                 detailCache[info.gid]?.apply {

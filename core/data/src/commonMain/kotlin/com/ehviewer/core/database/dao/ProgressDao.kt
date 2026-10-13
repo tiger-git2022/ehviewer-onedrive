@@ -25,6 +25,12 @@ interface ProgressDao {
     @Upsert
     suspend fun upsert(progress: ProgressInfo)
 
+    @Upsert
+    suspend fun upsert(progress: List<ProgressInfo>)
+
+    @Query("DELETE FROM PROGRESS WHERE GID IN (:gids)")
+    suspend fun deleteByKeys(gids: List<Long>)
+
     @Query("DELETE FROM PROGRESS")
     suspend fun deleteAll()
 }

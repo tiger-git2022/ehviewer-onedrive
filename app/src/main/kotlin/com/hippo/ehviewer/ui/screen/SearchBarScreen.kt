@@ -76,6 +76,8 @@ import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.OneDriveSync
+import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.ui.LocalNavDrawerState
 import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
 import com.hippo.ehviewer.ui.theme.scrim
@@ -197,6 +199,7 @@ fun SearchBarScreen(
                 mSearchDatabase.deleteQuery(query)
                 val search = Search(System.currentTimeMillis(), query)
                 mSearchDatabase.insert(search)
+                OneDriveSync.notifyChanged(SyncCategory.SUGGESTIONS)
             }
         }
         onApplySearch(query)
@@ -208,6 +211,7 @@ fun SearchBarScreen(
                 Text(text = stringResource(id = R.string.delete_search_history, keyword))
             }
             mSearchDatabase.deleteQuery(keyword)
+            OneDriveSync.notifyChanged(SyncCategory.SUGGESTIONS)
             updateSuggestions()
         }
     }

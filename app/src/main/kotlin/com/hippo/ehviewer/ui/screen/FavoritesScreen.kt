@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -73,6 +74,10 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.OneDriveClient
+import com.hippo.ehviewer.sync.OneDriveSync
+import com.hippo.ehviewer.sync.OneDriveSyncState
+import com.hippo.ehviewer.sync.SyncTrigger
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.awaitSelectDate
@@ -90,6 +95,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import moe.tarsin.coroutines.runSwallowingWithUI
 import moe.tarsin.navigate
+import moe.tarsin.snackbar
 
 @Destination<RootGraph>
 @Composable
@@ -191,6 +197,25 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         localSearch = urlBuilder.isLocal,
         searchBarOffsetY = { searchBarOffsetY },
         trailingIcon = {
+            if (urlBuilder.isLocal && OneDriveClient.isSupported) {
+                val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
+                val syncing by OneDriveSync.running.collectAsState()
+                if (oneDriveAccount != null) {
+                    IconButton(
+                        onClick = {
+                            launch {
+                                val result = OneDriveSync.sync(SyncTrigger.MANUAL)
+                                refresh()
+                                snackbar(OneDriveSync.summaryOf(result))
+                            }
+                        },
+                        enabled = !syncing,
+                        shapes = IconButtonDefaults.shapes(),
+                    ) {
+                        Icon(imageVector = Icons.Default.Sync, contentDescription = stringResource(id = R.string.onedrive_sync_now))
+                    }
+                }
+            }
             val sheetState = LocalSideSheetState.current
             IconButton(onClick = { launch { sheetState.open() } }, shapes = IconButtonDefaults.shapes()) {
                 Icon(imageVector = Icons.Outlined.FolderSpecial, contentDescription = null)

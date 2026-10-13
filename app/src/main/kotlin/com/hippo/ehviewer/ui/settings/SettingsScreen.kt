@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Adb
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
@@ -24,6 +25,7 @@ import com.hippo.ehviewer.ui.destinations.AboutScreenDestination
 import com.hippo.ehviewer.ui.destinations.AdvancedScreenDestination
 import com.hippo.ehviewer.ui.destinations.DownloadScreenDestination
 import com.hippo.ehviewer.ui.destinations.EhScreenDestination
+import com.hippo.ehviewer.ui.destinations.OneDriveSyncScreenDestination
 import com.hippo.ehviewer.ui.destinations.PrivacyScreenDestination
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.ramcosta.composedestinations.annotation.Destination
@@ -60,6 +62,12 @@ fun AnimatedVisibilityScope.SettingsScreen(navigator: DestinationsNavigator) = S
                 icon = Icons.Default.Security,
                 title = R.string.settings_privacy,
                 childRoute = PrivacyScreenDestination,
+                navigator = navigator,
+            )
+            PreferenceHeader(
+                icon = Icons.Default.CloudSync,
+                title = R.string.settings_onedrive_sync,
+                childRoute = OneDriveSyncScreenDestination,
                 navigator = navigator,
             )
             PreferenceHeader(

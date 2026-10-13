@@ -17,6 +17,15 @@ interface GalleryDao {
     @Query("SELECT * FROM GALLERIES")
     suspend fun list(): List<GalleryEntity>
 
+    @Query("SELECT * FROM GALLERIES WHERE GID IN (:gids)")
+    suspend fun load(gids: List<Long>): List<GalleryEntity>
+
+    @Query(
+        """DELETE FROM GALLERIES WHERE GID IN (:gids) AND GID NOT IN (SELECT GID FROM LOCAL_FAVORITES)
+        AND GID NOT IN (SELECT GID FROM HISTORY) AND GID NOT IN (SELECT GID FROM DOWNLOADS)""",
+    )
+    suspend fun deleteUnreferenced(gids: List<Long>)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertOrIgnore(galleryInfoList: List<GalleryEntity>)
 

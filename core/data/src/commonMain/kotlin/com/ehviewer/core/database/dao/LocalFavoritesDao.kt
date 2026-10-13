@@ -21,6 +21,9 @@ interface LocalFavoritesDao {
     @Query("SELECT GALLERIES.* FROM LOCAL_FAVORITES JOIN GALLERIES USING(GID) ORDER BY TIME DESC")
     fun joinListLazy(): PagingSource<Int, GalleryEntity>
 
+    @Query("SELECT GALLERIES.* FROM LOCAL_FAVORITES JOIN GALLERIES USING(GID)")
+    suspend fun listGalleries(): List<GalleryEntity>
+
     @Query(
         """SELECT GALLERIES.* FROM LOCAL_FAVORITES JOIN GALLERIES USING(GID)
         JOIN GALLERIES_FTS ON GALLERIES.rowid = docid WHERE GALLERIES_FTS MATCH :title ORDER BY TIME DESC""",
@@ -38,6 +41,12 @@ interface LocalFavoritesDao {
 
     @Upsert
     suspend fun upsert(t: LocalFavoriteInfo)
+
+    @Upsert
+    suspend fun upsert(localFavorites: List<LocalFavoriteInfo>)
+
+    @Query("DELETE FROM LOCAL_FAVORITES WHERE GID IN (:gids)")
+    suspend fun deleteByKeys(gids: List<Long>)
 
     @Query("DELETE FROM LOCAL_FAVORITES WHERE GID = :gid")
     suspend fun deleteByKey(gid: Long)

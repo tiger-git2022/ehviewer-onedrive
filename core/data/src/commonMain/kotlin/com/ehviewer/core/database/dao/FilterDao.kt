@@ -15,6 +15,9 @@ interface FilterDao {
     @Update
     suspend fun update(filter: Filter)
 
+    @Update
+    suspend fun update(filters: List<Filter>)
+
     @Insert
     suspend fun insert(t: Filter): Long
 
@@ -23,6 +26,9 @@ interface FilterDao {
 
     @Delete
     suspend fun delete(filter: Filter)
+
+    @Delete
+    suspend fun delete(filters: List<Filter>)
 
     @Query("SELECT * FROM FILTER WHERE TEXT = :text AND MODE = :mode")
     suspend fun load(text: String, mode: Int): Filter?

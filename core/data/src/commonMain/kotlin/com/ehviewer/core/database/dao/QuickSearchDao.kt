@@ -29,4 +29,7 @@ interface QuickSearchDao {
 
     @Delete
     suspend fun delete(quickSearch: QuickSearch)
+
+    @Delete
+    suspend fun delete(quickSearchList: List<QuickSearch>)
 }

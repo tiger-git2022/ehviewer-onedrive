@@ -16,6 +16,7 @@
 package com.hippo.ehviewer
 
 import androidx.room.execSQL
+import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import arrow.fx.coroutines.resource
 import arrow.fx.coroutines.resourceScope
@@ -33,11 +34,15 @@ import com.ehviewer.core.database.model.HistoryInfo
 import com.ehviewer.core.database.model.LocalFavoriteInfo
 import com.ehviewer.core.database.model.ProgressInfo
 import com.ehviewer.core.database.model.QuickSearch
+import com.ehviewer.core.database.model.Search
 import com.ehviewer.core.database.roomDb
 import com.ehviewer.core.files.delete
 import com.ehviewer.core.files.sendTo
+import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.download.DownloadManager
+import com.hippo.ehviewer.sync.OneDriveSync
+import com.hippo.ehviewer.sync.SyncCategory
 import kotlinx.coroutines.flow.Flow
 import okio.Path
 
@@ -61,8 +66,15 @@ object EhDB {
 
     fun getReadProgressFlow(gid: Long) = db.progressDao().getPageFlow(gid)
     suspend fun getReadProgress(gid: Long) = db.progressDao().getPage(gid)
-    suspend fun putReadProgress(gid: Long, page: Int) = db.progressDao().upsert(ProgressInfo(gid, page))
-    suspend fun clearProgressInfo() = db.progressDao().deleteAll()
+    suspend fun putReadProgress(gid: Long, page: Int) {
+        db.progressDao().upsert(ProgressInfo(gid, page))
+        OneDriveSync.notifyChanged(SyncCategory.PROGRESS)
+    }
+
+    suspend fun clearProgressInfo() {
+        db.progressDao().deleteAll()
+        OneDriveSync.notifyChanged(SyncCategory.PROGRESS)
+    }
 
     suspend fun getAllDownloadInfo() = db.downloadsDao().joinList().onEach {
         if (it.state == DownloadInfo.STATE_WAIT || it.state == DownloadInfo.STATE_DOWNLOAD) {
@@ -73,17 +85,20 @@ object EhDB {
     suspend fun updateDownloadInfo(downloadInfo: Collection<DownloadInfo>) {
         val dao = db.downloadsDao()
         dao.update(downloadInfo.map(DownloadInfo::downloadInfo))
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun putDownloadInfo(downloadInfo: DownloadInfo) {
         putGalleryInfo(downloadInfo.galleryInfo)
         db.downloadsDao().upsert(downloadInfo.downloadInfo)
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun removeDownloadInfo(downloadInfo: DownloadInfo) {
         val dao = db.downloadsDao()
         dao.delete(downloadInfo.downloadInfo)
         deleteGalleryInfo(downloadInfo.galleryInfo)
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun randomLocalFav() = db.localFavoritesDao().random()
@@ -94,6 +109,7 @@ object EhDB {
             dao.delete(it.downloadInfo)
             deleteGalleryInfo(it.galleryInfo)
         }
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun getDownloadDirname(gid: Long): String? {
@@ -130,23 +146,27 @@ object EhDB {
         raw.id = null
         val dao = db.downloadLabelDao()
         raw.id = dao.insert(raw)
+        OneDriveSync.notifyDownloadsChanged()
         return raw
     }
 
     suspend fun updateDownloadLabel(raw: DownloadLabel) {
         val dao = db.downloadLabelDao()
         dao.update(raw)
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun updateDownloadLabel(downloadLabels: List<DownloadLabel>) {
         val dao = db.downloadLabelDao()
         dao.update(downloadLabels)
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun removeDownloadLabel(raw: DownloadLabel) {
         val dao = db.downloadLabelDao()
         dao.delete(raw)
         dao.fill(raw.position)
+        OneDriveSync.notifyDownloadsChanged()
     }
 
     suspend fun searchDownloadLabel(keyword: String, limit: Int) = db.downloadLabelDao().search("%$keyword%", limit)
@@ -156,12 +176,14 @@ object EhDB {
             val dao = db.downloadArtistDao()
             dao.deleteByGid(gid)
             dao.insertOrIgnore(artists)
+            OneDriveSync.notifyDownloadsChanged()
         }
     }
 
     suspend fun removeLocalFavorites(galleryInfo: GalleryInfo) {
         db.localFavoritesDao().deleteByKey(galleryInfo.gid)
         deleteGalleryInfo(galleryInfo.asEntity())
+        OneDriveSync.notifyChanged(SyncCategory.FAVORITES)
     }
 
     suspend fun removeLocalFavorites(galleryInfoList: Collection<GalleryInfo>) {
@@ -178,6 +200,7 @@ object EhDB {
     suspend fun putLocalFavorites(galleryInfo: GalleryInfo) {
         putGalleryInfo(galleryInfo.asEntity())
         db.localFavoritesDao().upsert(LocalFavoriteInfo(galleryInfo.gid))
+        OneDriveSync.notifyChanged(SyncCategory.FAVORITES)
     }
 
     suspend fun putLocalFavorites(galleryInfoList: Collection<GalleryInfo>) {
@@ -195,6 +218,7 @@ object EhDB {
     suspend fun insertQuickSearch(quickSearch: QuickSearch) {
         val dao = db.quickSearchDao()
         quickSearch.id = dao.insert(quickSearch)
+        OneDriveSync.notifyChanged(SyncCategory.QUICK_SEARCH)
     }
 
     private suspend fun importQuickSearch(quickSearchList: List<QuickSearch>) {
@@ -206,11 +230,13 @@ object EhDB {
         val dao = db.quickSearchDao()
         dao.delete(quickSearch)
         dao.fill(quickSearch.position)
+        OneDriveSync.notifyChanged(SyncCategory.QUICK_SEARCH)
     }
 
     suspend fun updateQuickSearch(quickSearchList: List<QuickSearch>) {
         val dao = db.quickSearchDao()
         dao.update(quickSearchList)
+        OneDriveSync.notifyChanged(SyncCategory.QUICK_SEARCH)
     }
 
     val historyLazyList
@@ -229,6 +255,7 @@ object EhDB {
     suspend fun putHistoryInfo(galleryInfo: GalleryInfo) {
         putGalleryInfo(galleryInfo.asEntity())
         db.historyDao().upsert(HistoryInfo(galleryInfo.gid))
+        OneDriveSync.notifyChanged(SyncCategory.HISTORY)
     }
 
     suspend fun updateFavoriteSlot(gid: Long, slot: Int) {
@@ -248,6 +275,7 @@ object EhDB {
         val dao = db.historyDao()
         dao.deleteByKey(galleryInfo.gid)
         deleteGalleryInfo(galleryInfo)
+        OneDriveSync.notifyChanged(SyncCategory.HISTORY)
     }
 
     suspend fun clearHistoryInfo() {
@@ -255,6 +283,7 @@ object EhDB {
         val historyList = dao.list()
         dao.deleteAll()
         historyList.forEach { runCatching { db.galleryDao().deleteByKey(it.gid) } }
+        OneDriveSync.notifyChanged(SyncCategory.HISTORY)
     }
 
     suspend fun getAllFilter() = db.filterDao().list()
@@ -264,6 +293,7 @@ object EhDB {
         return if (existFilter == null) {
             filter.id = null
             filter.id = db.filterDao().insert(filter)
+            OneDriveSync.notifyChanged(SyncCategory.QUICK_SEARCH)
             true
         } else {
             false
@@ -272,10 +302,12 @@ object EhDB {
 
     suspend fun deleteFilter(filter: Filter) {
         db.filterDao().delete(filter)
+        OneDriveSync.notifyChanged(SyncCategory.QUICK_SEARCH)
     }
 
     suspend fun updateFilter(filter: Filter) {
         db.filterDao().update(filter)
+        OneDriveSync.notifyChanged(SyncCategory.QUICK_SEARCH)
     }
 
     suspend fun exportDB(file: Path) {
@@ -334,5 +366,107 @@ object EhDB {
         oldDB.filterDao().list().forEach {
             addFilter(it)
         }
+        listOf(SyncCategory.FAVORITES, SyncCategory.HISTORY, SyncCategory.PROGRESS, SyncCategory.QUICK_SEARCH).forEach {
+            OneDriveSync.notifyChanged(it)
+        }
     }
+
+    // OneDrive sync: snapshots and diff writes. The writes do not notify the sync, they come from it.
+
+    suspend fun getLocalFavoritesWithGallery(): List<Pair<LocalFavoriteInfo, GalleryEntity>> {
+        val dao = db.localFavoritesDao()
+        val galleries = dao.listGalleries().associateBy { it.gid }
+        return dao.list().mapNotNull { info -> galleries[info.gid]?.let { info to it } }
+    }
+
+    suspend fun getHistoryWithGallery(): List<Pair<HistoryInfo, GalleryEntity>> {
+        val dao = db.historyDao()
+        val galleries = dao.listGalleries().associateBy { it.gid }
+        return dao.list().mapNotNull { info -> galleries[info.gid]?.let { info to it } }
+    }
+
+    suspend fun getAllReadProgress() = db.progressDao().list()
+
+    suspend fun loadGalleries(gids: Collection<Long>): List<GalleryEntity> = gids.chunked(SQL_CHUNK).flatMap { db.galleryDao().load(it) }
+
+    suspend fun applySyncedFavorites(
+        insertGalleries: List<GalleryEntity>,
+        updateGalleries: List<GalleryEntity>,
+        upsert: List<LocalFavoriteInfo>,
+        delete: List<Long>,
+    ) = db.useWriterConnection { conn ->
+        conn.immediateTransaction {
+            writeSyncedGalleries(insertGalleries, updateGalleries)
+            val dao = db.localFavoritesDao()
+            if (upsert.isNotEmpty()) dao.upsert(upsert)
+            delete.chunked(SQL_CHUNK).forEach {
+                dao.deleteByKeys(it)
+                db.galleryDao().deleteUnreferenced(it)
+            }
+        }
+    }
+
+    suspend fun applySyncedHistory(
+        insertGalleries: List<GalleryEntity>,
+        updateGalleries: List<GalleryEntity>,
+        upsert: List<HistoryInfo>,
+        delete: List<Long>,
+    ) = db.useWriterConnection { conn ->
+        conn.immediateTransaction {
+            writeSyncedGalleries(insertGalleries, updateGalleries)
+            val dao = db.historyDao()
+            if (upsert.isNotEmpty()) dao.upsert(upsert)
+            delete.chunked(SQL_CHUNK).forEach {
+                dao.deleteByKeys(it)
+                db.galleryDao().deleteUnreferenced(it)
+            }
+        }
+    }
+
+    private suspend fun writeSyncedGalleries(insert: List<GalleryEntity>, update: List<GalleryEntity>) {
+        val dao = db.galleryDao()
+        if (insert.isNotEmpty()) dao.insertOrIgnore(insert)
+        if (update.isNotEmpty()) dao.update(update)
+    }
+
+    suspend fun applySyncedProgress(upsert: List<ProgressInfo>, delete: List<Long>) = db.useWriterConnection { conn ->
+        conn.immediateTransaction {
+            val dao = db.progressDao()
+            if (upsert.isNotEmpty()) dao.upsert(upsert)
+            delete.chunked(SQL_CHUNK).forEach { dao.deleteByKeys(it) }
+        }
+    }
+
+    suspend fun applySyncedQuickSearch(
+        insert: List<QuickSearch>,
+        update: List<QuickSearch>,
+        delete: List<QuickSearch>,
+        insertFilters: List<Filter>,
+        updateFilters: List<Filter>,
+        deleteFilters: List<Filter>,
+    ) = db.useWriterConnection { conn ->
+        conn.immediateTransaction {
+            val dao = db.quickSearchDao()
+            if (delete.isNotEmpty()) dao.delete(delete)
+            if (update.isNotEmpty()) dao.update(update)
+            if (insert.isNotEmpty()) dao.insert(insert)
+            val filterDao = db.filterDao()
+            if (deleteFilters.isNotEmpty()) filterDao.delete(deleteFilters)
+            if (updateFilters.isNotEmpty()) filterDao.update(updateFilters)
+            if (insertFilters.isNotEmpty()) filterDao.insert(insertFilters)
+        }
+    }
+
+    suspend fun getAllSuggestions() = searchDatabase.searchDao().listAll()
+
+    suspend fun applySyncedSuggestions(upsert: List<Search>, delete: List<String>) = searchDatabase.useWriterConnection { conn ->
+        conn.immediateTransaction {
+            val dao = searchDatabase.searchDao()
+            (delete + upsert.map { it.query }).chunked(SQL_CHUNK).forEach { dao.deleteQueries(it) }
+            if (upsert.isNotEmpty()) dao.insert(upsert)
+        }
+    }
+
+    // SQLite allows 999 host parameters before 3.32
+    private const val SQL_CHUNK = 500
 }

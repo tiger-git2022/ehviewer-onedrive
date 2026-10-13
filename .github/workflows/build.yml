@@ -73,6 +73,9 @@ jobs:
       - name: Build
         run: ./gradlew assembleDefaultRelease
 
+      - name: Unit tests
+        run: ./gradlew testDefaultReleaseUnitTest
+
       - name: Collect APKs
         id: collect
         run: |

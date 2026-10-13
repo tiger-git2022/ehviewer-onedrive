@@ -19,6 +19,8 @@ import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.OneDriveSync
+import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.isAuthenticationSupported
 import com.hippo.ehviewer.ui.main.NavigationIcon
@@ -80,6 +82,7 @@ fun AnimatedVisibilityScope.PrivacyScreen(navigator: DestinationsNavigator) = Sc
                         title = R.string.clear_search_history_confirm,
                     )
                     searchDatabase.searchDao().clear()
+                    OneDriveSync.notifyChanged(SyncCategory.SUGGESTIONS)
                     launchSnackbar(searchHistoryCleared)
                 }
             }
