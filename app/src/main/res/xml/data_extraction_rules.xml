@@ -22,6 +22,10 @@
         <include
             domain="file"
             path="datastore" />
+        <!-- Fork: OneDrive sync state holds the per-device id, a restored copy would clash with the old device -->
+        <exclude
+            domain="file"
+            path="datastore/onedrive_sync.preferences_pb" />
         <include
             domain="root"
             path="app_webview/Default/Cookies" />

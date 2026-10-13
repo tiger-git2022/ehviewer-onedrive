@@ -9,6 +9,7 @@ import com.hippo.ehviewer.spider.timeoutBySpeed
 import com.hippo.ehviewer.util.copyTo
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.accept
+import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
@@ -20,15 +21,15 @@ import kotlin.time.Instant
 import kotlinx.io.asSource
 import moe.tarsin.coroutines.runSuspendCatching
 import okio.Path
-import tachiyomi.data.release.Artifacts
 import tachiyomi.data.release.CommitComparison
 import tachiyomi.data.release.Release
-import tachiyomi.data.release.Repository
-import tachiyomi.data.release.WorkflowRuns
-import tachiyomi.data.release.downloadLink
 
-const val API_URL = "https://codeberg.org/api/v1/repos/${BuildConfig.REPO_NAME}"
+// Fork: updates come from the GitHub releases of this repository instead of the official Codeberg
+// repository, so the official build never replaces the fork (they share the same signing key).
+// The CI channel follows the `nightly` pre-release that the Build APK workflow republishes on every push to main.
+const val API_URL = "https://api.github.com/repos/${BuildConfig.REPO_NAME}"
 const val LATEST_RELEASE_URL = "$API_URL/releases/latest"
+const val NIGHTLY_RELEASE_URL = "$API_URL/releases/tags/nightly"
 
 object AppUpdater {
     suspend fun checkForUpdate(forceCheck: Boolean = false): EhRelease? {
@@ -39,26 +40,23 @@ object AppUpdater {
             Settings.lastUpdateTime = now.epochSeconds
             if (Settings.useCIUpdateChannel.value) {
                 val curSha = BuildConfig.COMMIT_SHA
-                val branch = statement(API_URL).executeAndParseAs<Repository>().defaultBranch
-                val run = statement("$API_URL/actions/runs?event=push&status=success&ref=refs/heads/$branch").executeAndParseAs<WorkflowRuns>().workflowRuns[0]
-                val shortSha = run.headSha.take(7)
-                if (shortSha != curSha) {
-                    val artifacts = statement("$API_URL/actions/runs/${run.id}/artifacts").executeAndParseAs<Artifacts>()
-                    val archiveUrl = artifacts.downloadLink
+                val release = githubStatement(NIGHTLY_RELEASE_URL).executeAndParseAs<Release>()
+                val shortSha = release.targetCommitish.take(7)
+                if (shortSha.isNotEmpty() && shortSha != curSha) {
                     val changelog = runSuspendCatching {
                         val commitComparisonUrl = "$API_URL/compare/$curSha...$shortSha"
-                        val result = statement(commitComparisonUrl).executeAndParseAs<CommitComparison>()
+                        val result = githubStatement(commitComparisonUrl).executeAndParseAs<CommitComparison>()
                         // TODO: Prettier format, Markdown?
                         result.commits.joinToString("\n") { commit ->
                             "${commit.commit.message.takeWhile { it != '\n' }} (@${commit.commit.author.name})"
                         }
-                    }.getOrDefault(run.title)
-                    return EhRelease(shortSha, changelog, archiveUrl)
+                    }.getOrDefault(release.info)
+                    return EhRelease(shortSha, changelog, release.getDownloadLink())
                 }
             } else {
                 val curVersion = BuildConfig.RAW_VERSION_NAME
-                val release = statement(LATEST_RELEASE_URL).executeAndParseAs<Release>()
-                val latestVersion = release.version
+                val release = githubStatement(LATEST_RELEASE_URL).executeAndParseAs<Release>()
+                val latestVersion = release.version.removePrefix("v")
                 val description = release.info
                 val downloadUrl = release.getDownloadLink()
                 if (latestVersion != curVersion) {
@@ -95,6 +93,11 @@ object AppUpdater {
             },
         )
     }
+}
+
+suspend inline fun githubStatement(url: String) = statement(url) {
+    accept(ContentType.Application.Json)
+    header("X-GitHub-Api-Version", "2022-11-28")
 }
 
 suspend inline fun statement(

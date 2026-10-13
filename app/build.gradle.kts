@@ -49,7 +49,8 @@ android {
 
     val repoName = providers.exec {
         commandLine = "git remote get-url origin".split(' ')
-    }.standardOutput.asText.get().trim().removeSuffix(".git").removePrefix("https://codeberg.org/")
+    }.standardOutput.asText.get().trim().removeSuffix(".git")
+        .removePrefix("https://codeberg.org/").removePrefix("https://github.com/").removePrefix("git@github.com:")
 
     val snapshot = !hasProperty("release")
 
@@ -144,7 +145,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles("proguard-rules.pro")
+            proguardFiles("proguard-rules.pro", "proguard-onedrive.pro")
             signingConfig = signConfig
         }
         debug {
@@ -236,6 +237,13 @@ dependencies {
 
     implementation(libs.ktor.client.okhttp)
 
+    // OneDrive sync (fork)
+    implementation(libs.msal) {
+        // Only used for the legacy Surface Duo hinge layout and is no longer
+        // available from the repositories used by this project.
+        exclude(group = "com.microsoft.device.display", module = "display-mask")
+    }
+
     implementation(libs.bundles.kotlinx.serialization)
 
     implementation(libs.kotlinx.coroutines.android)
@@ -245,6 +253,8 @@ dependencies {
 
     implementation(libs.androidx.profileinstaller)
     "baselineProfile"(project(":benchmark"))
+
+    testImplementation(libs.kotlin.test.junit)
 
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.compose.ui.tooling.preview)

@@ -29,6 +29,7 @@ kotlinx-serialization = "1.11.0"
 ksp = "2.3.9"
 ktor = "3.6.0"
 moko-resources = "0.27.1"
+msal = "8.4.1"
 okhttp = "5.5.0"
 okio = "3.18.2"
 splitties = "3.0.0"
@@ -95,6 +96,8 @@ desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
 
 diff = "io.github.petertrr:kotlin-multiplatform-diff:1.4.0"
 
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
@@ -109,6 +112,8 @@ ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "kto
 logcat = "com.squareup.logcat:logcat:0.4"
 
 moko-resources = { module = "dev.icerock.moko:resources", version.ref = "moko-resources" }
+
+msal = { module = "com.microsoft.identity.client:msal", version.ref = "msal" }
 
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 
