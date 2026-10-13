@@ -26,6 +26,8 @@ data class FavoritesIndex(
     val updatedAt: Long = 0,
     val deviceId: String = "",
     val deviceName: String = "",
+    /** [CloudFavorites.userKey] of the cloud part, null without an E-Hentai account. */
+    val ehUserKey: String? = null,
     /** Last change of the cloud part, see [CloudFavorites.updatedAt]. */
     val cloudUpdatedAt: Long = 0,
     /** Last full refresh of the cloud part, 0 if it was never read completely. */
@@ -60,6 +62,11 @@ data class IndexedGallery(
 data class CloudFavorites(
     @EncodeDefault
     val version: Int = FAVORITES_INDEX_VERSION,
+    /**
+     * Hash of the E-Hentai member id the list belongs to. A list of another account is dropped, so signing in to
+     * another account never exports the favorites of the previous one.
+     */
+    val userKey: String? = null,
     /** Last change of [galleries] or [slotNames]; the copy changed last wins between devices. */
     val updatedAt: Long = 0,
     /** Last full refresh, 0 before the first one. */

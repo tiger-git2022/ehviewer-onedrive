@@ -85,12 +85,17 @@ class FavoritesIndexMergerTest {
     }
 
     @Test
-    fun adoptOnlyNewerCloudPart() {
-        val mine = CloudFavorites(updatedAt = 10, galleries = listOf(gallery(1, slot = 0)), japaneseTitles = mapOf(1L to "一"))
-        val older = FavoritesIndex(cloudUpdatedAt = 5, galleries = listOf(gallery(9, slot = 1)))
+    fun adoptOnlyNewerCloudPartOfTheSameAccount() {
+        val mine = CloudFavorites(userKey = "a", updatedAt = 10, galleries = listOf(gallery(1, slot = 0)), japaneseTitles = mapOf(1L to "一"))
+        val older = FavoritesIndex(ehUserKey = "a", cloudUpdatedAt = 5, galleries = listOf(gallery(9, slot = 1)))
         assertSame(mine, FavoritesIndexMerger.adopt(mine, older))
+        val otherAccount = FavoritesIndex(ehUserKey = "b", cloudUpdatedAt = 50, galleries = listOf(gallery(9, slot = 1)))
+        assertSame(mine, FavoritesIndexMerger.adopt(mine, otherAccount))
+        val noAccount = FavoritesIndex(cloudUpdatedAt = 50, galleries = listOf(gallery(9, slot = 1)))
+        assertSame(mine, FavoritesIndexMerger.adopt(mine, noAccount))
 
         val newer = FavoritesIndex(
+            ehUserKey = "a",
             cloudUpdatedAt = 20,
             cloudRefreshedAt = 15,
             slotNames = names,
@@ -100,8 +105,19 @@ class FavoritesIndexMergerTest {
         assertEquals(listOf(1L to 4, 2L to 1), adopted.galleries.map { it.gid to it.slot })
         assertTrue(adopted.galleries.none { it.local })
         assertEquals(20, adopted.updatedAt)
+        assertEquals("a", adopted.userKey)
         assertEquals(15, adopted.refreshedAt)
         assertEquals(mapOf(1L to "一", 2L to "二"), adopted.japaneseTitles)
+    }
+
+    @Test
+    fun anotherAccountStartsFromAnEmptyList() {
+        val cloud = CloudFavorites(userKey = "a", updatedAt = 3, refreshedAt = 3, slotNames = names, galleries = listOf(gallery(1, slot = 0)), japaneseTitles = mapOf(1L to "一"))
+        assertSame(cloud, FavoritesIndexMerger.forUser(cloud, "a"))
+        val other = FavoritesIndexMerger.forUser(cloud, "b")
+        assertEquals(CloudFavorites(userKey = "b", japaneseTitles = mapOf(1L to "一")), other)
+        assertTrue(FavoritesIndexMerger.needsRefresh(other, List(CLOUD_SLOT_COUNT) { 0 }, now = 4))
+        assertEquals("b", FavoritesIndexMerger.buildIndex(emptyList(), other, "dev", "", now = 5).ehUserKey)
     }
 
     @Test

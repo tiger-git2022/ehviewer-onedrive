@@ -3,6 +3,7 @@ package com.hippo.ehviewer.sync
 import android.os.SystemClock
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryInfo
+import com.ehviewer.core.network.EhCookieStore
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
@@ -10,6 +11,7 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.client.parser.FavParserResult
 import java.io.File
+import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import kotlin.time.Clock
@@ -102,13 +104,23 @@ object FavoritesIndexSync {
         .let { it ?: CloudFavorites() }
         .also { cache = it }
 
-    private suspend fun current(): CloudFavorites = withContext(Dispatchers.IO) { mutex.withLock { loadLocked() } }
+    /** Hash of the E-Hentai member id, null when signed out. The id itself is not written anywhere. */
+    private fun userKey(): String? = EhCookieStore.getUserId()?.takeIf { it.isNotBlank() }?.let { id ->
+        MessageDigest.getInstance("SHA-256").digest(id.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
+    }
 
-    /** Applies [transform] and saves the result; returns true if the list changed. */
+    private suspend fun current(): CloudFavorites = withContext(Dispatchers.IO) {
+        mutex.withLock { FavoritesIndexMerger.forUser(loadLocked(), userKey()) }
+    }
+
+    /**
+     * Applies [transform] to the list of the signed in E-Hentai account (an empty one after switching accounts) and
+     * saves the result; returns true if the list changed.
+     */
     private suspend fun update(transform: (CloudFavorites) -> CloudFavorites): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
             val old = loadLocked()
-            val new = transform(old)
+            val new = transform(FavoritesIndexMerger.forUser(old, userKey()))
             if (new == old) return@withLock false
             cache = new
             writeGzip(storeFile, CloudFavorites.serializer(), new)
@@ -116,13 +128,15 @@ object FavoritesIndexSync {
         }
     }
 
-    /** Updates the store off the caller's coroutine, and schedules a sync of the index if it changed. */
+    /**
+     * Updates the store off the caller's coroutine, and schedules a sync of the index if it changed. The store is kept
+     * up to date while the export is off too: the count check cannot see a favorite replaced by another in one slot.
+     */
     private fun updateLater(transform: (CloudFavorites) -> CloudFavorites) {
-        if (!enabled) return
         scope.launch {
             runCatching { update(transform) }
                 .onFailure { logcat(TAG, it) }
-                .onSuccess { changed -> if (changed) OneDriveSync.notifyFavoritesIndexChanged() }
+                .onSuccess { changed -> if (changed && enabled) OneDriveSync.notifyFavoritesIndexChanged() }
         }
     }
 
@@ -194,6 +208,7 @@ object FavoritesIndexSync {
     private suspend fun refreshLocked() {
         mutableRefreshing.value = true
         try {
+            val user = userKey()
             val first = EhEngine.getFavorites(FavListUrlBuilder().build())
             val slotNames = first.catArray
             updateSettings(first)
@@ -210,6 +225,8 @@ object FavoritesIndexSync {
                     next = page.next
                 } while (next != null)
             }
+            // Signed in to another account meanwhile: these pages belong to the previous one
+            if (userKey() != user) return
             update { cloud -> FavoritesIndexMerger.replaceAll(cloud, galleries, slotNames, now()) }
             logcat(TAG) { "Cloud favorites refreshed: ${galleries.size} galleries" }
         } finally {
@@ -257,7 +274,10 @@ object FavoritesIndexSync {
      * the upload of what is known.
      */
     suspend fun sync(deviceId: String, deviceName: String) {
-        if (!OneDriveSyncState.exportFavoritesIndex.value) return
+        if (!OneDriveSyncState.exportFavoritesIndex.value) {
+            removeExport()
+            return
+        }
         var remote = OneDriveClient.list(EXPORT_FOLDER)[INDEX_FILE]
         adoptRemote(remote)
         val signedIn = Settings.hasSignedIn.value
@@ -305,6 +325,15 @@ object FavoritesIndexSync {
             logcat(TAG) { "Index uploaded: ${index.galleries.size} galleries" }
             return
         }
+    }
+
+    /** Sharing was turned off: delete the index this device uploaded, so other apps stop seeing the favorites. */
+    private suspend fun removeExport() {
+        if (OneDriveSyncState.favoritesIndexETag.value == null) return
+        OneDriveClient.delete(INDEX_PATH)
+        lastIndexFile.delete()
+        OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexETag] = null }
+        logcat(TAG) { "Index deleted" }
     }
 
     /** Takes the cloud part of the index another device uploaded, when it is newer than ours. */

@@ -5,6 +5,14 @@ object FavoritesIndexMerger {
     /** A full refresh is forced after this long even if the counts of E-Hentai still match. */
     const val REFRESH_MAX_AGE_MILLIS = 7 * 24 * 60 * 60 * 1000L
 
+    /** The list of the E-Hentai account [userKey]: an empty one if [cloud] belongs to another account. */
+    fun forUser(cloud: CloudFavorites, userKey: String?): CloudFavorites = if (cloud.userKey == userKey) {
+        cloud
+    } else {
+        // Japanese titles describe galleries, not the account
+        CloudFavorites(userKey = userKey, japaneseTitles = cloud.japaneseTitles)
+    }
+
     /**
      * The slot of a gallery of the "all" favorites page, which names the slot (the title of its posted date) but not
      * its number. [NO_CLOUD_SLOT] if the name is missing or used by several slots.
@@ -75,7 +83,7 @@ object FavoritesIndexMerger {
             .distinctBy { it.gid }
             .map { new -> old[new.gid]?.updatedWith(new) ?: new }
         val names = slotNames.takeIf { it.size == CLOUD_SLOT_COUNT } ?: cloud.slotNames
-        return CloudFavorites(updatedAt = now, refreshedAt = now, slotNames = names, galleries = merged, japaneseTitles = cloud.japaneseTitles)
+        return cloud.copy(updatedAt = now, refreshedAt = now, slotNames = names, galleries = merged)
     }
 
     /** Adds the Japanese titles looked up (gid -> title, empty if the gallery has none). */
@@ -98,12 +106,15 @@ object FavoritesIndexMerger {
     /** The cloud part another device uploaded, if it is newer than the copy of this device. */
     fun adopt(cloud: CloudFavorites, remote: FavoritesIndex): CloudFavorites {
         if (remote.cloudUpdatedAt <= cloud.updatedAt) return cloud
+        // Another E-Hentai account, or none
+        if (remote.ehUserKey == null || remote.ehUserKey != cloud.userKey) return cloud
         val old = cloud.galleries.associateBy { it.gid }
         val galleries = remote.galleries.filter { it.slot in 0 until CLOUD_SLOT_COUNT }.map { new ->
             val gallery = new.copy(local = false)
             old[gallery.gid]?.updatedWith(gallery) ?: gallery
         }
         return CloudFavorites(
+            userKey = cloud.userKey,
             updatedAt = remote.cloudUpdatedAt,
             refreshedAt = maxOf(cloud.refreshedAt, remote.cloudRefreshedAt),
             slotNames = remote.slotNames.takeIf { it.size == CLOUD_SLOT_COUNT } ?: cloud.slotNames,
@@ -136,6 +147,7 @@ object FavoritesIndexMerger {
             updatedAt = now,
             deviceId = deviceId,
             deviceName = deviceName,
+            ehUserKey = cloud.userKey,
             cloudUpdatedAt = cloud.updatedAt,
             cloudRefreshedAt = cloud.refreshedAt,
             slotNames = cloud.slotNames,

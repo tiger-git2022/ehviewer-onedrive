@@ -404,6 +404,7 @@ suggestions.json.gz  List<{query, date}>          // search_database.db 中的 s
   "version": 1,                  // 读取方遇到更高版本就跳过
   "updatedAt": 1760000000000,    // 写入时间（毫秒）
   "deviceId": "…", "deviceName": "…",
+  "ehUserKey": "…",              // E 站会员 ID 的哈希前 16 位，没登录 E 站时缺省
   "cloudUpdatedAt": 1760000000000,   // 云端收藏部分最后一次变化
   "cloudRefreshedAt": 1760000000000, // 最后一次逐页全量读取云端收藏，0 表示从没读全过
   "slotNames": ["Favorites 0", "…"], // 10 个云端收藏夹的名字；没登录 E 站时为空
@@ -429,8 +430,8 @@ suggestions.json.gz  List<{query, date}>          // search_database.db 中的 s
 4. 日文标题：收藏列表页只有一个标题，所以每次同步最多用 gdata 接口补 500 本，结果存下来不再重复查；不写回数据库（空标题会显示在应用里）。
 5. 设置页「重新读取云端收藏」可以手动触发第 3 步的逐页读取。
 
-**存放**：云端收藏清单存在 `files/cloud_favorites.json.gz`，它属于 E 站账号，不放在 `files/onedrive_sync/` 里（换微软账号时那里会被清空）。
+**存放**：云端收藏清单存在 `files/cloud_favorites.json.gz`，它属于 E 站账号，不放在 `files/onedrive_sync/` 里（换微软账号时那里会被清空）。清单带 E 站会员 ID 的哈希（`userKey`，不存 ID 本身）：换了 E 站账号就从空清单重新开始，其他设备上传的云端部分也只在是同一个 E 站账号（索引里的 `ehUserKey`）时才采用，避免把上一个账号的收藏当成这个账号的导出。共享开关关闭时也照常记录收藏变化（只是不上传），否则重新打开后，同一收藏夹里删一本加一本这种数量不变的改动要等 7 天才会被发现。
 
 **多设备**：每台设备同步结束时写一次索引，带 ETag 条件上传，412 时重新读取再写。本地收藏部分来自刚合并好的本地数据库，各设备一致；云端收藏部分以 `cloudUpdatedAt` 较新的为准，较旧的设备会先采用较新的那份。
 
-**开关**：OneDrive 同步设置里的「把收藏共享给其他应用」，默认开启。代码在 `sync/FavoritesIndexSync.kt`、`FavoritesIndexMerger.kt`、`FavoritesIndexModels.kt`，单元测试在 `FavoritesIndexMergerTest.kt`。
+**开关**：OneDrive 同步设置里的「把收藏共享给其他应用」，默认开启。关闭后下次同步会删除本机上传过的索引文件。代码在 `sync/FavoritesIndexSync.kt`、`FavoritesIndexMerger.kt`、`FavoritesIndexModels.kt`，单元测试在 `FavoritesIndexMergerTest.kt`。
