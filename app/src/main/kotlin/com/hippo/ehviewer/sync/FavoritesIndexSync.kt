@@ -18,6 +18,7 @@ import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,6 +74,16 @@ object FavoritesIndexSync {
     @Volatile
     private var lastCheck = 0L
 
+    /** E-Hentai account of [lastCheck]: another account is checked right away. */
+    @Volatile
+    private var lastCheckUser: String? = null
+
+    /**
+     * Changes made while a full refresh reads its pages, replayed on top of its result so the older pages do not undo
+     * them. Null when no refresh runs. Guarded by [mutex].
+     */
+    private var journal: MutableList<(CloudFavorites) -> CloudFavorites>? = null
+
     private val mutableRefreshing = MutableStateFlow(false)
 
     /** True while the cloud favorites are read page by page. */
@@ -119,13 +130,16 @@ object FavoritesIndexSync {
      */
     private suspend fun update(transform: (CloudFavorites) -> CloudFavorites): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val old = loadLocked()
-            val new = transform(FavoritesIndexMerger.forUser(old, userKey()))
-            if (new == old) return@withLock false
-            cache = new
-            writeGzip(storeFile, CloudFavorites.serializer(), new)
-            true
+            journal?.add(transform)
+            saveLocked(transform(FavoritesIndexMerger.forUser(loadLocked(), userKey())))
         }
+    }
+
+    private fun saveLocked(new: CloudFavorites): Boolean {
+        if (new == loadLocked()) return false
+        cache = new
+        writeGzip(storeFile, CloudFavorites.serializer(), new)
+        return true
     }
 
     /**
@@ -207,6 +221,7 @@ object FavoritesIndexSync {
 
     private suspend fun refreshLocked() {
         mutableRefreshing.value = true
+        withContext(Dispatchers.IO) { mutex.withLock { journal = ArrayList() } }
         try {
             val user = userKey()
             val first = EhEngine.getFavorites(FavListUrlBuilder().build())
@@ -225,11 +240,19 @@ object FavoritesIndexSync {
                     next = page.next
                 } while (next != null)
             }
-            // Signed in to another account meanwhile: these pages belong to the previous one
-            if (userKey() != user) return
-            update { cloud -> FavoritesIndexMerger.replaceAll(cloud, galleries, slotNames, now()) }
+            withContext(Dispatchers.IO) {
+                mutex.withLock {
+                    val changes = journal.orEmpty()
+                    journal = null
+                    // Signed in to another account meanwhile: these pages belong to the previous one
+                    if (userKey() != user) return@withLock
+                    val refreshed = FavoritesIndexMerger.replaceAll(FavoritesIndexMerger.forUser(loadLocked(), user), galleries, slotNames, now())
+                    saveLocked(changes.fold(refreshed) { cloud, change -> change(cloud) })
+                }
+            }
             logcat(TAG) { "Cloud favorites refreshed: ${galleries.size} galleries" }
         } finally {
+            withContext(NonCancellable + Dispatchers.IO) { mutex.withLock { journal = null } }
             mutableRefreshing.value = false
         }
     }
@@ -243,9 +266,11 @@ object FavoritesIndexSync {
     /** One page request: refresh everything only if the counts of E-Hentai do not match the known list. */
     private suspend fun checkCloudFavorites() {
         val elapsed = SystemClock.elapsedRealtime()
-        if (lastCheck != 0L && elapsed - lastCheck < CHECK_INTERVAL_MILLIS) return
+        val user = userKey()
+        if (lastCheck != 0L && lastCheckUser == user && elapsed - lastCheck < CHECK_INTERVAL_MILLIS) return
         val first = EhEngine.getFavorites(FavListUrlBuilder().build())
         lastCheck = elapsed
+        lastCheckUser = user
         updateSettings(first)
         // The newest favorites are on the first page of "all"
         update(pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
@@ -321,18 +346,27 @@ object FavoritesIndexSync {
                 output.copyTo(lastIndexFile, overwrite = true)
                 output.delete()
             }
-            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexETag] = eTag }
+            OneDriveSyncState.withMutableSnapshot {
+                it[OneDriveSyncState.favoritesIndexETag] = eTag
+                it[OneDriveSyncState.favoritesIndexRemoved] = false
+            }
             logcat(TAG) { "Index uploaded: ${index.galleries.size} galleries" }
             return
         }
     }
 
-    /** Sharing was turned off: delete the index this device uploaded, so other apps stop seeing the favorites. */
+    /**
+     * Sharing was turned off: delete the index, so other apps stop seeing the favorites. Done once after turning it
+     * off, also when this device never uploaded one (a reinstall, another OneDrive account that already has one).
+     */
     private suspend fun removeExport() {
-        if (OneDriveSyncState.favoritesIndexETag.value == null) return
+        if (OneDriveSyncState.favoritesIndexRemoved.value) return
         OneDriveClient.delete(INDEX_PATH)
         lastIndexFile.delete()
-        OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexETag] = null }
+        OneDriveSyncState.withMutableSnapshot {
+            it[OneDriveSyncState.favoritesIndexETag] = null
+            it[OneDriveSyncState.favoritesIndexRemoved] = true
+        }
         logcat(TAG) { "Index deleted" }
     }
 
@@ -364,6 +398,7 @@ object FavoritesIndexSync {
     /** The OneDrive account changed: the index of the new account is unknown. */
     fun onCloudStateReset() {
         lastCheck = 0L
+        lastCheckUser = null
     }
 
     // endregion

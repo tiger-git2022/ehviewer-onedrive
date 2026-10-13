@@ -397,6 +397,8 @@ object OneDriveSync {
             it[OneDriveSyncState.subscriptions] = "{}"
             it[OneDriveSyncState.downloadsDirty] = true
             it[OneDriveSyncState.favoritesIndexETag] = null
+            // Another account may already hold an index to delete
+            it[OneDriveSyncState.favoritesIndexRemoved] = false
         }
         FavoritesIndexSync.onCloudStateReset()
     }
