@@ -71,8 +71,21 @@
 - Graph 接口：`https://graph.microsoft.com/v1.0/me/drive/special/approot:/ehviewer/<文件>:/content`
 - **必须放在 `ehviewer/` 子目录里。** Mihon 和这里用的是同一个 client id，所以 approot 是同一个文件夹，而 Mihon 已经在它的根目录放了 `mihon-library-sync.json`。
 
-**文件格式**
-- 文件名 `ehviewer/sync-v1.json.gz`：用 kotlinx.serialization 生成 JSON，再用 gzip 压缩。项目里已经有 `kotlinx-serialization-json` 依赖。
+**文件格式（按类别拆成多个文件）**
+- 每个文件都用 kotlinx.serialization 生成 JSON，再用 gzip 压缩。项目里已经有 `kotlinx-serialization-json` 依赖。
+- 每个同步类别单独一个文件，各自有独立的 ETag，互不影响：
+
+  ```
+  ehviewer/v1/settings.json.gz
+  ehviewer/v1/favorites.json.gz       // 本地收藏，内嵌所引用画廊的元数据
+  ehviewer/v1/history.json.gz         // 阅读历史，内嵌所引用画廊的元数据
+  ehviewer/v1/progress.json.gz        // 阅读页数进度
+  ehviewer/v1/quicksearch.json.gz     // 快速搜索 + 过滤器
+  ehviewer/v1/suggestions.json.gz     // 搜索建议
+  ehviewer/devices/<deviceId>.json.gz // 各设备自己的下载记录（第 5 节）
+  ```
+
+- 这样拆分的目的是：只改了一个设置时，只需要上传几 KB 的 settings 文件，不用重新传上万条收藏。详见第 10 节「性能与缓存」。
 
 **HTTP 客户端**
 - 可以用现有的 Ktor（`EhApplication.ktorClient`，底层是 OkHttp 或 Cronet），也可以单独建一个 OkHttp。
@@ -89,24 +102,33 @@
 - 遇到 412：自动重新下载、重新合并、再上传，最多重试 3 次。
 - 解析 Graph 返回的 `error.code` 和 `message`，放进错误提示里。
 
-## 3. 同步数据模型（`SyncFile`，version = 1）
+## 3. 同步数据模型（version = 1，每个类别一个文件）
+
+所有文件共用同一个外层结构：
 
 ```
-SyncFile {
+SectionFile<T> {
   version: Int = 1            // 云端版本比本地新时拒绝同步，提示用户升级应用
   updatedAt: Long             // 毫秒
-  deviceId: String, deviceName: String
-  settings: Map<String, SyncSetting>          // key -> { value: JsonElement, type, modifiedAt }
-  galleries: List<GalleryEntity 等价字段>      // 只包含下面各项引用到的画廊（外键依赖）
-  localFavorites: List<{gid, time}>
-  history: List<{gid, time}>
-  progress: List<{gid, page, modifiedAt}>
-  // 注意：下载记录和下载标签不在这个共享文件里，见第 5 节（每台设备单独一个文件）
-  quickSearches: List<QuickSearch 字段（不含 _id）>
-  filters: List<{mode, text, enable}>
-  searchSuggestions: List<{query, date}>     // search_database.db 中的 suggestions 表
+  deviceId: String            // 最后写入的设备
+  items: T
 }
 ```
+
+各文件中 `items` 的内容：
+
+```
+settings.json.gz     Map<String, SyncSetting>     // key -> { value: JsonElement, type, modifiedAt }
+favorites.json.gz    List<{gid, time, gallery: GalleryEntity 等价字段}>
+history.json.gz      List<{gid, time, gallery: GalleryEntity 等价字段}>
+progress.json.gz     List<{gid, page, modifiedAt}>  // 阅读页数进度（PROGRESS 表）
+quicksearch.json.gz  { quickSearches: List<QuickSearch 字段（不含 _id）>, filters: List<{mode, text, enable}> }
+suggestions.json.gz  List<{query, date}>          // search_database.db 中的 suggestions 表
+```
+
+说明：
+- 画廊元数据内嵌在引用它的那一条记录里，满足外键依赖。同一画廊同时出现在收藏和历史中时，允许重复存。
+- 下载记录和下载标签不在共享文件里，每台设备单独一个文件，见第 5 节。
 
 ### 现有代码的相关事实（来自调查，行号请自行核对）
 
@@ -134,9 +156,9 @@ SyncFile {
 
 ## 4. 合并策略（三方合并：本地 / 云端 / 基线）
 
-**基线**就是上一次同步成功的结果，存在本地：
-- 内容文件：`files/onedrive_sync/baseline.json.gz`；
-- 另有一个同步状态 DataStore。
+**基线**就是上一次同步成功的结果，按类别存在本地：
+- 内容文件：`files/onedrive_sync/cache/<类别>.json.gz`。它同时也是云端副本的缓存，见第 10 节。
+- 每个类别的 ETag、脏标记等状态，存在一个同步状态 DataStore 里。
 
 基线的使用规则：
 - **切换账户时清空基线**；
@@ -212,14 +234,18 @@ SyncFile {
 
 **流程**（用一个 `Mutex` 串行执行，在 IO 线程运行）
 1. 用 `acquireTokenSilent` 获取 token。
-2. GET 云端文件，记下 ETag。
-3. 读取基线。
-4. 收集本地状态。
-5. 三方合并。
-6. PUT 上传合并结果，带 `If-Match`；遇到 412 回到第 2 步。
-7. **上传成功之后**再把结果应用到本地，顺序为：设置 → 画廊 → 收藏/历史/进度 → 快速搜索/过滤器 → 搜索建议。
-8. 保存新的基线、最后同步时间和结果。
-9. 上传本机的下载记录文件 `devices/<deviceId>.json.gz`（第 5 节）。如果订阅了其他设备，读取它们的文件并导入新增记录。这一步失败不影响前面共享数据的同步结果，单独记录错误即可。
+2. 用一次 `children` 请求获取所有类别文件的 ETag（第 10 节）。
+3. 对每个已开启的类别，按第 10 节的规则判断：跳过、只上传，还是下载并合并。需要处理的类别按以下步骤执行：
+   1. 如果云端 ETag 变了，下载该文件；否则直接用本地缓存。
+   2. 读取该类别的基线（即本地缓存）。
+   3. 收集本地状态。
+   4. 三方合并。
+   5. 合并结果和云端不同时，PUT 上传，带 `If-Match`；遇到 412，重新下载这个类别再合并，最多重试 3 次。
+   6. **上传成功之后**，才把差异写回本地。
+   7. 更新这个类别的缓存、ETag，并清除脏标记。
+4. 类别之间的处理顺序：设置 → 收藏 → 历史 → 进度 → 快速搜索/过滤器 → 搜索建议。画廊元数据随收藏和历史一起写入。
+5. 记录最后同步时间，以及每个类别的结果。
+6. 上传本机的下载记录文件 `devices/<deviceId>.json.gz`（第 5 节）。如果订阅了其他设备，读取它们的文件并导入新增记录。这一步失败不影响前面共享数据的同步结果，单独记录错误即可。
 
 **手动触发**
 - 设置页的「立即同步」按钮。
@@ -307,7 +333,58 @@ SyncFile {
   - 订阅模式只导入新增；本机删除导入过的记录后不会被再次导入。
 - CI 构建必须通过。
 
-## 10. 需要用户手动完成的事（代码做不到）
+## 10. 性能与缓存（数据量大时必须做到）
+
+**数据规模**
+- 用户实际数据量：本地收藏可能上万条，下载记录 600 多条，历史也可能有数千条。
+- 估算：一万条收藏带画廊元数据，JSON 约 8 MB，gzip 后约 1.5–2 MB。
+- 因此**不能每次同步都整包下载、整包上传**。
+
+**1. 先查版本再下载（最常见的情况必须接近零开销）**
+- 每次同步第一步只发一个请求：`GET /me/drive/special/approot:/ehviewer/v1:/children?$select=name,eTag,size`，拿到所有类别文件的 ETag（约 1 KB）。
+- 对每个类别分别判断：
+  - 云端 ETag 和上次同步记录的一致，且本地该类别没有改动：**跳过**这个类别，不下载也不上传。
+  - 云端 ETag 没变、本地有改动：**不下载**，直接用本地缓存的云端副本做合并，然后上传。
+  - 云端 ETag 变了：才下载这个文件。
+
+**2. 本地缓存云端副本**
+- 每个类别同步成功后，把合并结果存到 `files/onedrive_sync/cache/<类别>.json.gz`，同时记录它的 ETag。
+- 这份缓存同时作为三方合并的「基线」，不需要另存一份基线。
+
+**3. 本地改动检测（脏标记）**
+- 为每个类别维护一个「有改动」标记，存在同步状态 DataStore 里。
+- 置位时机：
+  - 收藏、历史、进度、快速搜索、过滤器、搜索建议：在 `EhDB` 对应的写入方法里置位，或者观察对应 DAO 的 Flow；
+  - 设置：在第 4 节的设置变化监听里置位。
+- 同步成功后清除。
+- 同步过程中把云端数据写回本地时，不能置位，否则会循环同步。
+
+**4. 只写回差异**
+- 把合并结果和本地现状做对比，只对新增、修改、删除的那些行执行写入。
+- 所有写入放在一个数据库事务里，用批量 upsert / delete。
+- 禁止把整张表清空后重写。
+
+**5. 解析和内存**
+- 用 `Json.decodeFromStream` 配合 `GZIPInputStream` 流式解析，不要先把整个文件读成一个大字符串。
+- 合并时用以 gid 为键的 `HashMap`，复杂度 O(n)。
+- 所有同步工作都在 `Dispatchers.IO` 上执行，不能阻塞主线程。
+
+**6. 上传**
+- 只上传有变化的类别文件。
+- 单个文件超过 4 MB 时，改用 `createUploadSession` 分片上传。
+
+**7. 其他设备的下载记录文件**
+- 同样缓存在本地。
+- 再次读取时带 `If-None-Match: <etag>`，服务器返回 304 就直接用缓存。
+
+**8. 性能预期**
+- 作为验收参考，云端会话可以根据实测调整：
+  - 两边都没变时，一次同步在 1 秒内完成，网络流量约 1 KB；
+  - 新增几条收藏时，只上传 favorites 文件；
+  - 新设备首次同步时，下载全部文件，大约 2–3 MB。
+- 同步日志（logcat）里要记录每个类别是「跳过」「只上传」还是「下载并合并」，以及耗时，方便排查。
+
+## 11. 需要用户手动完成的事（代码做不到）
 
 1. 在 Azure 门户中给 Mihon 用的那个应用（client id `77f7046c-...`）添加 Android 平台：
    - 打开路径：应用注册 → 选中该应用 → 身份验证 → 添加平台 → Android；
