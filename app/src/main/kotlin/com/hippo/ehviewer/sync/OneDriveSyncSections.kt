@@ -26,15 +26,12 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.double
-import kotlinx.serialization.json.float
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 
 /** What applying a merge result changed locally. */
 data class SyncCounts(val added: Int = 0, val updated: Int = 0, val removed: Int = 0) {
@@ -166,20 +163,45 @@ object SettingsSection : SyncSection<Map<String, SyncSetting>>(
 
 /** The DataStore key and value of a synced setting, null value for a removed key. */
 fun SyncSetting.toPreference(key: String): Pair<Preferences.Key<*>, Any?>? {
-    val element: JsonElement? = value
-    return runCatching<Pair<Preferences.Key<*>, Any?>?> {
-        when (type) {
-            SyncSetting.TYPE_BOOLEAN -> booleanPreferencesKey(key) to element!!.jsonPrimitive.boolean
-            SyncSetting.TYPE_INT -> intPreferencesKey(key) to element!!.jsonPrimitive.int
-            SyncSetting.TYPE_LONG -> longPreferencesKey(key) to element!!.jsonPrimitive.long
-            SyncSetting.TYPE_FLOAT -> floatPreferencesKey(key) to element!!.jsonPrimitive.float
-            SyncSetting.TYPE_DOUBLE -> doublePreferencesKey(key) to element!!.jsonPrimitive.double
-            SyncSetting.TYPE_STRING -> stringPreferencesKey(key) to element!!.jsonPrimitive.content
-            SyncSetting.TYPE_STRING_SET -> stringSetPreferencesKey(key) to element!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
-            SyncSetting.TYPE_REMOVED -> stringPreferencesKey(key) to null
-            else -> null
+    val primitive = value as? JsonPrimitive
+    val prefKey: Preferences.Key<*>
+    val prefValue: Any?
+    when (type) {
+        SyncSetting.TYPE_BOOLEAN -> {
+            prefKey = booleanPreferencesKey(key)
+            prefValue = primitive?.booleanOrNull ?: return null
         }
-    }.getOrNull()
+        SyncSetting.TYPE_INT -> {
+            prefKey = intPreferencesKey(key)
+            prefValue = primitive?.intOrNull ?: return null
+        }
+        SyncSetting.TYPE_LONG -> {
+            prefKey = longPreferencesKey(key)
+            prefValue = primitive?.longOrNull ?: return null
+        }
+        SyncSetting.TYPE_FLOAT -> {
+            prefKey = floatPreferencesKey(key)
+            prefValue = primitive?.floatOrNull ?: return null
+        }
+        SyncSetting.TYPE_DOUBLE -> {
+            prefKey = doublePreferencesKey(key)
+            prefValue = primitive?.doubleOrNull ?: return null
+        }
+        SyncSetting.TYPE_STRING -> {
+            prefKey = stringPreferencesKey(key)
+            prefValue = primitive?.takeIf { it.isString }?.content ?: return null
+        }
+        SyncSetting.TYPE_STRING_SET -> {
+            prefKey = stringSetPreferencesKey(key)
+            prefValue = (value as? JsonArray)?.mapNotNullTo(HashSet()) { (it as? JsonPrimitive)?.content } ?: return null
+        }
+        SyncSetting.TYPE_REMOVED -> {
+            prefKey = stringPreferencesKey(key)
+            prefValue = null
+        }
+        else -> return null
+    }
+    return Pair(prefKey, prefValue)
 }
 
 object FavoritesSection : SyncSection<List<SyncGalleryRecord>>(
