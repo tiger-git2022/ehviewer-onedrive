@@ -80,7 +80,8 @@ fun SyncProgressBar(fraction: Float?) {
 fun SyncLinearProgress(fraction: Float?, modifier: Modifier = Modifier) {
     if (fraction != null && fraction > 0f) {
         val animated by animateFloatAsState(targetValue = fraction, animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec, label = "syncProgress")
-        LinearProgressIndicator(progress = { animated }, modifier = modifier)
+        // Fork: a light sweeps over the done part, see ShimmerLinearProgress
+        ShimmerLinearProgress(progress = { animated }, modifier = modifier)
     } else {
         LinearProgressIndicator(modifier = modifier)
     }
@@ -91,7 +92,8 @@ fun SyncLinearProgress(fraction: Float?, modifier: Modifier = Modifier) {
 fun SyncRingProgress(fraction: Float?, color: Color, modifier: Modifier = Modifier) {
     if (fraction != null && fraction > 0f) {
         val animated by animateFloatAsState(targetValue = fraction, animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec, label = "syncRing")
-        CircularProgressIndicator(progress = { animated }, modifier = modifier, color = color, strokeWidth = 2.5.dp)
+        // Fork: the done arc is redrawn faintly now and then, see SoftRedrawRingProgress
+        SoftRedrawRingProgress(progress = { animated }, color = color, modifier = modifier, strokeWidth = 2.5.dp)
     } else {
         CircularProgressIndicator(modifier = modifier, color = color, strokeWidth = 2.5.dp)
     }
