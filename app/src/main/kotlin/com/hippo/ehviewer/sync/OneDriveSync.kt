@@ -159,12 +159,17 @@ object OneDriveSync {
 
     private val favoritesIndexVersion = AtomicLong()
 
+    // A change and the sync that uploads it update the version and the flag one after the other
+    private val favoritesIndexDirtyMutex = Mutex()
+
     /** Called when the cloud favorites known to [FavoritesIndexSync] changed. */
     suspend fun notifyFavoritesIndexChanged() {
-        favoritesIndexVersion.incrementAndGet()
-        // Waits for a sync also when none is scheduled for it (sync on change off), across restarts too
-        if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
-            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = true }
+        favoritesIndexDirtyMutex.withLock {
+            favoritesIndexVersion.incrementAndGet()
+            // Waits for a sync also when none is scheduled for it (sync on change off), across restarts too
+            if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = true }
+            }
         }
         scheduleChangeSync()
     }
@@ -173,7 +178,7 @@ object OneDriveSync {
     fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
 
     /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
-    suspend fun favoritesIndexSynced(version: Long) {
+    suspend fun favoritesIndexSynced(version: Long) = favoritesIndexDirtyMutex.withLock {
         if (favoritesIndexVersion.get() == version && OneDriveSyncState.favoritesIndexDirty.value) {
             OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = false }
         }

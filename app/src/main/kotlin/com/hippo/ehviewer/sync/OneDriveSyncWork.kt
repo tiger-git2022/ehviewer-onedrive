@@ -26,13 +26,13 @@ class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : Corou
     override suspend fun doWork(): Result = withIOContext {
         if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return@withIOContext Result.success()
         OneDriveSync.sync(SyncTrigger.BACKGROUND).fold(
-            onSuccess = {
-                // A continuation whose refresh failed on E-Hentai (it does not fail the sync) tries again later; one
-                // that ran out of time already queued the next continuation
+            onSuccess = { report ->
+                // A continuation whose refresh failed on E-Hentai, or whose index failed to upload (neither fails the
+                // sync), tries again later; one that ran out of time already queued the next continuation
                 val retry = inputData.getBoolean(KEY_CONTINUATION, false) &&
                     runAttemptCount < MAX_CONTINUATION_RETRIES &&
-                    FavoritesIndexSync.hasUnfinishedRefresh() &&
-                    !hasNextContinuation()
+                    OneDriveSyncState.exportFavoritesIndex.value &&
+                    (report.indexError != null || FavoritesIndexSync.hasUnfinishedRefresh() && !hasNextContinuation())
                 if (retry) Result.retry() else Result.success()
             },
             onFailure = {
