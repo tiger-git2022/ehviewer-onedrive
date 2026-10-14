@@ -145,6 +145,60 @@ class FavoritesIndexMergerTest {
     }
 
     @Test
+    fun defaultTitlesJoinTheJapaneseOnes() {
+        // The list page gave the Japanese title (account setting), the API both
+        val jp = "[ミルクレープ (チビゴン)] SNSで裏垢特定した人妻をハメまくった話"
+        val en = "[Mille-Crepe (Chibigon)] SNS de Uraaka Tokutei shita Hitozuma o Hamemakutta Hanashi"
+        val cloud = CloudFavorites(
+            galleries = listOf(gallery(1, slot = 0, title = jp), gallery(2, slot = 0, title = en), gallery(3, slot = 0, title = "removed")),
+        )
+        val withTitles = FavoritesIndexMerger.withJapaneseTitles(cloud, mapOf(1L to jp, 2L to "日本語", 3L to ""), mapOf(1L to en, 2L to en, 3L to ""))
+        val index = FavoritesIndexMerger.buildIndex(emptyList(), withTitles, "dev", "", now = 1)
+        assertEquals(
+            listOf(gallery(1, slot = 0, title = en, titleJpn = jp), gallery(2, slot = 0, title = en, titleJpn = "日本語"), gallery(3, slot = 0, title = "removed", titleJpn = ""))
+                .map { it.copy(titlesLookedUp = true) },
+            index.galleries,
+        )
+        assertEquals(emptyList(), FavoritesIndexMerger.missingJapaneseTitles(index, 10, withTitles.defaultTitles))
+        assertEquals(mapOf(1L to en), FavoritesIndexMerger.pruneTitles(withTitles, index.copy(galleries = index.galleries.take(1))).defaultTitles)
+    }
+
+    @Test
+    fun cloudFavoritesWithoutDefaultTitleAreLookedUpAgain() {
+        // Looked up before the default titles were kept: the Japanese title is known, the default one is not
+        val index = FavoritesIndex(galleries = listOf(gallery(1, slot = 0, titleJpn = "一"), gallery(2, slot = 0, titleJpn = "二"), gallery(3, titleJpn = "三").copy(local = true)))
+        assertEquals(listOf(2L), FavoritesIndexMerger.missingJapaneseTitles(index, 10, mapOf(1L to "one")).map { it.gid })
+        assertEquals(emptyList(), FavoritesIndexMerger.missingJapaneseTitles(index, 10))
+    }
+
+    @Test
+    fun anotherDeviceSharesItsTitles() {
+        val remote = FavoritesIndex(
+            ehUserKey = "other",
+            galleries = listOf(
+                gallery(1, slot = 0, title = "one", titleJpn = "一").copy(titlesLookedUp = true),
+                // Looked up by an older version: only the Japanese title is known to be the API's
+                gallery(2, slot = 0, title = "二", titleJpn = "二"),
+                gallery(3, slot = 0),
+            ),
+        )
+        val mine = CloudFavorites(userKey = "a", updatedAt = 10, galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 0), gallery(3, slot = 0)))
+        val shared = FavoritesIndexMerger.withRemoteTitles(mine, remote)
+        assertEquals(mapOf(1L to "一", 2L to "二"), shared.japaneseTitles)
+        assertEquals(mapOf(1L to "one"), shared.defaultTitles)
+        // Its own titles stay
+        assertSame(shared, FavoritesIndexMerger.withRemoteTitles(shared, remote.copy(galleries = listOf(gallery(1, title = "x", titleJpn = "y").copy(titlesLookedUp = true)))))
+        assertEquals(listOf(2L, 3L), FavoritesIndexMerger.stillMissing(remote.galleries, shared).map { it.gid })
+    }
+
+    @Test
+    fun lookupsFromTheEndKeepLocalFavoritesFirst() {
+        val index = FavoritesIndex(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 0), gallery(4).copy(local = true)))
+        assertEquals(listOf(4L, 3L, 2L, 1L), FavoritesIndexMerger.missingJapaneseTitles(index, 10, fromEnd = true).map { it.gid })
+        assertEquals(listOf(4L, 3L), FavoritesIndexMerger.missingJapaneseTitles(index, 2, fromEnd = true).map { it.gid })
+    }
+
+    @Test
     fun changedGidsAreTheAddedRemovedAndMovedOnes() {
         val before = CloudFavorites(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 2)))
         val after = CloudFavorites(galleries = listOf(gallery(1, slot = 0, title = "renamed"), gallery(2, slot = 4), gallery(4, slot = 0)))

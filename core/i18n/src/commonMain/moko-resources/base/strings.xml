@@ -658,7 +658,7 @@
     <string name="onedrive_sync_step_favorites_index">Favorites shared with other apps</string>
     <string name="onedrive_sync_step_check_cloud_favorites">Checking the cloud favorites</string>
     <string name="onedrive_sync_step_read_cloud_favorites">Reading the cloud favorites</string>
-    <string name="onedrive_sync_step_japanese_titles">Looking up Japanese titles</string>
+    <string name="onedrive_sync_step_japanese_titles">Looking up titles (Japanese and default)</string>
     <string name="onedrive_sync_step_upload_index">Uploading the favorites list</string>
     <string name="onedrive_sync_never">Never synced</string>
     <string name="onedrive_sync_last_success">Last sync %1$s\n%2$s</string>
@@ -702,7 +702,7 @@
     <string name="onedrive_sync_cloud_favorites_work_pause">Pause</string>
     <string name="onedrive_sync_cloud_favorites_work_queued">The shared favorites are read in the background, it goes on shortly</string>
     <string name="onedrive_sync_cloud_favorites_status_read">Read %1$d of %2$d cloud favorites</string>
-    <string name="onedrive_sync_cloud_favorites_status_titles">%d Japanese titles to look up</string>
+    <string name="onedrive_sync_cloud_favorites_status_titles">%d titles to look up</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting_at">The background work goes on at about %s</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting">The background work waits to go on</string>
     <string name="onedrive_sync_cloud_favorites_status_stopped">The background work is not running</string>

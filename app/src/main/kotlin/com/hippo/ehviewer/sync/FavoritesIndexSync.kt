@@ -499,7 +499,7 @@ object FavoritesIndexSync {
         if (!Settings.hasSignedIn.value) return@withContext Status()
         val user = userKey()
         val pending = mutex.withLock { loadCheckpointLocked()?.takeIf { it.userKey == user } }
-        val missing = FavoritesIndexMerger.missingJapaneseTitles(currentIndex(), Int.MAX_VALUE).size
+        val missing = FavoritesIndexMerger.missingJapaneseTitles(currentIndex(), Int.MAX_VALUE, current().defaultTitles).size
         Status(
             unfinished = pending != null,
             read = pending?.galleries?.size ?: 0,
@@ -531,26 +531,35 @@ object FavoritesIndexSync {
             return
         }
         try {
-            val missing = FavoritesIndexMerger.missingJapaneseTitles(index, limit)
+            val missing = FavoritesIndexMerger.missingJapaneseTitles(index, limit, current().defaultTitles, fromEnd = lookUpFromEnd())
             if (missing.isEmpty()) return
             var found = 0
-            for ((i, chunk) in missing.chunked(TITLE_LOOKUP_CHUNK).withIndex()) {
-                if (i != 0) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
+            var requested = false
+            for ((i, all) in missing.chunked(TITLE_LOOKUP_CHUNK).withIndex()) {
+                // Another device may have uploaded them meanwhile (taken with each upload of the work)
+                val chunk = FavoritesIndexMerger.stillMissing(all, current())
+                if (chunk.isEmpty()) continue
+                if (requested) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
+                requested = true
                 progress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size, part)
                 val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
                 EhEngine.fillGalleryListByApi(infos)
                 // A gallery the API does not return (removed, for one) is not asked again: it has no title to find
                 val titles = infos.associate { it.gid to if (it.title.isNullOrEmpty()) "" else it.titleJpn.orEmpty() }
+                val defaults = infos.associate { it.gid to it.title.orEmpty() }
                 // Saved per batch: a failed request later keeps what was found
-                update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
+                update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles, defaults) }
                 found += titles.size
                 onBatch()
             }
-            logcat(TAG) { "Looked up $found of ${missing.size} Japanese titles" }
+            logcat(TAG) { "Looked up $found of ${missing.size} titles" }
         } finally {
             titleMutex.unlock()
         }
     }
+
+    /** Half of the devices look up from the other end of the list: two at once meet in the middle. */
+    private fun lookUpFromEnd() = (OneDriveSyncState.deviceId.value?.hashCode() ?: 0) and 1 == 1
 
     // endregion
 
@@ -598,7 +607,7 @@ object FavoritesIndexSync {
                 runEhStep { lookUpJapaneseTitles(index, TITLE_LOOKUPS_PER_SYNC, mutableProgress, StepProgress.TITLES) }
                 index = build()
                 // Many favorites without a Japanese title (the first sync of a large list): the work looks them up
-                if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1).isNotEmpty()) enqueueCloudFavoritesWork(appCtx)
+                if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1, current().defaultTitles).isNotEmpty()) enqueueCloudFavoritesWork(appCtx)
             }
             val listed = index
             // Titles of galleries the index no longer lists: nothing to upload
@@ -654,7 +663,10 @@ object FavoritesIndexSync {
         logcat(TAG) { "Index deleted" }
     }
 
-    /** Takes the cloud part of the index another device uploaded, when it is newer than ours. */
+    /**
+     * Takes the cloud part of the index another device uploaded when it is newer than ours, and the titles it looked
+     * up in any case: a device that already looked them up spares this one the work.
+     */
     private suspend fun adoptRemote(remote: RemoteItem?) {
         if (remote == null || remote.eTag == OneDriveSyncState.favoritesIndexETag.value) return
         val download = File(syncDir, "favorites_index.download")
@@ -662,7 +674,7 @@ object FavoritesIndexSync {
             if (!OneDriveClient.download(INDEX_PATH, download)) return
             val index = readGzip(download, FavoritesIndex.serializer())
             OneDriveSyncMerger.checkVersion(index.version)
-            update { cloud -> FavoritesIndexMerger.adopt(cloud, index) }
+            update { cloud -> FavoritesIndexMerger.withRemoteTitles(FavoritesIndexMerger.adopt(cloud, index), index) }
         } finally {
             download.delete()
         }
