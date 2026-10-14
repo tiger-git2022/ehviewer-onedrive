@@ -302,8 +302,11 @@ object FavoritesIndexSync {
             val resumed = withContext(Dispatchers.IO) {
                 mutex.withLock {
                     val now = now()
-                    loadCheckpointLocked()?.takeIf { it.usableFor(user, now) }
-                        ?: CloudRefreshCheckpoint(userKey = user, startedAt = now).also { saveCheckpointLocked(it) }
+                    val going = loadCheckpointLocked()?.takeIf { it.usableFor(user, now) }
+                    // Slots changed on the website since their pages were read are read again
+                    val checkpoint = going?.let { FavoritesIndexMerger.resumeCheckpoint(it, counts) }
+                        ?: CloudRefreshCheckpoint(userKey = user, startedAt = now, counts = counts)
+                    checkpoint.also { if (it != going) saveCheckpointLocked(it) }
                 }
             }
             var slot = resumed.slot
@@ -338,8 +341,8 @@ object FavoritesIndexSync {
                     pages.clear()
                     if (outOfTime && slot < CLOUD_SLOT_COUNT) {
                         logcat(TAG) { "Cloud favorites: $read of $total read, the next sync goes on" }
-                        // Goes on in a sync after this one
-                        OneDriveSync.notifyFavoritesIndexChanged()
+                        // Goes on in a sync after this one, also with automatic syncs turned off
+                        enqueueOneDriveContinuationWork(appCtx)
                         return false
                     }
                 }

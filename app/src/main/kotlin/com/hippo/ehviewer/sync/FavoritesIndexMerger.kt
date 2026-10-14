@@ -94,6 +94,22 @@ object FavoritesIndexMerger {
         return (old.keys + new.keys).filterTo(HashSet()) { old[it] != new[it] }
     }
 
+    /**
+     * An unfinished refresh going on with the slot [counts] E-Hentai shows now: from the first slot already read (or
+     * being read) whose count changed since, the slots are read again and their galleries dropped.
+     */
+    fun resumeCheckpoint(checkpoint: CloudRefreshCheckpoint, counts: List<Int>): CloudRefreshCheckpoint {
+        val changed = (0..minOf(checkpoint.slot, CLOUD_SLOT_COUNT - 1)).firstOrNull { slot ->
+            checkpoint.counts.getOrNull(slot) != counts.getOrNull(slot)
+        } ?: return checkpoint.copy(counts = counts)
+        return checkpoint.copy(
+            slot = changed,
+            next = null,
+            galleries = checkpoint.galleries.filter { it.slot < changed },
+            counts = counts,
+        )
+    }
+
     /** Pages of an unfinished refresh: their galleries are added to the known list, [touched] ones are left alone. */
     fun withRefreshPages(cloud: CloudFavorites, galleries: List<IndexedGallery>, touched: Set<Long>, now: Long): CloudFavorites = upsert(cloud, galleries.filterNot { it.gid in touched }, now)
 

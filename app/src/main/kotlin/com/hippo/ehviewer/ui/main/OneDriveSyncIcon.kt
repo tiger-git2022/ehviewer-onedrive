@@ -34,6 +34,14 @@ import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
 
+/** The download list of this device changed and is uploaded by the next sync. */
+@Composable
+private fun downloadsChanged(): Boolean {
+    val dirty by OneDriveSyncState.downloadsDirty.collectAsState()
+    val upload by OneDriveSyncState.uploadDownloads.collectAsState()
+    return dirty && upload
+}
+
 /** What [OneDriveSyncIcon] shows, the first that applies. */
 private enum class SyncIconState { RUNNING, PENDING, FAILED, SUCCEEDED, NOT_SYNCED }
 
@@ -57,12 +65,13 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val dirty = SyncCategory.entries.map { category ->
         val changed by OneDriveSyncState.dirty(category).collectAsState()
         changed && OneDriveSyncState.isEnabled(category)
-    }.any { it }
+    }.any { it } || downloadsChanged()
     val state = when {
         running -> SyncIconState.RUNNING
         changesPending -> SyncIconState.PENDING
         lastSyncFailed && lastSyncTime > 0 -> SyncIconState.FAILED
-        dirty -> SyncIconState.PENDING
+        // Before the first sync everything is to upload: "not synced" says it better
+        dirty && lastSyncTime > 0 -> SyncIconState.PENDING
         lastSyncTime > 0 -> SyncIconState.SUCCEEDED
         else -> SyncIconState.NOT_SYNCED
     }

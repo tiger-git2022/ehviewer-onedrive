@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 
 private const val PERIODIC_WORK_NAME = "OneDriveSyncWork"
 private const val CATCH_UP_WORK_NAME = "OneDriveSyncCatchUpWork"
+private const val CONTINUATION_WORK_NAME = "OneDriveSyncContinuationWork"
 
 class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
     override suspend fun doWork(): Result = withIOContext {
@@ -57,4 +58,15 @@ fun enqueueOneDriveCatchUpWork(context: Context) {
         .setConstraints(syncConstraints())
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(CATCH_UP_WORK_NAME, ExistingWorkPolicy.KEEP, request)
+}
+
+/**
+ * Another sync after this one, for a refresh of the cloud favorites that ran out of time. Queued after a running one
+ * (also when this sync is that work), whatever the automatic sync options.
+ */
+fun enqueueOneDriveContinuationWork(context: Context) {
+    val request = OneTimeWorkRequestBuilder<OneDriveSyncWork>()
+        .setConstraints(syncConstraints())
+        .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(CONTINUATION_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
 }

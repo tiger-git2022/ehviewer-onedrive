@@ -177,4 +177,29 @@ class FavoritesIndexMergerTest {
         assertEquals(listOf(7L, 1L, 4L, 6L, 2L, 3L), FavoritesIndexMerger.missingJapaneseTitles(index, 10).map { it.gid })
         assertEquals(listOf(7L, 1L, 4L), FavoritesIndexMerger.missingJapaneseTitles(index, 3).map { it.gid })
     }
+
+    @Test
+    fun resumedRefreshReadsChangedSlotsAgain() {
+        val counts = List(CLOUD_SLOT_COUNT) { if (it < 3) 2 else 0 }
+        val checkpoint = CloudRefreshCheckpoint(
+            slot = 2,
+            next = "cursor",
+            galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 2)),
+            counts = counts,
+        )
+        // Nothing changed: goes on where it stopped
+        assertEquals(checkpoint, FavoritesIndexMerger.resumeCheckpoint(checkpoint, counts))
+        // A slot not read yet changed: also goes on
+        val later = counts.mapIndexed { slot, count -> if (slot == 5) 1 else count }
+        assertEquals(checkpoint.copy(counts = later), FavoritesIndexMerger.resumeCheckpoint(checkpoint, later))
+        // Slot 1 changed on the website: slots 1 and 2 are read again
+        val changed = counts.mapIndexed { slot, count -> if (slot == 1) 0 else count }
+        val resumed = FavoritesIndexMerger.resumeCheckpoint(checkpoint, changed)
+        assertEquals(1, resumed.slot)
+        assertEquals(null, resumed.next)
+        assertEquals(listOf(1L), resumed.galleries.map { it.gid })
+        assertEquals(changed, resumed.counts)
+        // A checkpoint without counts starts again
+        assertEquals(0, FavoritesIndexMerger.resumeCheckpoint(checkpoint.copy(counts = emptyList()), counts).slot)
+    }
 }

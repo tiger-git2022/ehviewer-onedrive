@@ -105,6 +105,8 @@ data class CloudRefreshCheckpoint(
     val next: String? = null,
     /** Galleries of the pages read so far. */
     val galleries: List<IndexedGallery> = emptyList(),
+    /** Count of each slot when its pages were read: a slot read before that changed since is read again. */
+    val counts: List<Int> = emptyList(),
     /**
      * Galleries changed in the app since [startedAt]: the known list is right about them, the pages read before the
      * change are not.
