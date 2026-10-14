@@ -74,6 +74,8 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.FavoritesIndexSync
+import com.hippo.ehviewer.sync.NO_CLOUD_SLOT
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
@@ -373,6 +375,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                     } else {
                         val delList = info.mapToLongArray(BaseGalleryInfo::gid)
                         EhEngine.modifyFavorites(delList, srcCat, -1)
+                        FavoritesIndexSync.onMoved(delList.asList(), NO_CLOUD_SLOT)
                     }
                 }
                 // We refresh anyway as cloud data maybe partially modified
@@ -396,6 +399,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                             // Move from local to cloud
                             val galleryList = info.map { it.gid to it.token }
                             EhEngine.addFavorites(galleryList, dstCat)
+                            FavoritesIndexSync.onAdded(info, dstCat)
                             EhDB.removeLocalFavorites(info)
                         } else if (dstCat == FavListUrlBuilder.FAV_CAT_LOCAL) {
                             // Move from cloud to local
@@ -404,6 +408,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                             // Move from cloud to cloud
                             val gidArray = info.mapToLongArray(BaseGalleryInfo::gid)
                             EhEngine.modifyFavorites(gidArray, srcCat, dstCat)
+                            FavoritesIndexSync.onMoved(gidArray.asList(), dstCat)
                         }
                     }
                     // We refresh anyway as cloud data maybe partially modified

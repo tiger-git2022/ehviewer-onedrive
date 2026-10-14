@@ -26,6 +26,7 @@ import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.ui.util.launchInVM
 import com.ehviewer.core.ui.util.rememberUpdatedStateInVM
 import com.hippo.ehviewer.EhDB
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.FlowCollector
@@ -44,6 +45,7 @@ object FavouriteStatusRouter {
         listenerScope.launch {
             collect { info ->
                 EhDB.updateFavoriteSlot(info.gid, info.favoriteSlot)
+                FavoritesIndexSync.onFavoriteChanged(info)
             }
         }
     }

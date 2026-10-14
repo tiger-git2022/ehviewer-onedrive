@@ -20,8 +20,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
+import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
@@ -173,6 +175,35 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         summary = stringResource(id = R.string.onedrive_sync_upload_downloads_summary),
                         state = OneDriveSyncState.uploadDownloads.asMutableState(),
                     )
+                    val exportIndex = OneDriveSyncState.exportFavoritesIndex.asMutableState()
+                    SwitchPreference(
+                        title = stringResource(id = R.string.onedrive_sync_favorites_index),
+                        summary = stringResource(id = R.string.onedrive_sync_favorites_index_summary),
+                        state = exportIndex,
+                    )
+                    AnimatedVisibility(visible = exportIndex.value) {
+                        val refreshing by FavoritesIndexSync.refreshing.collectAsState()
+                        Preference(
+                            title = stringResource(id = R.string.onedrive_sync_favorites_index_refresh),
+                            summary = stringResource(
+                                id = if (refreshing) R.string.onedrive_sync_favorites_index_refreshing else R.string.onedrive_sync_favorites_index_refresh_summary,
+                            ),
+                        ) {
+                            if (!refreshing) {
+                                launch {
+                                    if (!Settings.hasSignedIn.value) {
+                                        snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
+                                        return@launch
+                                    }
+                                    val message = runCatching { FavoritesIndexSync.refreshCloudFavorites() }.fold(
+                                        onSuccess = { OneDriveSync.summaryOf(OneDriveSync.sync(SyncTrigger.MANUAL)) },
+                                        onFailure = { e -> e.message ?: e.toString() },
+                                    )
+                                    snackbar(message)
+                                }
+                            }
+                        }
+                    }
 
                     OneDriveSyncSubtitle(R.string.onedrive_sync_devices)
                     val deviceName by OneDriveSyncState.deviceName.collectAsState()

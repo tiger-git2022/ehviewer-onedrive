@@ -21,6 +21,7 @@ import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -52,14 +53,14 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                 object : PagingSource<String, BaseGalleryInfo>() {
                     override fun getRefreshKey(state: PagingState<String, BaseGalleryInfo>): String? = null
                     override suspend fun load(params: LoadParams<String>) = withIOContext {
-                        val url = mutex.withLock {
+                        val (url, favCat, user) = mutex.withLock {
                             with(urlBuilder.value) {
                                 when (params) {
                                     is LoadParams.Prepend -> setIndex(params.key, isNext = false)
                                     is LoadParams.Append -> setIndex(params.key, isNext = true)
                                     is LoadParams.Refresh -> params.key?.let { setIndex(it, false) }
                                 }
-                                build()
+                                Triple(build(), favCat, FavoritesIndexSync.accountKey())
                             }
                         }
                         runSuspendCatching {
@@ -68,6 +69,8 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                             Settings.favCat = result.catArray.toTypedArray()
                             Settings.favCount = result.countArray.toIntArray()
                             Settings.favCloudCount = result.countArray.sum()
+                            // The slot and account of this request: the user may have switched either meanwhile
+                            FavoritesIndexSync.onPageLoaded(favCat, result, user)
                             LoadResult.Page(result.galleryInfoList, result.prev, result.next)
                         }
                     }

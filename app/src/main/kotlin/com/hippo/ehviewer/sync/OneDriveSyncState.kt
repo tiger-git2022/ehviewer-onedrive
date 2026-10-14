@@ -25,6 +25,13 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     val syncSuggestions = boolPref("sync_suggestions", true)
     val uploadDownloads = boolPref("upload_downloads", true)
 
+    // Favorites index for other apps, see FavoritesIndexSync
+    val exportFavoritesIndex = boolPref("export_favorites_index", true)
+    val favoritesIndexETag = stringOrNullPref("favorites_index_etag")
+
+    /** The index was deleted after sharing was turned off; cleared by the next upload. */
+    val favoritesIndexRemoved = boolPref("favorites_index_removed", false)
+
     // Automatic sync
     val autoSync = boolPref("auto_sync", true)
     val autoSyncIntervalMinutes = intPref("auto_sync_interval_minutes", 360)
