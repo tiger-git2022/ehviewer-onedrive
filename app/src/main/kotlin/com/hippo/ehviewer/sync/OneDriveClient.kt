@@ -29,9 +29,11 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSink
 import splitties.init.appCtx
 
 data class OneDriveAccount(val id: String, val name: String)
@@ -186,14 +188,28 @@ object OneDriveClient {
     }
 
     /** Downloads a file into [dest]. Returns false when the file does not exist. */
-    suspend fun download(path: String, dest: File): Boolean = withContext(Dispatchers.IO) {
+    suspend fun download(path: String, dest: File, onProgress: TransferProgress? = null): Boolean = withContext(Dispatchers.IO) {
         execute(Request.Builder().url("${itemUrl(path)}:/content").get()).use { response ->
             when {
                 response.code == 404 -> false
                 !response.isSuccessful -> throw response.toGraphException("download $path")
                 else -> {
                     dest.parentFile?.mkdirs()
-                    dest.outputStream().use { response.body.byteStream().copyTo(it) }
+                    val size = response.body.contentLength()
+                    dest.outputStream().use { out ->
+                        response.body.byteStream().use { input ->
+                            val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
+                            var done = 0L
+                            onProgress?.invoke(0, size)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                out.write(buffer, 0, count)
+                                done += count
+                                onProgress?.invoke(done, size)
+                            }
+                        }
+                    }
                     true
                 }
             }
@@ -206,20 +222,45 @@ object OneDriveClient {
      * @return the new ETag
      * @throws OneDrivePreconditionException when another device wrote the file in between
      */
-    suspend fun upload(path: String, file: File, eTag: String?): String? = withContext(Dispatchers.IO) {
-        if (file.length() > SIMPLE_UPLOAD_LIMIT) return@withContext uploadLarge(path, file, eTag)
+    suspend fun upload(path: String, file: File, eTag: String?, onProgress: TransferProgress? = null): String? = withContext(Dispatchers.IO) {
+        if (file.length() > SIMPLE_UPLOAD_LIMIT) return@withContext uploadLarge(path, file, eTag, onProgress)
         val conflict = if (eTag == null) "?@microsoft.graph.conflictBehavior=fail" else ""
+        val total = file.length()
+        val body = file.asRequestBody(octetStream).let { plain ->
+            if (onProgress == null) {
+                plain
+            } else {
+                object : RequestBody() {
+                    override fun contentType() = octetStream
+                    override fun contentLength() = total
+
+                    override fun writeTo(sink: BufferedSink) {
+                        file.inputStream().use { input ->
+                            val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
+                            var done = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                sink.write(buffer, 0, count)
+                                done += count
+                                onProgress(done, total)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         val request = Request.Builder()
             .url("${itemUrl(path)}:/content$conflict")
             .conditional(eTag)
-            .put(file.asRequestBody(octetStream))
+            .put(body)
         execute(request).use { response ->
             response.ensureUploaded(path)
             json.decodeFromString<DriveItem>(response.body.string()).eTag
         }
     }
 
-    private suspend fun uploadLarge(path: String, file: File, eTag: String?): String? {
+    private suspend fun uploadLarge(path: String, file: File, eTag: String?, onProgress: TransferProgress?): String? {
         val behavior = if (eTag == null) "fail" else "replace"
         val body = """{"item":{"@microsoft.graph.conflictBehavior":"$behavior"}}""".toRequestBody(jsonMediaType)
         val session = execute(Request.Builder().url("${itemUrl(path)}:/createUploadSession").conditional(eTag).post(body)).use { response ->
@@ -242,6 +283,7 @@ object OneDriveClient {
                 execute(request, authorized = false).use { response ->
                     response.ensureUploaded(path)
                     offset += length
+                    onProgress?.invoke(offset, total)
                     if (offset >= total) return json.decodeFromString<DriveItem>(response.body.string()).eTag
                 }
             }
@@ -301,3 +343,8 @@ object OneDriveClient {
     @Serializable
     private data class GraphError(val code: String? = null, val message: String? = null)
 }
+
+/** Bytes transferred so far and the size, -1 if unknown. */
+typealias TransferProgress = (done: Long, total: Long) -> Unit
+
+private const val TRANSFER_BUFFER_SIZE = 64 * 1024

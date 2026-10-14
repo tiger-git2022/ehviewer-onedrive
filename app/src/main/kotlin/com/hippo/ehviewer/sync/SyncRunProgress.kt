@@ -17,6 +17,10 @@ data class SyncRunProgress(
     /** Part of the step the items cover, from [partStart] to [partEnd]: a sub-step of [FavoritesIndexSync]. */
     val partStart: Float = 0f,
     val partEnd: Float = 1f,
+    /** Fork: part of a category step (downloading, merging…), shown after [title]. */
+    @StringRes val phase: Int? = null,
+    /** [done] and [total] count bytes, shown as megabytes. */
+    val bytes: Boolean = false,
 ) {
     /** Progress of the whole sync from 0 to 1: the steps done, plus the known part of the current one. */
     val fraction: Float
@@ -55,6 +59,13 @@ data class StepProgress(
         get() = fraction?.let { (it * 100).toInt() }
 
     companion object {
+        // Shares of a category step: the cloud file, the local data, merging, the upload and writing back
+        val DOWNLOAD = 0f..0.3f
+        val READ_LOCAL = 0.3f..0.45f
+        val MERGE = 0.45f..0.55f
+        val UPLOAD_SECTION = 0.55f..0.8f
+        val APPLY = 0.8f..1f
+
         // Shares of the favorites index step: the newest pages of the cloud favorites, then a few Japanese titles
         val CHECK = 0f..0.5f
         val TITLES = 0.5f..0.9f

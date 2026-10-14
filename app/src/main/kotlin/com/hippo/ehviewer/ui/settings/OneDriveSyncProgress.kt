@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.sync.StepProgress
 import com.hippo.ehviewer.sync.SyncRunProgress
+import java.util.Locale
 
 /** "Syncing 37% (3/9): Local favorites", with the items of the step when it reports them. */
 @Composable
@@ -24,8 +25,28 @@ fun syncProgressText(progress: SyncRunProgress): String = stringResource(
     progress.percent,
     progress.step,
     progress.steps,
-    stepText(progress.title, progress.done, progress.total),
+    if (progress.phase != null) phaseText(progress) else stepText(progress.title, progress.done, progress.total),
 )
+
+/** Fork: "Favorites · downloading 1.2/3.4 MB (35%)". */
+@Composable
+private fun phaseText(progress: SyncRunProgress): String {
+    val name = stringResource(id = R.string.onedrive_sync_step_phase, stringResource(id = progress.title), stringResource(id = progress.phase!!))
+    val (done, total) = progress.done to progress.total
+    return when {
+        progress.bytes && total > 0 -> stringResource(
+            id = R.string.onedrive_sync_progress_size,
+            name,
+            megabytes(done),
+            megabytes(total),
+            (done.toLong() * 100 / total).toInt().coerceIn(0, 100),
+        )
+        progress.bytes && done > 0 -> stringResource(id = R.string.onedrive_sync_progress_size_unknown, name, megabytes(done))
+        else -> name
+    }
+}
+
+private fun megabytes(bytes: Int) = String.format(Locale.ROOT, "%.1f", bytes / (1024f * 1024f))
 
 /** "Reading the cloud favorites 1200/3400 (35%)". */
 @Composable
