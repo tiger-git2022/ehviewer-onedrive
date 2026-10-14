@@ -119,6 +119,7 @@ jobs:
             --notes "main 分支最新自动构建（${GITHUB_SHA::7}）。手机一般下载 arm64-v8a 版本；不确定就下载 universal。
 
           Latest automatic build of main (${GITHUB_SHA::7}). Most phones take the arm64-v8a APK; if unsure, take universal."
+          .github/scripts/upload-update-manifest.sh nightly
 
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/')
@@ -129,3 +130,4 @@ jobs:
             --title "EhViewer $GITHUB_REF_NAME" \
             --notes "手机一般下载 arm64-v8a 版本；不确定就下载 universal。/ Most phones take the arm64-v8a APK; if unsure, take universal." \
             --generate-notes
+          .github/scripts/upload-update-manifest.sh "$GITHUB_REF_NAME"
