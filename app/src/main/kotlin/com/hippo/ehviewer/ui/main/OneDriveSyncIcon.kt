@@ -26,13 +26,14 @@ import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.CloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.SyncTrigger
-import com.hippo.ehviewer.sync.cloudFavoritesWorkActive
+import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
 import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
@@ -69,7 +70,8 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val working by FavoritesIndexSync.working.collectAsState()
     val workProgress by FavoritesIndexSync.workProgress.collectAsState()
     // Queued to go on later: the shared favorites it changed are not "waiting" for the user, it uploads them itself
-    val workQueued by remember { cloudFavoritesWorkActive(appCtx) }.collectAsState(initial = false)
+    val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
+    val workQueued = workInfo.active
     val running = syncing || working || workQueued
     val changesPending by OneDriveSync.changesPending.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()

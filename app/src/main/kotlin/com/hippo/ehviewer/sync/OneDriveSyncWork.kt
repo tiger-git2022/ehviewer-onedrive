@@ -16,6 +16,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -28,6 +29,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
@@ -78,13 +80,15 @@ class CloudFavoritesWork(context: Context, workerParams: WorkerParameters) : Cor
                 }
             }
             try {
-                FavoritesIndexSync.runWork(inputData.getBoolean(KEY_FULL, false))
+                FavoritesIndexSync.runWork(OneDriveSyncState.cloudFavoritesFullRequested.value || inputData.getBoolean(KEY_FULL, false))
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesWorkError] = null }
                 Result.success()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                // E-Hentai or the network failed: the checkpoint keeps what was read
+                // E-Hentai or the network failed: the checkpoint keeps what was read, the settings show why
                 logcat(CLOUD_FAVORITES_WORK_NAME, e)
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesWorkError] = e.message ?: e.toString() }
                 if (runAttemptCount < MAX_CLOUD_FAVORITES_ATTEMPTS) Result.retry() else Result.failure()
             } finally {
                 notification.cancel()
@@ -162,24 +166,58 @@ fun enqueueOneDriveCatchUpWork(context: Context) {
 }
 
 /**
- * True while [CloudFavoritesWork] runs or waits to run (or to run again: after a failure, after Android stopped it,
- * or for the network). Its own saves mark the favorites index as changed meanwhile, and it uploads them itself.
+ * State of [CloudFavoritesWork]: [running], or [waiting] to run (again: after a failure, after Android stopped it,
+ * or for the network), at [nextRunAt] when WorkManager knows it.
  */
-fun cloudFavoritesWorkActive(context: Context): Flow<Boolean> = WorkManager.getInstance(context)
+data class CloudFavoritesWorkInfo(val running: Boolean = false, val waiting: Boolean = false, val nextRunAt: Long? = null) {
+    /** Its own saves mark the favorites index as changed meanwhile, and it uploads them itself. */
+    val active: Boolean
+        get() = running || waiting
+}
+
+fun cloudFavoritesWorkInfo(context: Context): Flow<CloudFavoritesWorkInfo> = WorkManager.getInstance(context)
     .getWorkInfosForUniqueWorkFlow(CLOUD_FAVORITES_WORK_NAME)
-    .map { infos -> infos.any { !it.state.isFinished } }
+    .map { infos ->
+        val active = infos.filterNot { it.state.isFinished }
+        val running = active.any { it.state == WorkInfo.State.RUNNING }
+        val nextRunAt = active.filter { it.state == WorkInfo.State.ENQUEUED }
+            .map { it.nextScheduleTimeMillis }
+            .filter { it in 1 until Long.MAX_VALUE }
+            .minOrNull()
+        CloudFavoritesWorkInfo(running = running, waiting = !running && active.isNotEmpty(), nextRunAt = if (running) null else nextRunAt)
+    }
     .distinctUntilChanged()
+
+/**
+ * Starts [CloudFavoritesWork] now unless it runs: one waiting to go on (after failures its retries come hours apart,
+ * and started from the background it has no notification) is replaced, so it starts in the foreground.
+ */
+suspend fun resumeCloudFavoritesWork(context: Context) {
+    if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return
+    if (cloudFavoritesWorkInfo(context).first().running) return
+    enqueueCloudFavoritesWork(context, policy = ExistingWorkPolicy.REPLACE)
+}
+
+/** The app came to the foreground: work waiting to go on starts now, see [resumeCloudFavoritesWork]. */
+suspend fun resumeWaitingCloudFavoritesWork(context: Context) {
+    if (cloudFavoritesWorkInfo(context).first().waiting) resumeCloudFavoritesWork(context)
+}
 
 /**
  * Starts [CloudFavoritesWork] unless it runs already, whatever the automatic sync options. [full] reads all slots
  * again, also when the work runs (it starts over from the checkpoint).
  */
-fun enqueueCloudFavoritesWork(context: Context, full: Boolean = false) {
+fun enqueueCloudFavoritesWork(
+    context: Context,
+    full: Boolean = false,
+    policy: ExistingWorkPolicy = if (full) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+) {
+    // Kept until the work has widened its refresh, also through a replaced or retried work
+    if (full) OneDriveSyncState.cloudFavoritesFullRequested.value = true
     val request = OneTimeWorkRequestBuilder<CloudFavoritesWork>()
         .setConstraints(syncConstraints())
         .setInputData(workDataOf(KEY_FULL to full))
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
         .build()
-    val policy = if (full) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
     WorkManager.getInstance(context).enqueueUniqueWork(CLOUD_FAVORITES_WORK_NAME, policy, request)
 }

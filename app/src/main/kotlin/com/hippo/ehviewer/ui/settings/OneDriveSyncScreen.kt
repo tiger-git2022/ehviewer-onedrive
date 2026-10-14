@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.ui.settings
 
+import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.foundation.layout.Column
@@ -14,8 +15,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
@@ -23,11 +27,14 @@ import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.CloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncTrigger
+import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
+import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.destinations.OneDriveDevicesScreenDestination
@@ -38,10 +45,12 @@ import com.hippo.ehviewer.util.ReadableTime
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import java.util.Date
 import me.zhanghai.compose.preference.DropdownListPreference
 import moe.tarsin.navigate
 import moe.tarsin.snackbar
 import moe.tarsin.string
+import splitties.init.appCtx
 
 private val syncIntervals = intArrayOf(15, 30, 60, 180, 360, 720, 1440)
 
@@ -193,21 +202,37 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         val working by FavoritesIndexSync.working.collectAsState()
                         val workProgress by FavoritesIndexSync.workProgress.collectAsState()
                         val workText = workProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
+                        val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
+                        val workError by OneDriveSyncState.cloudFavoritesWorkError.collectAsState()
+                        // Read again when the work starts or stops
+                        val status by produceState<FavoritesIndexSync.Status?>(null, working, workInfo) { value = FavoritesIndexSync.status() }
+                        val unfinished = status?.let { it.unfinished || it.missingTitles > 0 } == true || workInfo.waiting
+                        val statusText = status.takeIf { unfinished }?.let { cloudFavoritesStatusText(it, workInfo, workError) }
                         Column {
                             Preference(
                                 title = stringResource(id = R.string.onedrive_sync_favorites_index_refresh),
-                                summary = if (working) workText else stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary),
+                                summary = when {
+                                    working -> workText
+                                    statusText != null -> statusText
+                                    else -> stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary)
+                                },
                             ) {
                                 launch {
                                     if (!Settings.hasSignedIn.value) {
                                         snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
                                         return@launch
                                     }
-                                    if (!working) {
-                                        FavoritesIndexSync.refreshInBackground()
-                                        snackbar(string(R.string.onedrive_sync_favorites_index_refresh_started))
-                                    } else {
-                                        snackbar(workText)
+                                    when {
+                                        working -> snackbar(workText)
+                                        // Goes on from where it stopped, now and in the foreground
+                                        unfinished -> {
+                                            resumeCloudFavoritesWork(appCtx)
+                                            snackbar(string(R.string.onedrive_sync_cloud_favorites_resumed))
+                                        }
+                                        else -> {
+                                            FavoritesIndexSync.refreshInBackground()
+                                            snackbar(string(R.string.onedrive_sync_favorites_index_refresh_started))
+                                        }
                                     }
                                 }
                             }
@@ -250,6 +275,28 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
             OneDriveSyncNote()
         }
     }
+}
+
+/** Where an unfinished read of the cloud favorites stands while the work does not run, and why it stopped. */
+@Composable
+private fun cloudFavoritesStatusText(status: FavoritesIndexSync.Status, workInfo: CloudFavoritesWorkInfo, error: String?): String {
+    val context = LocalContext.current
+    return buildList {
+        if (status.unfinished) add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_read, status.read, status.total))
+        if (status.missingTitles > 0) add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_titles, status.missingTitles))
+        add(
+            when {
+                workInfo.nextRunAt != null -> stringResource(
+                    id = R.string.onedrive_sync_cloud_favorites_status_waiting_at,
+                    DateFormat.getTimeFormat(context).format(Date(workInfo.nextRunAt)),
+                )
+                workInfo.waiting -> stringResource(id = R.string.onedrive_sync_cloud_favorites_status_waiting)
+                else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_status_stopped)
+            },
+        )
+        error?.let { add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_error, it)) }
+        add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_tap))
+    }.joinToString("\n")
 }
 
 @Composable

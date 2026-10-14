@@ -37,6 +37,12 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** The cloud favorites changed since the index was last uploaded, see OneDriveSync.markFavoritesIndexChanged. */
     val favoritesIndexDirty = boolPref("favorites_index_dirty", false)
 
+    /** A read of all cloud favorites slots was asked and not started yet, see CloudFavoritesWork. */
+    val cloudFavoritesFullRequested = boolPref("cloud_favorites_full_requested", false)
+
+    /** Why CloudFavoritesWork stopped last time, null when it ended well. */
+    val cloudFavoritesWorkError = stringOrNullPref("cloud_favorites_work_error")
+
     /** The index was deleted after sharing was turned off; cleared by the next upload. */
     val favoritesIndexRemoved = boolPref("favorites_index_removed", false)
 

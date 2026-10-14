@@ -699,6 +699,14 @@
     <string name="onedrive_sync_cloud_favorites_work">Updating the favorites shared with other apps</string>
     <string name="onedrive_sync_cloud_favorites_work_pause">Pause</string>
     <string name="onedrive_sync_cloud_favorites_work_queued">The shared favorites are read in the background, it goes on shortly</string>
+    <string name="onedrive_sync_cloud_favorites_status_read">Read %1$d of %2$d cloud favorites</string>
+    <string name="onedrive_sync_cloud_favorites_status_titles">%d Japanese titles to look up</string>
+    <string name="onedrive_sync_cloud_favorites_status_waiting_at">The background work goes on at about %s</string>
+    <string name="onedrive_sync_cloud_favorites_status_waiting">The background work waits to go on</string>
+    <string name="onedrive_sync_cloud_favorites_status_stopped">The background work is not running</string>
+    <string name="onedrive_sync_cloud_favorites_status_error">Last stop: %s</string>
+    <string name="onedrive_sync_cloud_favorites_status_tap">Tap to go on now</string>
+    <string name="onedrive_sync_cloud_favorites_resumed">Going on in the background, the notification shows the progress</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">Sign in to E-Hentai first</string>
     <string name="onedrive_sync_favorites_index_failed">Favorites list for other apps failed: %s</string>
     <string name="onedrive_sync_devices">Devices</string>
