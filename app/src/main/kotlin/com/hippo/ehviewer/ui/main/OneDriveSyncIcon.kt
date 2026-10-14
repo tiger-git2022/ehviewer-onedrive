@@ -3,9 +3,9 @@ package com.hippo.ehviewer.ui.main
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -100,10 +100,10 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
                     CircularProgressIndicator(modifier = modifier, color = LocalContentColor.current, strokeWidth = 2.5.dp)
                 }
             }
-            SyncIconState.PENDING -> Icon(imageVector = Icons.Default.CloudUpload, contentDescription = null)
+            SyncIconState.PENDING -> Icon(imageVector = Icons.Default.Schedule, contentDescription = null)
             SyncIconState.FAILED -> Icon(imageVector = Icons.Default.SyncProblem, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-            SyncIconState.SUCCEEDED -> Icon(imageVector = Icons.Default.CloudDone, contentDescription = null)
-            SyncIconState.NOT_SYNCED -> Icon(imageVector = Icons.Default.CloudSync, contentDescription = null)
+            SyncIconState.SUCCEEDED -> Icon(imageVector = Icons.Default.DoneAll, contentDescription = null)
+            SyncIconState.NOT_SYNCED -> Icon(imageVector = Icons.Default.Sync, contentDescription = null)
         }
     }
 }

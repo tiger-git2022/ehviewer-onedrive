@@ -670,7 +670,7 @@
     <string name="onedrive_sync_favorites_index">把收藏共享给其他应用</string>
     <string name="onedrive_sync_favorites_index_summary">把本地收藏和云端收藏的清单（标题和所在收藏夹）上传到 ehviewer/export/，登录同一账号的 Mihon 改版可据此标记已收藏的漫画。关闭后，下次同步会删除已上传的清单。</string>
     <string name="onedrive_sync_favorites_index_refresh">重新读取云端收藏</string>
-    <string name="onedrive_sync_favorites_index_refresh_summary">平时每次同步只用一次请求核对各收藏夹的数量，数量变了才逐页读取。在网页上改过收藏后可以手动点这里。读到一半中断的，下次会接着读。</string>
+    <string name="onedrive_sync_favorites_index_refresh_summary">平时每次同步只用一次请求核对各收藏夹的数量，数量变了才逐页读取。在网页上改过收藏后可以手动点这里，还会一次补全所有缺的日文标题（用于和其他平台匹配）。读到一半中断的，下次会接着读。</string>
     <string name="onedrive_sync_favorites_index_refreshing">正在逐页读取云端收藏…</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">请先登录 E-Hentai</string>
     <string name="onedrive_sync_favorites_index_failed">共享给其他应用的收藏清单同步失败：%s</string>

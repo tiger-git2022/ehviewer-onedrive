@@ -72,6 +72,7 @@ object FavoritesIndexSync {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
     private val refreshMutex = Mutex()
+    private val titleMutex = Mutex()
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -398,24 +399,54 @@ object FavoritesIndexSync {
         }
     }
 
-    /** Looks up the Japanese titles the index does not have yet, for a limited time per sync. */
-    private suspend fun lookUpJapaneseTitles(index: FavoritesIndex) {
-        val missing = FavoritesIndexMerger.missingJapaneseTitles(index, TITLE_LOOKUPS_PER_SYNC)
-        if (missing.isEmpty()) return
-        val started = SystemClock.elapsedRealtime()
-        var found = 0
-        for ((i, chunk) in missing.chunked(TITLE_LOOKUP_CHUNK).withIndex()) {
-            if (SystemClock.elapsedRealtime() - started > TITLE_LOOKUP_BUDGET_MILLIS) break
-            if (i != 0) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size)
-            val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
-            EhEngine.fillGalleryListByApi(infos)
-            val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
-            // Saved per batch: a failed request later keeps what was found
-            update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
-            found += titles.size
+    /**
+     * Looks up every Japanese title the index does not have yet, without the time limit of a sync. Called by the user
+     * after a refresh of the cloud favorites.
+     */
+    suspend fun lookUpAllJapaneseTitles(): Unit = withContext(Dispatchers.IO) {
+        if (!Settings.hasSignedIn.value) return@withContext
+        mutableRefreshing.value = true
+        try {
+            lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, budgetMillis = null)
+        } finally {
+            mutableRefreshing.value = false
+            mutableProgress.value = null
         }
-        logcat(TAG) { "Looked up $found of ${missing.size} Japanese titles" }
+    }
+
+    private suspend fun currentIndex(): FavoritesIndex {
+        val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
+        return FavoritesIndexMerger.buildIndex(local, current(), deviceId = "", deviceName = "", now = now())
+    }
+
+    /** Looks up the Japanese titles the index does not have yet, at most [limit] or for [budgetMillis]. */
+    private suspend fun lookUpJapaneseTitles(
+        index: FavoritesIndex,
+        limit: Int = TITLE_LOOKUPS_PER_SYNC,
+        budgetMillis: Long? = TITLE_LOOKUP_BUDGET_MILLIS,
+    ) {
+        // A lookup running elsewhere (the user's, or a sync's) does the same
+        if (!titleMutex.tryLock()) return
+        try {
+            val missing = FavoritesIndexMerger.missingJapaneseTitles(index, limit)
+            if (missing.isEmpty()) return
+            val started = SystemClock.elapsedRealtime()
+            var found = 0
+            for ((i, chunk) in missing.chunked(TITLE_LOOKUP_CHUNK).withIndex()) {
+                if (budgetMillis != null && SystemClock.elapsedRealtime() - started > budgetMillis) break
+                if (i != 0) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
+                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size)
+                val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
+                EhEngine.fillGalleryListByApi(infos)
+                val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
+                // Saved per batch: a failed request later keeps what was found
+                update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
+                found += titles.size
+            }
+            logcat(TAG) { "Looked up $found of ${missing.size} Japanese titles" }
+        } finally {
+            titleMutex.unlock()
+        }
     }
 
     // endregion

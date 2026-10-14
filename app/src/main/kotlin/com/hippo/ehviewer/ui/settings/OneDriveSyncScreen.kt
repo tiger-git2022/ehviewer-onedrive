@@ -200,7 +200,10 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                             snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
                                             return@launch
                                         }
-                                        val message = runCatching { FavoritesIndexSync.refreshCloudFavorites() }.fold(
+                                        val message = runCatching {
+                                            FavoritesIndexSync.refreshCloudFavorites()
+                                            FavoritesIndexSync.lookUpAllJapaneseTitles()
+                                        }.fold(
                                             onSuccess = { OneDriveSync.summaryOf(OneDriveSync.sync(SyncTrigger.MANUAL)) },
                                             onFailure = { e -> e.message ?: e.toString() },
                                         )
