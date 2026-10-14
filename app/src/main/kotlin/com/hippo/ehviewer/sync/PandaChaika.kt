@@ -19,19 +19,21 @@ object PandaChaika {
     private const val SEARCH_URL = "https://panda.chaika.moe/search/"
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** A page of results, 100 archives; [hasNext] when more follow. */
     @Serializable
-    private data class SearchResult(val archives: List<Archive> = emptyList())
+    data class SearchResult(val archives: List<Archive> = emptyList(), @SerialName("has_next") val hasNext: Boolean = false)
 
     /** An archive as the search lists it: its default title and its Japanese one. */
     @Serializable
     data class Archive(val title: String? = null, @SerialName("title_jpn") val titleJpn: String? = null)
 
-    /** The archives whose title contains [query], first page. */
-    suspend fun search(query: String): List<Archive> = ktorClient.prepareGet(SEARCH_URL) {
+    /** Page [page] (from 1) of the archives whose title contains [query]. */
+    suspend fun search(query: String, page: Int = 1): SearchResult = ktorClient.prepareGet(SEARCH_URL) {
         parameter("qsearch", query)
         parameter("json", "")
+        if (page > 1) parameter("page", page)
     }.executeSafely {
         it.status.ensureSuccess()
-        json.decodeFromString(SearchResult.serializer(), it.bodyAsUtf8Text()).archives
+        json.decodeFromString(SearchResult.serializer(), it.bodyAsUtf8Text())
     }
 }

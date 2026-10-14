@@ -68,6 +68,7 @@ object FavoritesIndexSync {
 
     // panda.chaika.moe is a small site: one search every 3 seconds
     private const val PANDA_INTERVAL_MILLIS = 3_000L
+    private const val PANDA_MAX_PAGES = 10
 
     /** [CloudFavoritesWork] uploads the index this often, so other apps see the favorites read so far. */
     private const val WORK_UPLOAD_INTERVAL_MILLIS = 10 * 60_000L
@@ -572,15 +573,23 @@ object FavoritesIndexSync {
             if (i != 0) delay(PANDA_INTERVAL_MILLIS)
             mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_panda_titles, i, missing.size)
             val query = FavoritesIndexMerger.pandaQuery(gallery) ?: continue
-            val archives = try {
-                PandaChaika.search(query).map { it.title to it.titleJpn }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                logcat(TAG, e)
-                return
+            // The match may be on a later page of a common title: a miss is kept only after the last page (or many)
+            var title = ""
+            var page = 1
+            while (true) {
+                val result = try {
+                    PandaChaika.search(query, page)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    logcat(TAG, e)
+                    return
+                }
+                title = FavoritesIndexMerger.pandaDefaultTitle(gallery, result.archives.map { it.title to it.titleJpn })
+                if (title.isNotEmpty() || !result.hasNext || page >= PANDA_MAX_PAGES) break
+                page++
+                delay(PANDA_INTERVAL_MILLIS)
             }
-            val title = FavoritesIndexMerger.pandaDefaultTitle(gallery, archives)
             update { cloud -> FavoritesIndexMerger.withPandaTitles(cloud, mapOf(gallery.gid to title)) }
             onBatch()
         }
