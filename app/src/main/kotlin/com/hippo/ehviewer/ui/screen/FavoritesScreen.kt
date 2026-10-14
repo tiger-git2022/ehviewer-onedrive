@@ -3,6 +3,7 @@ package com.hippo.ehviewer.ui.screen
 import android.content.Context
 import android.view.ViewConfiguration
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -202,6 +205,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
             if (urlBuilder.isLocal && OneDriveClient.isSupported) {
                 val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
                 val syncing by OneDriveSync.running.collectAsState()
+                val syncProgress by OneDriveSync.progress.collectAsState()
                 if (oneDriveAccount != null) {
                     IconButton(
                         onClick = {
@@ -214,7 +218,14 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                         enabled = !syncing,
                         shapes = IconButtonDefaults.shapes(),
                     ) {
-                        Icon(imageVector = Icons.Default.Sync, contentDescription = stringResource(id = R.string.onedrive_sync_now))
+                        val progress = syncProgress?.fraction
+                        if (syncing && progress != null) {
+                            // The sync shows how far it got, its steps are on the OneDrive sync settings
+                            val animated by animateFloatAsState(targetValue = progress, label = "syncProgress")
+                            CircularProgressIndicator(progress = { animated }, modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                        } else {
+                            Icon(imageVector = Icons.Default.Sync, contentDescription = stringResource(id = R.string.onedrive_sync_now))
+                        }
                     }
                 }
             }

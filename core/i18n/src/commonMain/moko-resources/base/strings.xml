@@ -645,6 +645,15 @@
     <string name="onedrive_sync_not_signed_in">Not signed in to OneDrive</string>
     <string name="onedrive_sync_now">Sync now</string>
     <string name="onedrive_sync_running">Syncing…</string>
+    <string name="onedrive_sync_progress">Syncing %1$d%% (%2$d/%3$d): %4$s</string>
+    <string name="onedrive_sync_progress_count">%1$s %2$d/%3$d (%4$d%%)</string>
+    <string name="onedrive_sync_step_connect">Connecting to OneDrive</string>
+    <string name="onedrive_sync_step_devices">Download lists</string>
+    <string name="onedrive_sync_step_favorites_index">Favorites shared with other apps</string>
+    <string name="onedrive_sync_step_check_cloud_favorites">Checking the cloud favorites</string>
+    <string name="onedrive_sync_step_read_cloud_favorites">Reading the cloud favorites</string>
+    <string name="onedrive_sync_step_japanese_titles">Looking up Japanese titles</string>
+    <string name="onedrive_sync_step_upload_index">Uploading the favorites list</string>
     <string name="onedrive_sync_never">Never synced</string>
     <string name="onedrive_sync_last_success">Last sync %1$s\n%2$s</string>
     <string name="onedrive_sync_last_failed">Last sync %1$s failed\n%2$s</string>

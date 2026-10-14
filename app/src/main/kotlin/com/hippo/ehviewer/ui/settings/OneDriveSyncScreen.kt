@@ -93,11 +93,12 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         }
                     }
                     val running by OneDriveSync.running.collectAsState()
+                    val progress by OneDriveSync.progress.collectAsState()
                     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
                     val lastSyncSummary by OneDriveSyncState.lastSyncSummary.collectAsState()
                     val lastSyncFailed by OneDriveSyncState.lastSyncFailed.collectAsState()
                     val syncSummary = when {
-                        running -> stringResource(id = R.string.onedrive_sync_running)
+                        running -> progress?.let { syncProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_running)
                         lastSyncTime == 0L -> stringResource(id = R.string.onedrive_sync_never)
                         else -> stringResource(
                             id = if (lastSyncFailed) R.string.onedrive_sync_last_failed else R.string.onedrive_sync_last_success,
@@ -113,6 +114,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                             }
                         }
                     }
+                    SyncProgressBar(fraction = progress?.fraction?.takeIf { running })
 
                     val autoSync = OneDriveSyncState.autoSync.asMutableState()
                     SwitchPreference(
@@ -183,25 +185,30 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                     )
                     AnimatedVisibility(visible = exportIndex.value) {
                         val refreshing by FavoritesIndexSync.refreshing.collectAsState()
-                        Preference(
-                            title = stringResource(id = R.string.onedrive_sync_favorites_index_refresh),
-                            summary = stringResource(
-                                id = if (refreshing) R.string.onedrive_sync_favorites_index_refreshing else R.string.onedrive_sync_favorites_index_refresh_summary,
-                            ),
-                        ) {
-                            if (!refreshing) {
-                                launch {
-                                    if (!Settings.hasSignedIn.value) {
-                                        snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
-                                        return@launch
+                        val refreshProgress by FavoritesIndexSync.progress.collectAsState()
+                        Column {
+                            Preference(
+                                title = stringResource(id = R.string.onedrive_sync_favorites_index_refresh),
+                                summary = when {
+                                    !refreshing -> stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary)
+                                    else -> refreshProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
+                                },
+                            ) {
+                                if (!refreshing) {
+                                    launch {
+                                        if (!Settings.hasSignedIn.value) {
+                                            snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
+                                            return@launch
+                                        }
+                                        val message = runCatching { FavoritesIndexSync.refreshCloudFavorites() }.fold(
+                                            onSuccess = { OneDriveSync.summaryOf(OneDriveSync.sync(SyncTrigger.MANUAL)) },
+                                            onFailure = { e -> e.message ?: e.toString() },
+                                        )
+                                        snackbar(message)
                                     }
-                                    val message = runCatching { FavoritesIndexSync.refreshCloudFavorites() }.fold(
-                                        onSuccess = { OneDriveSync.summaryOf(OneDriveSync.sync(SyncTrigger.MANUAL)) },
-                                        onFailure = { e -> e.message ?: e.toString() },
-                                    )
-                                    snackbar(message)
                                 }
                             }
+                            SyncProgressBar(fraction = refreshProgress?.fraction?.takeIf { refreshing })
                         }
                     }
 

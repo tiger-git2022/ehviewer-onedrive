@@ -1,6 +1,7 @@
 package com.hippo.ehviewer.sync
 
 import android.os.SystemClock
+import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.network.EhCookieStore
@@ -52,6 +53,7 @@ object FavoritesIndexSync {
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
     private const val PAGE_INTERVAL_MILLIS = 1_000L
     private const val TITLE_LOOKUPS_PER_SYNC = 500
+    private const val TITLE_LOOKUP_CHUNK = 100
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
@@ -88,6 +90,11 @@ object FavoritesIndexSync {
 
     /** True while the cloud favorites are read page by page. */
     val refreshing: StateFlow<Boolean> = mutableRefreshing.asStateFlow()
+
+    private val mutableProgress = MutableStateFlow<StepProgress?>(null)
+
+    /** What the favorites index step of a sync or a refresh of the cloud favorites does now, null when idle. */
+    val progress: StateFlow<StepProgress?> = mutableProgress.asStateFlow()
 
     private fun now() = Clock.System.now().toEpochMilliseconds()
 
@@ -242,6 +249,8 @@ object FavoritesIndexSync {
             val slotNames = first.catArray
             updateSettings(first)
             val galleries = ArrayList<IndexedGallery>()
+            val total = first.countArray.sum()
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, 0, total)
             first.countArray.forEachIndexed { slot, count ->
                 if (count <= 0) return@forEachIndexed
                 var next: String? = null
@@ -252,6 +261,7 @@ object FavoritesIndexSync {
                     val page = EhEngine.getFavoritesPage(url)
                     if (userKey() != user) return
                     page.galleryInfoList.mapTo(galleries) { it.toIndexed(slot) }
+                    mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, galleries.size, total)
                     next = page.next
                 } while (next != null)
             }
@@ -269,6 +279,7 @@ object FavoritesIndexSync {
         } finally {
             withContext(NonCancellable + Dispatchers.IO) { mutex.withLock { journal = null } }
             mutableRefreshing.value = false
+            mutableProgress.value = null
         }
     }
 
@@ -300,7 +311,10 @@ object FavoritesIndexSync {
         val missing = FavoritesIndexMerger.missingJapaneseTitles(index, TITLE_LOOKUPS_PER_SYNC)
         if (missing.isEmpty()) return
         val infos = missing.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
-        EhEngine.fillGalleryListByApi(infos)
+        infos.chunked(TITLE_LOOKUP_CHUNK).forEachIndexed { index, chunk ->
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, index * TITLE_LOOKUP_CHUNK, infos.size)
+            EhEngine.fillGalleryListByApi(chunk)
+        }
         val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
         update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
         logcat(TAG) { "Looked up ${titles.size} Japanese titles" }
@@ -315,6 +329,14 @@ object FavoritesIndexSync {
      * the upload of what is known.
      */
     suspend fun sync(deviceId: String, deviceName: String) {
+        try {
+            syncIndex(deviceId, deviceName)
+        } finally {
+            mutableProgress.value = null
+        }
+    }
+
+    private suspend fun syncIndex(deviceId: String, deviceName: String) {
         if (!OneDriveSyncState.exportFavoritesIndex.value) {
             removeExport()
             return
@@ -323,6 +345,7 @@ object FavoritesIndexSync {
         adoptRemote(remote)
         val signedIn = Settings.hasSignedIn.value
         if (signedIn) {
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites)
             runEhStep { checkCloudFavorites() }
         }
         val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
@@ -339,6 +362,7 @@ object FavoritesIndexSync {
             update { cloud -> FavoritesIndexMerger.pruneTitles(cloud, listed) }
         }
 
+        mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index)
         for (attempt in 0 until MAX_ATTEMPTS) {
             val last = runCatching { readGzip(lastIndexFile, FavoritesIndex.serializer()) }.getOrNull()
             val storedETag = OneDriveSyncState.favoritesIndexETag.value
