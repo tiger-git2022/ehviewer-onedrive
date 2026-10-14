@@ -109,6 +109,11 @@ object OneDriveSync {
     private val mutableRunning = MutableStateFlow(false)
     val running: StateFlow<Boolean> = mutableRunning.asStateFlow()
 
+    private val mutableChangesPending = MutableStateFlow(false)
+
+    /** True while changes wait for a sync scheduled for them: the change countdown, a rerun or background work. */
+    val changesPending: StateFlow<Boolean> = mutableChangesPending.asStateFlow()
+
     private val mutableProgress = MutableStateFlow<SyncProgress?>(null)
 
     /** Step of the running sync, null when no sync runs. The step of the favorites index shows its own progress. */
@@ -305,6 +310,7 @@ object OneDriveSync {
     private fun scheduleChangeSync() {
         if (!autoSyncAllowed || !OneDriveSyncState.syncOnChange.value) return
         synchronized(debounceLock) {
+            mutableChangesPending.value = true
             if (mutex.isLocked) {
                 pendingAfterSync = true
                 return
@@ -380,6 +386,7 @@ object OneDriveSync {
 
     suspend fun signOut() = mutex.withLock {
         OneDriveClient.signOut()
+        mutableChangesPending.value = false
         OneDriveSyncState.withMutableSnapshot {
             it[OneDriveSyncState.accountId] = null
             it[OneDriveSyncState.accountName] = null
@@ -423,6 +430,8 @@ object OneDriveSync {
     suspend fun sync(trigger: SyncTrigger): Result<SyncReport> = withContext(Dispatchers.IO) {
         val result: Result<SyncReport> = mutex.withLock {
             mutableRunning.value = true
+            // This sync takes every change made so far; a change from now on schedules the next one
+            mutableChangesPending.value = false
             try {
                 val start = SystemClock.elapsedRealtime()
                 val report = withContext(SyncWrite()) { doSync() }

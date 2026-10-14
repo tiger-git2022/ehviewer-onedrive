@@ -645,6 +645,9 @@
     <string name="onedrive_sync_not_signed_in">Not signed in to OneDrive</string>
     <string name="onedrive_sync_now">Sync now</string>
     <string name="onedrive_sync_running">Syncing…</string>
+    <string name="onedrive_sync_status_pending">OneDrive: changes waiting to sync</string>
+    <string name="onedrive_sync_status_succeeded">OneDrive: synced</string>
+    <string name="onedrive_sync_status_failed">OneDrive: the last sync failed</string>
     <string name="onedrive_sync_progress">Syncing %1$d%% (%2$d/%3$d): %4$s</string>
     <string name="onedrive_sync_progress_count">%1$s %2$d/%3$d (%4$d%%)</string>
     <string name="onedrive_sync_step_connect">Connecting to OneDrive</string>
