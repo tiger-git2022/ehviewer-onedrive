@@ -224,7 +224,7 @@ object FavoritesIndexSync {
         transform: (CloudFavorites) -> CloudFavorites,
     ) {
         scope.launch {
-            runCatching { update(user, intended, transform) }
+            runCatching { update(user, intended, transform = transform) }
                 .onFailure { logcat(TAG, it) }
                 .onSuccess { changed -> if (changed && enabled) OneDriveSync.scheduleFavoritesIndexSync() }
         }

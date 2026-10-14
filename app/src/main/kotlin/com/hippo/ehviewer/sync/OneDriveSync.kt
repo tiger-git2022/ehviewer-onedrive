@@ -172,10 +172,12 @@ object OneDriveSync {
     fun scheduleFavoritesIndexSync() = scheduleChangeSync()
 
     /** The local or cloud favorites changed: the index waits for a sync (also with sync on change off, and across restarts). */
-    suspend fun markFavoritesIndexChanged() = favoritesIndexDirtyMutex.withLock {
-        favoritesIndexVersion.incrementAndGet()
-        if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
-            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = true }
+    suspend fun markFavoritesIndexChanged() {
+        favoritesIndexDirtyMutex.withLock {
+            favoritesIndexVersion.incrementAndGet()
+            if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = true }
+            }
         }
     }
 
@@ -183,9 +185,11 @@ object OneDriveSync {
     fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
 
     /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
-    suspend fun favoritesIndexSynced(version: Long) = favoritesIndexDirtyMutex.withLock {
-        if (favoritesIndexVersion.get() == version && OneDriveSyncState.favoritesIndexDirty.value) {
-            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = false }
+    suspend fun favoritesIndexSynced(version: Long) {
+        favoritesIndexDirtyMutex.withLock {
+            if (favoritesIndexVersion.get() == version && OneDriveSyncState.favoritesIndexDirty.value) {
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = false }
+            }
         }
     }
 
