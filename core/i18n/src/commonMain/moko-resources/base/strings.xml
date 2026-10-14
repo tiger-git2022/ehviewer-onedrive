@@ -645,6 +645,9 @@
     <string name="onedrive_sync_not_signed_in">Not signed in to OneDrive</string>
     <string name="onedrive_sync_now">Sync now</string>
     <string name="onedrive_sync_running">Syncing…</string>
+    <string name="search_in_mihon">Search in Mihon</string>
+    <string name="search_in_mihon_query">Search “%s” in Mihon</string>
+    <string name="mihon_not_installed">Mihon is not installed</string>
     <string name="onedrive_sync_status_pending">OneDrive: changes waiting to sync</string>
     <string name="onedrive_sync_status_succeeded">OneDrive: synced</string>
     <string name="onedrive_sync_status_failed">OneDrive: the last sync failed</string>
