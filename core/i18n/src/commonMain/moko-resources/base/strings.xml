@@ -659,6 +659,7 @@
     <string name="onedrive_sync_step_check_cloud_favorites">Checking the cloud favorites</string>
     <string name="onedrive_sync_step_read_cloud_favorites">Reading the cloud favorites</string>
     <string name="onedrive_sync_step_japanese_titles">Looking up titles (Japanese and default)</string>
+    <string name="onedrive_sync_step_panda_titles">Looking up removed galleries on PandaChaika</string>
     <string name="onedrive_sync_step_upload_index">Uploading the favorites list</string>
     <string name="onedrive_sync_never">Never synced</string>
     <string name="onedrive_sync_last_success">Last sync %1$s\n%2$s</string>

@@ -168,6 +168,33 @@ class FavoritesIndexMergerTest {
     }
 
     @Test
+    fun removedGalleriesTakeTheTitleOfTheirArchivedRawCopy() {
+        val jp = "[ミルクレープ (チビゴン)] SNSで裏垢特定した人妻をハメまくった話。 [中国翻訳] [小衣ゆうき个人机翻润色]"
+        // The API had nothing for it: both titles looked up as empty
+        val cloud = CloudFavorites(
+            galleries = listOf(gallery(1, slot = 0, title = jp), gallery(2, slot = 0, title = "ok")),
+            japaneseTitles = mapOf(1L to "", 2L to "二"),
+            defaultTitles = mapOf(1L to "", 2L to "two"),
+        )
+        val index = FavoritesIndexMerger.buildIndex(emptyList(), cloud, "dev", "", now = 1)
+        assertEquals(listOf(1L), FavoritesIndexMerger.missingPandaTitles(index, cloud).map { it.gid })
+        val removed = index.galleries.first()
+        assertEquals("SNSで裏垢特定した人妻をハメまくった話。", FavoritesIndexMerger.pandaQuery(removed))
+        val archives = listOf(
+            "[Other] SNS" to "[他] SNSで裏垢特定した人妻をハメまくった話 2",
+            "[Mille-Crepe (Chibigon)] SNS de Uraaka Tokutei shita Hitozuma o Hamemakutta Hanashi." to "[ミルクレープ (チビゴン)] SNSで裏垢特定した人妻をハメまくった話。",
+        )
+        val en = FavoritesIndexMerger.pandaDefaultTitle(removed, archives)
+        assertEquals("[Mille-Crepe (Chibigon)] SNS de Uraaka Tokutei shita Hitozuma o Hamemakutta Hanashi.", en)
+        assertEquals("", FavoritesIndexMerger.pandaDefaultTitle(removed, archives.take(1)))
+        val withPanda = FavoritesIndexMerger.withPandaTitles(cloud, mapOf(1L to en))
+        val rebuilt = FavoritesIndexMerger.buildIndex(emptyList(), withPanda, "dev", "", now = 2)
+        // Both titles listed, not marked as the API's
+        assertEquals(gallery(1, slot = 0, title = en, titleJpn = jp), rebuilt.galleries.first())
+        assertEquals(emptyList(), FavoritesIndexMerger.missingPandaTitles(rebuilt, withPanda))
+    }
+
+    @Test
     fun aKnownMissingJapaneseTitleStaysEmpty() {
         // Renamed since the list was read: the API's default title replaces it, there is no Japanese one
         val gallery = gallery(1, slot = 0, title = "old name", titleJpn = "")
