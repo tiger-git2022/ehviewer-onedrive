@@ -2,9 +2,6 @@ package com.hippo.ehviewer.sync
 
 /** Pure functions behind the favorites index, kept apart for unit tests. */
 object FavoritesIndexMerger {
-    /** A full refresh is forced after this long even if the counts of E-Hentai still match. */
-    const val REFRESH_MAX_AGE_MILLIS = 7 * 24 * 60 * 60 * 1000L
-
     /** The list of the E-Hentai account [userKey]: an empty one if [cloud] belongs to another account. */
     fun forUser(cloud: CloudFavorites, userKey: String?): CloudFavorites = if (cloud.userKey == userKey) {
         cloud
@@ -86,6 +83,12 @@ object FavoritesIndexMerger {
         return cloud.copy(updatedAt = now, refreshedAt = now, slotNames = names, galleries = merged)
     }
 
+    /** Galleries of a favorites page the known list does not have in that slot: favorites added on the website. */
+    fun newGalleries(cloud: CloudFavorites, galleries: List<IndexedGallery>): List<IndexedGallery> {
+        val known = cloud.galleries.associate { it.gid to it.slot }
+        return galleries.filter { it.slot in 0 until CLOUD_SLOT_COUNT && known[it.gid] != it.slot }
+    }
+
     /** Galleries added, removed or moved to another slot between [before] and [after]. */
     fun changedGids(before: CloudFavorites, after: CloudFavorites): Set<Long> {
         if (before.galleries === after.galleries) return emptySet()
@@ -95,11 +98,11 @@ object FavoritesIndexMerger {
     }
 
     /**
-     * An unfinished refresh going on with the slot [counts] E-Hentai shows now: from the first slot already read (or
-     * being read) whose count changed since, the slots are read again and their galleries dropped.
+     * An unfinished refresh going on with the slot [counts] E-Hentai shows now: from the first slot of the refresh
+     * already read (or being read) whose count changed since, the slots are read again and their galleries dropped.
      */
     fun resumeCheckpoint(checkpoint: CloudRefreshCheckpoint, counts: List<Int>): CloudRefreshCheckpoint {
-        val changed = (0..minOf(checkpoint.slot, CLOUD_SLOT_COUNT - 1)).firstOrNull { slot ->
+        val changed = checkpoint.slots.filter { it <= checkpoint.slot }.firstOrNull { slot ->
             checkpoint.counts.getOrNull(slot) != counts.getOrNull(slot)
         } ?: return checkpoint.copy(counts = counts)
         return checkpoint.copy(
@@ -133,8 +136,9 @@ object FavoritesIndexMerger {
     ): CloudFavorites = upsert(cloud, correctedPages(galleries, touched, intended), now)
 
     /**
-     * End of a full refresh: the pages read replace the known list. Galleries changed in the app meanwhile keep their
-     * known state ([touched]) or take the slot the user put them in ([intended]).
+     * End of a refresh: the pages read replace the known galleries of the [slots] read, the other slots keep theirs.
+     * Galleries changed in the app meanwhile keep their known state ([touched]) or take the slot the user put them in
+     * ([intended]).
      */
     fun completeRefresh(
         cloud: CloudFavorites,
@@ -143,9 +147,13 @@ object FavoritesIndexMerger {
         slotNames: List<String>,
         now: Long,
         intended: Map<Long, Int> = emptyMap(),
+        slots: Collection<Int> = ALL_CLOUD_SLOTS,
     ): CloudFavorites {
-        val kept = cloud.galleries.filter { it.gid in touched || it.gid in intended }
-        return replaceAll(cloud, correctedPages(galleries, touched, intended) + kept, slotNames, now)
+        val read = slots.toHashSet()
+        val pages = correctedPages(galleries, touched, intended)
+        val pageGids = pages.mapTo(HashSet()) { it.gid }
+        val kept = cloud.galleries.filter { it.gid in touched || it.gid in intended || it.slot !in read && it.gid !in pageGids }
+        return replaceAll(cloud, pages + kept, slotNames, now)
     }
 
     /** Adds the Japanese titles looked up (gid -> title, empty if the gallery has none). */
@@ -168,10 +176,16 @@ object FavoritesIndexMerger {
         return (local.asSequence() + interleaved).take(limit).toList()
     }
 
-    /** True when the counts shown by E-Hentai differ from the known list, or the list is too old or was never read. */
-    fun needsRefresh(cloud: CloudFavorites, counts: List<Int>, now: Long): Boolean = cloud.refreshedAt == 0L ||
-        now - cloud.refreshedAt > REFRESH_MAX_AGE_MILLIS ||
-        counts.size == CLOUD_SLOT_COUNT && counts != cloud.countBySlot()
+    /**
+     * Slots to read again page by page: all of them when the list was never read completely, otherwise the slots
+     * whose count shown by E-Hentai differs from the known list (favorites removed or moved on the website).
+     */
+    fun slotsToRefresh(cloud: CloudFavorites, counts: List<Int>): List<Int> {
+        if (cloud.refreshedAt == 0L) return ALL_CLOUD_SLOTS
+        if (counts.size != CLOUD_SLOT_COUNT) return emptyList()
+        val known = cloud.countBySlot()
+        return ALL_CLOUD_SLOTS.filter { counts[it] != known[it] }
+    }
 
     /** The cloud part another device uploaded, if it is newer than the copy of this device. */
     fun adopt(cloud: CloudFavorites, remote: FavoritesIndex): CloudFavorites {

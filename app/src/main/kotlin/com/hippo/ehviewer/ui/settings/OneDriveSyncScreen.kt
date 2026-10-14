@@ -153,7 +153,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                     OneDriveSyncSubtitle(R.string.onedrive_sync_content)
                     SwitchPreference(
                         title = stringResource(id = R.string.onedrive_sync_category_settings),
-                        summary = stringResource(id = R.string.onedrive_sync_category_settings_summary),
+                        summary = stringResource(id = R.string.onedrive_sync_category_settings_summary) + "\n" + stringResource(id = R.string.onedrive_sync_manual_only),
                         state = OneDriveSyncState.syncSettings.asMutableState(),
                     )
                     SwitchPreference(
@@ -166,6 +166,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                     )
                     SwitchPreference(
                         title = stringResource(id = R.string.onedrive_sync_category_quick_search_filters),
+                        summary = stringResource(id = R.string.onedrive_sync_manual_only),
                         state = OneDriveSyncState.syncQuickSearch.asMutableState(),
                     )
                     SwitchPreference(
@@ -174,7 +175,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                     )
                     SwitchPreference(
                         title = stringResource(id = R.string.onedrive_sync_upload_downloads),
-                        summary = stringResource(id = R.string.onedrive_sync_upload_downloads_summary),
+                        summary = stringResource(id = R.string.onedrive_sync_upload_downloads_summary) + "\n" + stringResource(id = R.string.onedrive_sync_manual_only),
                         state = OneDriveSyncState.uploadDownloads.asMutableState(),
                     )
                     val exportIndex = OneDriveSyncState.exportFavoritesIndex.asMutableState()
@@ -184,34 +185,28 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         state = exportIndex,
                     )
                     AnimatedVisibility(visible = exportIndex.value) {
-                        val refreshing by FavoritesIndexSync.refreshing.collectAsState()
-                        val refreshProgress by FavoritesIndexSync.progress.collectAsState()
+                        val working by FavoritesIndexSync.working.collectAsState()
+                        val workProgress by FavoritesIndexSync.workProgress.collectAsState()
+                        val workText = workProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
                         Column {
                             Preference(
                                 title = stringResource(id = R.string.onedrive_sync_favorites_index_refresh),
-                                summary = when {
-                                    !refreshing -> stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary)
-                                    else -> refreshProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
-                                },
+                                summary = if (working) workText else stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary),
                             ) {
-                                if (!refreshing) {
-                                    launch {
-                                        if (!Settings.hasSignedIn.value) {
-                                            snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
-                                            return@launch
-                                        }
-                                        val message = runCatching {
-                                            FavoritesIndexSync.refreshCloudFavorites()
-                                            FavoritesIndexSync.lookUpAllJapaneseTitles()
-                                        }.fold(
-                                            onSuccess = { OneDriveSync.summaryOf(OneDriveSync.sync(SyncTrigger.MANUAL)) },
-                                            onFailure = { e -> e.message ?: e.toString() },
-                                        )
-                                        snackbar(message)
+                                launch {
+                                    if (!Settings.hasSignedIn.value) {
+                                        snackbar(string(R.string.onedrive_sync_favorites_index_not_signed_in))
+                                        return@launch
+                                    }
+                                    if (!working) {
+                                        FavoritesIndexSync.refreshInBackground()
+                                        snackbar(string(R.string.onedrive_sync_favorites_index_refresh_started))
+                                    } else {
+                                        snackbar(workText)
                                     }
                                 }
                             }
-                            SyncProgressBar(fraction = refreshProgress?.fraction?.takeIf { refreshing })
+                            SyncProgressBar(fraction = workProgress?.fraction?.takeIf { working })
                         }
                     }
 

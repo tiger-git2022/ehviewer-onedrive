@@ -650,7 +650,7 @@
     <string name="onedrive_sync_downloads_imported">已从订阅的设备导入 %d 条下载记录</string>
     <string name="onedrive_sync_devices_failed">下载记录同步失败：%s</string>
     <string name="onedrive_sync_auto">自动同步</string>
-    <string name="onedrive_sync_auto_summary">定时同步，并在启动应用和数据变化后同步</string>
+    <string name="onedrive_sync_auto_summary">定时、启动应用和数据变化后同步收藏、历史和搜索记录</string>
     <string name="onedrive_sync_interval">同步间隔</string>
     <string name="onedrive_sync_interval_minutes">每 %d 分钟</string>
     <string name="onedrive_sync_interval_hour">每小时</string>
@@ -673,8 +673,13 @@
     <string name="onedrive_sync_favorites_index">把收藏共享给其他应用</string>
     <string name="onedrive_sync_favorites_index_summary">把本地收藏和云端收藏的清单（标题和所在收藏夹）上传到 ehviewer/export/，登录同一账号的 Mihon 改版可据此标记已收藏的漫画。关闭后，下次同步会删除已上传的清单。</string>
     <string name="onedrive_sync_favorites_index_refresh">重新读取云端收藏</string>
-    <string name="onedrive_sync_favorites_index_refresh_summary">平时每次同步只用一次请求核对各收藏夹的数量，数量变了才逐页读取。在网页上改过收藏后可以手动点这里，还会一次补全所有缺的日文标题（用于和其他平台匹配）。读到一半中断的，下次会接着读。</string>
+    <string name="onedrive_sync_favorites_index_refresh_summary">平时每次同步只用一次请求核对各收藏夹的数量：网页上新加的收藏从最新几页补上，数量仍对不上的收藏夹才在后台逐页重读。点这里会在后台重读全部收藏夹，并补全所有缺的日文标题，进度显示在通知栏。中断后会接着读。</string>
     <string name="onedrive_sync_favorites_index_refreshing">正在逐页读取云端收藏…</string>
+    <string name="onedrive_sync_favorites_index_refresh_started">已在后台开始读取，进度显示在通知栏</string>
+    <string name="onedrive_sync_manual_only">只在手动同步时同步</string>
+    <string name="onedrive_sync_channel">OneDrive 同步</string>
+    <string name="onedrive_sync_cloud_favorites_work">正在更新共享给其他应用的收藏</string>
+    <string name="onedrive_sync_cloud_favorites_work_pause">暂停</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">请先登录 E-Hentai</string>
     <string name="onedrive_sync_favorites_index_failed">共享给其他应用的收藏清单同步失败：%s</string>
     <string name="onedrive_sync_devices">设备</string>

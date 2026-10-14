@@ -9,6 +9,9 @@ const val FAVORITES_INDEX_VERSION = 1
 /** Number of E-Hentai cloud favorite slots. */
 const val CLOUD_SLOT_COUNT = 10
 
+/** The cloud slots 0..9. */
+val ALL_CLOUD_SLOTS = (0 until CLOUD_SLOT_COUNT).toList()
+
 /** [IndexedGallery.slot] of a gallery that is not in the cloud favorites. */
 const val NO_CLOUD_SLOT = -1
 
@@ -88,9 +91,8 @@ data class CloudFavorites(
 }
 
 /**
- * A full refresh of the cloud favorites that has not finished, kept in `files/cloud_favorites_refresh.json.gz`: a
- * refresh cut short (the time limit of a sync, the app closed, no network) goes on from [slot] and [next] instead of
- * reading every page again.
+ * A refresh of the cloud favorites that has not finished, kept in `files/cloud_favorites_refresh.json.gz`: a refresh
+ * cut short (the app closed, no network) goes on from [slot] and [next] instead of reading every page again.
  */
 @Serializable
 data class CloudRefreshCheckpoint(
@@ -99,7 +101,9 @@ data class CloudRefreshCheckpoint(
     /** [CloudFavorites.userKey] of the account the pages belong to. */
     val userKey: String? = null,
     val startedAt: Long = 0,
-    /** Slot read now; the slots before it are done. */
+    /** Slots this refresh reads, in order: all of them the first time, else those whose count changed on the website. */
+    val slots: List<Int> = ALL_CLOUD_SLOTS,
+    /** Slot read now; the slots of [slots] before it are done. */
     val slot: Int = 0,
     /** Cursor of the next page of [slot], null at its first page. */
     val next: String? = null,

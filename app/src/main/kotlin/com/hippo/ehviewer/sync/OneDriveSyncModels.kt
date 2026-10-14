@@ -10,14 +10,17 @@ import kotlinx.serialization.json.JsonElement
  */
 const val SYNC_FORMAT_VERSION = 1
 
-/** Synced categories, in the order a sync processes them. */
-enum class SyncCategory(val fileName: String) {
-    SETTINGS("settings.json.gz"),
-    FAVORITES("favorites.json.gz"),
-    HISTORY("history.json.gz"),
-    PROGRESS("progress.json.gz"),
-    QUICK_SEARCH("quicksearch.json.gz"),
-    SUGGESTIONS("suggestions.json.gz"),
+/**
+ * Synced categories, in the order a sync processes them. Automatic syncs (periodic, at launch, after changes) only
+ * take the [automatic] ones, the data that changes while reading; the others wait for a manual sync.
+ */
+enum class SyncCategory(val fileName: String, val automatic: Boolean) {
+    SETTINGS("settings.json.gz", automatic = false),
+    FAVORITES("favorites.json.gz", automatic = true),
+    HISTORY("history.json.gz", automatic = true),
+    PROGRESS("progress.json.gz", automatic = true),
+    QUICK_SEARCH("quicksearch.json.gz", automatic = false),
+    SUGGESTIONS("suggestions.json.gz", automatic = true),
 }
 
 /** Common wrapper of the per category files. */

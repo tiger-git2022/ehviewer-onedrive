@@ -25,25 +25,25 @@ import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.SyncTrigger
+import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
 
-/** The download list of this device or the shared favorites changed, the next sync uploads (or deletes) them. */
+/** The shared favorites changed, the next sync uploads (or deletes) them. */
 @Composable
-private fun downloadsChanged(): Boolean {
-    val dirty by OneDriveSyncState.downloadsDirty.collectAsState()
-    val upload by OneDriveSyncState.uploadDownloads.collectAsState()
+private fun favoritesIndexChanged(): Boolean {
     val indexDirty by OneDriveSyncState.favoritesIndexDirty.collectAsState()
     val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
     // Sharing turned on after the index was deleted, or off while it is still on OneDrive
     val indexRemoved by OneDriveSyncState.favoritesIndexRemoved.collectAsState()
-    return dirty && upload || indexDirty && export || export == indexRemoved
+    return indexDirty && export || export == indexRemoved
 }
 
 /** What [OneDriveSyncIcon] shows, the first that applies. */
@@ -51,8 +51,9 @@ private enum class SyncIconState { RUNNING, PENDING, FAILED, SUCCEEDED, NOT_SYNC
 
 /**
  * State of the OneDrive sync in a toolbar (fork-only feature): not synced yet, changes waiting for a sync, syncing
- * (a ring filling up with the progress), synced, or failed. A tap syncs now, or shows the step while syncing.
- * Nothing is shown without a OneDrive account.
+ * (a ring filling up with the progress, also while the cloud favorites are read in the background), synced, or
+ * failed. A tap syncs now, or shows the step while syncing. Changes only a manual sync takes (settings, quick
+ * searches, download lists) do not count as waiting. Nothing is shown without a OneDrive account.
  */
 @Composable
 context(_: CoroutineScope, _: SnackbarHostState)
@@ -60,16 +61,19 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     if (!OneDriveClient.isSupported) return
     val account by OneDriveSyncState.accountId.collectAsState()
     if (account == null) return
-    val running by OneDriveSync.running.collectAsState()
-    val progress by OneDriveSync.progress.collectAsState()
+    val syncing by OneDriveSync.running.collectAsState()
+    val syncProgress by OneDriveSync.progress.collectAsState()
+    val working by FavoritesIndexSync.working.collectAsState()
+    val workProgress by FavoritesIndexSync.workProgress.collectAsState()
+    val running = syncing || working
     val changesPending by OneDriveSync.changesPending.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
     val lastSyncFailed by OneDriveSyncState.lastSyncFailed.collectAsState()
     // Local changes not synced yet, also when no sync is scheduled for them (sync on change turned off)
-    val dirty = SyncCategory.entries.map { category ->
+    val dirty = SyncCategory.entries.filter { it.automatic }.map { category ->
         val changed by OneDriveSyncState.dirty(category).collectAsState()
         changed && OneDriveSyncState.isEnabled(category)
-    }.any { it } || downloadsChanged()
+    }.any { it } || favoritesIndexChanged()
     val state = when {
         running -> SyncIconState.RUNNING
         changesPending -> SyncIconState.PENDING
@@ -79,9 +83,13 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
         lastSyncTime > 0 -> SyncIconState.SUCCEEDED
         else -> SyncIconState.NOT_SYNCED
     }
-    val running0 = progress?.takeIf { running }
+    val runningText = when {
+        syncing -> syncProgress?.let { syncProgressText(it) }
+        else -> workProgress?.let { stepProgressText(it) }
+    }
+    val runningFraction = if (syncing) syncProgress?.fraction else workProgress?.fraction
     val description = when (state) {
-        SyncIconState.RUNNING -> running0?.let { syncProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_running)
+        SyncIconState.RUNNING -> runningText ?: stringResource(id = R.string.onedrive_sync_running)
         SyncIconState.PENDING -> stringResource(id = R.string.onedrive_sync_status_pending)
         SyncIconState.FAILED -> stringResource(id = R.string.onedrive_sync_status_failed)
         SyncIconState.SUCCEEDED -> stringResource(id = R.string.onedrive_sync_status_succeeded)
@@ -90,7 +98,8 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     IconButton(
         onClick = {
             launch {
-                if (running) {
+                // The cloud favorites work runs for long with many favorites: a sync can run beside it
+                if (syncing) {
                     snackbar(description)
                 } else {
                     val result = OneDriveSync.sync(SyncTrigger.MANUAL)
@@ -104,7 +113,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     ) {
         when (state) {
             SyncIconState.RUNNING -> {
-                val fraction = running0?.fraction
+                val fraction = runningFraction
                 val modifier = Modifier.size(22.dp)
                 if (fraction != null) {
                     val animated by animateFloatAsState(targetValue = fraction, label = "syncProgress")

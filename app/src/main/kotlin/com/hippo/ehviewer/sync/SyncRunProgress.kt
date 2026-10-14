@@ -55,10 +55,9 @@ data class StepProgress(
         get() = fraction?.let { (it * 100).toInt() }
 
     companion object {
-        // Shares of the favorites index step: reading the cloud favorites and looking up titles take the most time
-        val CHECK = 0f..0.05f
-        val READ = 0.05f..0.7f
-        val TITLES = 0.7f..0.95f
-        val UPLOAD = 0.95f..1f
+        // Shares of the favorites index step: the newest pages of the cloud favorites, then a few Japanese titles
+        val CHECK = 0f..0.5f
+        val TITLES = 0.5f..0.9f
+        val UPLOAD = 0.9f..1f
     }
 }
