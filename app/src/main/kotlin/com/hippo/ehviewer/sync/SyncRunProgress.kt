@@ -6,7 +6,7 @@ import androidx.annotation.StringRes
  * Progress of a running OneDrive sync for the UI: step [step] of [steps] named [title], with [done] of [total] items
  * of that step when they are known.
  */
-data class SyncProgress(
+data class SyncRunProgress(
     @StringRes val title: Int,
     val step: Int,
     val steps: Int,

@@ -12,11 +12,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.sync.StepProgress
-import com.hippo.ehviewer.sync.SyncProgress
+import com.hippo.ehviewer.sync.SyncRunProgress
 
 /** "Syncing 37% (3/9): Local favorites", with the items of the step when it reports them. */
 @Composable
-fun syncProgressText(progress: SyncProgress): String = stringResource(
+fun syncProgressText(progress: SyncRunProgress): String = stringResource(
     id = R.string.onedrive_sync_progress,
     progress.percent,
     progress.step,
