@@ -307,13 +307,15 @@ object FavoritesIndexMerger {
 
     /**
      * The default title of the archive among [archives] (default title to Japanese title) whose Japanese title is the
-     * one of [gallery] (bracket groups, spaces and punctuation aside: the raw copy of a translation has other groups),
-     * "" if none is.
+     * one of [gallery], "" if none is. Square bracket groups (circle, translators, language: the raw copy of a
+     * translation has others), a leading event group, spaces and punctuation aside; round brackets inside the title
+     * ("(前編)", "(後編)") must agree.
      */
     fun pandaDefaultTitle(gallery: IndexedGallery, archives: List<Pair<String?, String?>>): String {
-        val wanted = compact(coreTitle(gallery.titleJpn?.takeIf { it.isNotEmpty() } ?: gallery.title.orEmpty()))
+        val wanted = matchKey(gallery.titleJpn?.takeIf { it.isNotEmpty() } ?: gallery.title.orEmpty())
+        if (wanted.isEmpty()) return ""
         return archives.firstOrNull { (title, titleJpn) ->
-            !title.isNullOrBlank() && titleJpn?.let { compact(coreTitle(it)) } == wanted
+            !title.isNullOrBlank() && titleJpn?.let { matchKey(it) } == wanted
         }?.first.orEmpty()
     }
 
@@ -330,6 +332,11 @@ object FavoritesIndexMerger {
         val first = title.substringBefore('|')
         return first.replace(BRACKET_GROUPS, " ").trim().ifEmpty { first.trim() }
     }
+
+    private val SQUARE_GROUPS = Regex("""\[[^\]]*\]|【[^】]*】|［[^］]*］""")
+    private val LEADING_ROUND_GROUPS = Regex("""^\s*(?:\([^)]*\)|（[^）]*）)\s*""")
+
+    private fun matchKey(title: String) = compact(title.substringBefore('|').replace(LEADING_ROUND_GROUPS, "").replace(SQUARE_GROUPS, " "))
 
     private fun compact(text: String) = Normalizer.normalize(text, Normalizer.Form.NFKC).lowercase().filter { it.isLetterOrDigit() }
 

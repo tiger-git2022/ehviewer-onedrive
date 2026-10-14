@@ -187,6 +187,10 @@ class FavoritesIndexMergerTest {
         val en = FavoritesIndexMerger.pandaDefaultTitle(removed, archives)
         assertEquals("[Mille-Crepe (Chibigon)] SNS de Uraaka Tokutei shita Hitozuma o Hamemakutta Hanashi.", en)
         assertEquals("", FavoritesIndexMerger.pandaDefaultTitle(removed, archives.take(1)))
+        // Round brackets in the title tell the parts apart, a leading event group does not count
+        val second = gallery(3, slot = 0, title = "(C104) [サークル] 作品 (後編) [中国翻訳]")
+        val parts = listOf("[Circle] Sakuhin (Zenpen)" to "[サークル] 作品 (前編)", "[Circle] Sakuhin (Kouhen)" to "(C104) [サークル] 作品 (後編)")
+        assertEquals("[Circle] Sakuhin (Kouhen)", FavoritesIndexMerger.pandaDefaultTitle(second, parts))
         val withPanda = FavoritesIndexMerger.withPandaTitles(cloud, mapOf(1L to en))
         val rebuilt = FavoritesIndexMerger.buildIndex(emptyList(), withPanda, "dev", "", now = 2)
         // Both titles listed, not marked as the API's
