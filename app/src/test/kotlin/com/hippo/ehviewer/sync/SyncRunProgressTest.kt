@@ -3,6 +3,7 @@ package com.hippo.ehviewer.sync
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SyncRunProgressTest {
     @Test
@@ -25,5 +26,16 @@ class SyncRunProgressTest {
         assertEquals(SyncRunProgress(title = 2, step = 4, steps = 4, done = 30, total = 60, favoritesIndex = true), progress)
         assertEquals(50, StepProgress(2, 30, 60).percent)
         assertNull(StepProgress(2).percent)
+    }
+
+    @Test
+    fun subStepsOfTheLastStepOnlyMoveForward() {
+        val step = SyncRunProgress(title = 0, step = 4, steps = 4, favoritesIndex = true)
+        val readAll = step.withDetail(StepProgress(1, 100, 100, StepProgress.READ)).fraction
+        val titlesStart = step.withDetail(StepProgress(2, 0, 50, StepProgress.TITLES)).fraction
+        val upload = step.withDetail(StepProgress(3, part = StepProgress.UPLOAD)).fraction
+        assertEquals(titlesStart, readAll)
+        assertTrue(upload >= titlesStart)
+        assertTrue(readAll < 1f)
     }
 }

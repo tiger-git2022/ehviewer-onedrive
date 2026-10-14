@@ -14,25 +14,51 @@ data class SyncRunProgress(
     val total: Int = 0,
     /** The step of [FavoritesIndexSync], which reports its own [StepProgress]. */
     val favoritesIndex: Boolean = false,
+    /** Part of the step the items cover, from [partStart] to [partEnd]: a sub-step of [FavoritesIndexSync]. */
+    val partStart: Float = 0f,
+    val partEnd: Float = 1f,
 ) {
     /** Progress of the whole sync from 0 to 1: the steps done, plus the known part of the current one. */
     val fraction: Float
         get() {
-            val stepFraction = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
+            val items = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
+            val stepFraction = partStart + (partEnd - partStart) * items
             return ((step - 1 + stepFraction) / steps).coerceIn(0f, 1f)
         }
 
     val percent: Int
         get() = (fraction * 100).toInt()
 
-    fun withDetail(detail: StepProgress) = copy(title = detail.title, done = detail.done, total = detail.total)
+    fun withDetail(detail: StepProgress) = copy(
+        title = detail.title,
+        done = detail.done,
+        total = detail.total,
+        partStart = detail.part.start,
+        partEnd = detail.part.endInclusive,
+    )
 }
 
-/** Progress inside one step, [done] of [total] items when they are known. */
-data class StepProgress(@StringRes val title: Int, val done: Int = 0, val total: Int = 0) {
+/**
+ * Progress inside one step, [done] of [total] items when they are known. [part] is the share of the step this
+ * sub-step takes, so the progress of the step only moves forward from one sub-step to the next.
+ */
+data class StepProgress(
+    @StringRes val title: Int,
+    val done: Int = 0,
+    val total: Int = 0,
+    val part: ClosedFloatingPointRange<Float> = 0f..1f,
+) {
     val fraction: Float?
         get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
 
     val percent: Int?
         get() = fraction?.let { (it * 100).toInt() }
+
+    companion object {
+        // Shares of the favorites index step: reading the cloud favorites and looking up titles take the most time
+        val CHECK = 0f..0.05f
+        val READ = 0.05f..0.7f
+        val TITLES = 0.7f..0.95f
+        val UPLOAD = 0.95f..1f
+    }
 }

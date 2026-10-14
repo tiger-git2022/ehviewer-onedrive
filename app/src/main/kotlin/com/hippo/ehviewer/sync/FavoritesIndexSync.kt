@@ -148,10 +148,12 @@ object FavoritesIndexSync {
     /**
      * Applies [transform] to the list of the signed in E-Hentai account (an empty one after switching accounts) and
      * saves the result; returns true if the list changed. With [user], a change made for another account than the
-     * signed in one is dropped.
+     * signed in one is dropped. [gids] are the galleries the change is about, also when it changes nothing in the list
+     * (a gallery an unfinished refresh has read but not saved yet).
      */
     private suspend fun update(
         user: String? = userKey(),
+        gids: Collection<Long> = emptyList(),
         transform: (CloudFavorites) -> CloudFavorites,
     ): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -161,7 +163,7 @@ object FavoritesIndexSync {
             // Pages of an unfinished refresh read before this change must not undo it
             val pending = loadCheckpointLocked()
             if (pending != null && pending.userKey == user) {
-                val touched = FavoritesIndexMerger.changedGids(before, after)
+                val touched = FavoritesIndexMerger.changedGids(before, after) + gids
                 if (!pending.touched.containsAll(touched)) saveCheckpointLocked(pending.copy(touched = pending.touched + touched))
             }
             saveLocked(after)
@@ -205,10 +207,11 @@ object FavoritesIndexSync {
     private fun updateLater(
         // The account the change was made with, not the one signed in when it runs
         user: String? = userKey(),
+        gids: Collection<Long> = emptyList(),
         transform: (CloudFavorites) -> CloudFavorites,
     ) {
         scope.launch {
-            runCatching { update(user, transform) }
+            runCatching { update(user, gids, transform) }
                 .onFailure { logcat(TAG, it) }
                 .onSuccess { changed -> if (changed && enabled) OneDriveSync.notifyFavoritesIndexChanged() }
         }
@@ -241,13 +244,13 @@ object FavoritesIndexSync {
     fun accountKey(): String? = userKey()
 
     /** A page of the cloud favorites requested with the E-Hentai account [user] was loaded in the favorites screen. */
-    fun onPageLoaded(favCat: Int, result: FavParserResult, user: String?) = updateLater(user, pageUpdate(favCat, result))
+    fun onPageLoaded(favCat: Int, result: FavParserResult, user: String?) = updateLater(user, transform = pageUpdate(favCat, result))
 
     /** A favorite was changed through [com.hippo.ehviewer.util.FavouriteStatusRouter]. */
     fun onFavoriteChanged(info: GalleryInfo) {
         val slot = info.favoriteSlot
         val gallery = info.toIndexed(slot)
-        updateLater { cloud ->
+        updateLater(gids = listOf(info.gid)) { cloud ->
             if (FavListUrlBuilder.isValidFavCat(slot)) {
                 FavoritesIndexMerger.upsert(cloud, listOf(gallery), now())
             } else {
@@ -259,13 +262,13 @@ object FavoritesIndexSync {
     /** Galleries added to cloud slot [slot] from the local favorites. */
     fun onAdded(infos: Collection<GalleryInfo>, slot: Int) {
         val galleries = infos.map { it.toIndexed(slot) }
-        updateLater { cloud -> FavoritesIndexMerger.upsert(cloud, galleries, now()) }
+        updateLater(gids = galleries.map { it.gid }) { cloud -> FavoritesIndexMerger.upsert(cloud, galleries, now()) }
     }
 
     /** Cloud favorites moved to [slot], or removed when [slot] is not a cloud slot. */
     fun onMoved(gids: Collection<Long>, slot: Int) {
         val list = gids.toList()
-        updateLater { cloud -> FavoritesIndexMerger.move(cloud, list, slot, now()) }
+        updateLater(gids = list) { cloud -> FavoritesIndexMerger.move(cloud, list, slot, now()) }
     }
 
     // endregion
@@ -310,7 +313,7 @@ object FavoritesIndexSync {
             val pages = ArrayList<IndexedGallery>()
             var pageCount = 0
             if (resumed.galleries.isNotEmpty()) logcat(TAG) { "Cloud favorites: going on from slot $slot, $read read" }
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total, StepProgress.READ)
             while (slot < CLOUD_SLOT_COUNT) {
                 if (counts.getOrElse(slot) { 0 } <= 0) {
                     slot++
@@ -325,7 +328,7 @@ object FavoritesIndexSync {
                 if (userKey() != user) return false
                 page.galleryInfoList.mapTo(pages) { it.toIndexed(readSlot) }
                 read += page.galleryInfoList.size
-                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
+                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total, StepProgress.READ)
                 next = page.next
                 if (next == null) slot++
                 pageCount++
@@ -393,7 +396,7 @@ object FavoritesIndexSync {
         lastCheckUser = user
         updateSettings(first)
         // The newest favorites are on the first page of "all"
-        update(user, pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
+        update(user, transform = pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
         if (unfinished || FavoritesIndexMerger.needsRefresh(current(), first.countArray, now())) {
             refreshCloudFavorites(SYNC_REFRESH_BUDGET_MILLIS)
         }
@@ -435,7 +438,7 @@ object FavoritesIndexSync {
             for ((i, chunk) in missing.chunked(TITLE_LOOKUP_CHUNK).withIndex()) {
                 if (budgetMillis != null && SystemClock.elapsedRealtime() - started > budgetMillis) break
                 if (i != 0) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
-                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size)
+                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size, StepProgress.TITLES)
                 val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
                 EhEngine.fillGalleryListByApi(infos)
                 val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
@@ -474,7 +477,7 @@ object FavoritesIndexSync {
         adoptRemote(remote)
         val signedIn = Settings.hasSignedIn.value
         if (signedIn) {
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites)
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, part = StepProgress.CHECK)
             runEhStep { checkCloudFavorites() }
         }
         val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
@@ -491,7 +494,7 @@ object FavoritesIndexSync {
             update { cloud -> FavoritesIndexMerger.pruneTitles(cloud, listed) }
         }
 
-        mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index)
+        mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.UPLOAD)
         for (attempt in 0 until MAX_ATTEMPTS) {
             val last = runCatching { readGzip(lastIndexFile, FavoritesIndex.serializer()) }.getOrNull()
             val storedETag = OneDriveSyncState.favoritesIndexETag.value
