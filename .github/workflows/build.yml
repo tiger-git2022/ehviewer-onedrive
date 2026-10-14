@@ -1,20 +1,31 @@
+# Builds the release APKs. On main every push becomes a numbered GitHub Release, like the Mihon fork
+# (tiger-git2022/mihon, .github/workflows/tiger-release.yml):
+#
+# Version scheme: tag/versionName "v<upstream versionName>-t<N>" (upstream without -SNAPSHOT), versionCode
+# "<upstream versionCode> * 1000 + N" (app/build.gradle.kts). N starts at 1 for every upstream version and increases
+# with each release of it, so versionCode always increases. The in-app updater compares versions the same way
+# (updater/ForkVersion.kt). Runs on other branches (workflow_dispatch) only build and test.
 name: Build APK
 
 on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.forgejo/**'
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Release even if this commit has already been released'
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Releases wait for each other, so build numbers never collide; test builds of other branches are replaced
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -38,17 +49,59 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # The release notes list the commits since the previous release
+          fetch-depth: 0
+
+      - name: Compute version
+        id: version
+        env:
+          FORCE: ${{ inputs.force }}
+          PUBLISH: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+
+          existing=$(git tag --points-at "$GITHUB_SHA" --list 'v*-t*' | head -n 1)
+          if [ "$PUBLISH" = "true" ] && [ -n "$existing" ] && [ "$FORCE" != "true" ]; then
+            echo "Commit ${GITHUB_SHA::7} was already released as $existing, skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          upstream_name=$(sed -nE 's/^[[:space:]]*"([0-9][0-9.]*)-SNAPSHOT".*/\1/p' app/build.gradle.kts | head -n 1)
+          upstream_code=$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+)$/\1/p' app/build.gradle.kts | head -n 1)
+          if [ -z "$upstream_name" ] || [ -z "$upstream_code" ]; then
+            echo "::error::Could not read the upstream version from app/build.gradle.kts"
+            exit 1
+          fi
+          last=$(git tag --list "v${upstream_name}-t*" | sed -E 's/^v.*-t//' | grep -E '^[0-9]+$' | sort -n | tail -n 1 || true)
+          build=$(( ${last:-0} + 1 ))
+          version_name="${upstream_name}-t${build}"
+          {
+            echo "skip=false"
+            echo "publish=$PUBLISH"
+            echo "upstream_name=$upstream_name"
+            echo "build=$build"
+            echo "version_name=$version_name"
+            echo "version_code=$(( upstream_code * 1000 + build ))"
+            echo "tag=v$version_name"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version v$version_name (publish: $PUBLISH)"
 
       - name: Setup Java
+        if: steps.version.outputs.skip != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version-file: .java-version
 
       - name: Setup Android SDK
+        if: steps.version.outputs.skip != 'true'
         uses: android-actions/setup-android@v4
 
       - name: Setup Rust
+        if: steps.version.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-10-07
@@ -56,14 +109,17 @@ jobs:
           components: rust-src
 
       - name: Rust Cache
+        if: steps.version.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "./app/src/main/rust"
 
       - name: Setup Gradle
+        if: steps.version.outputs.skip != 'true'
         uses: gradle/actions/setup-gradle@v6
 
       - name: CMake Cache
+        if: steps.version.outputs.skip != 'true'
         uses: actions/cache@v5
         with:
           path: app/.cxx
@@ -71,63 +127,98 @@ jobs:
           restore-keys: cmake-default-
 
       - name: Build
-        run: ./gradlew assembleDefaultRelease
+        if: steps.version.outputs.skip != 'true'
+        run: ./gradlew assembleDefaultRelease -Ptiger.buildNumber=${{ steps.version.outputs.build }}
 
       - name: Unit tests
+        if: steps.version.outputs.skip != 'true'
         run: ./gradlew testDefaultDebugUnitTest
 
       - name: Collect APKs
-        id: collect
+        if: steps.version.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          set -e
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-          else
-            VERSION="nightly-${GITHUB_SHA::7}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
           OUT=app/build/outputs/apk/default/release
           mkdir release
-          mv "$OUT/app-default-arm64-v8a-release.apk"   "release/EhViewer-$VERSION-arm64-v8a.apk"
-          mv "$OUT/app-default-universal-release.apk"   "release/EhViewer-$VERSION-universal.apk"
-          mv "$OUT/app-default-armeabi-v7a-release.apk" "release/EhViewer-$VERSION-armeabi-v7a.apk"
-          mv "$OUT/app-default-x86_64-release.apk"      "release/EhViewer-$VERSION-x86_64.apk"
+          # The in-app updater picks the APK whose name contains the ABI of the device, else the universal one
+          mv "$OUT/app-default-arm64-v8a-release.apk"   "release/EhViewer-$TAG-arm64-v8a.apk"
+          mv "$OUT/app-default-universal-release.apk"   "release/EhViewer-$TAG-universal.apk"
+          mv "$OUT/app-default-armeabi-v7a-release.apk" "release/EhViewer-$TAG-armeabi-v7a.apk"
+          mv "$OUT/app-default-x86_64-release.apk"      "release/EhViewer-$TAG-x86_64.apk"
           ls -lh release
 
       - name: Upload APKs
+        if: steps.version.outputs.skip != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: EhViewer-${{ steps.collect.outputs.version }}
+          name: EhViewer-${{ steps.version.outputs.tag }}
           path: release/*.apk
 
       - name: Upload mapping
+        if: steps.version.outputs.skip != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: mapping-${{ steps.collect.outputs.version }}
+          name: mapping-${{ steps.version.outputs.tag }}
           path: app/build/outputs/mapping/defaultRelease/*.txt
 
-      - name: Publish nightly release
-        if: github.ref == 'refs/heads/main'
+      # Notes are Chinese first, then English: PR titles are written as "中文 / English".
+      - name: Write release notes
+        if: steps.version.outputs.skip != 'true' && steps.version.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          previous=$(git describe --tags --abbrev=0 --match 'v*-t*' HEAD 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            commits=$(git rev-list --first-parent "$previous..HEAD")
+            changes=""
+          else
+            commits=$(git rev-list --first-parent -n 20 HEAD)
+            changes="第一个编号版本，下面是最近的提交。/ First numbered release, the latest commits:"$'\n\n'
+          fi
+          for commit in $commits; do
+            subject=$(git log -1 --format=%s "$commit")
+            # A merge commit of a pull request has the pull request title as its first body line
+            if [ "$(git rev-list --parents -n 1 "$commit" | wc -w)" -gt 2 ]; then
+              title=$(git log -1 --format=%b "$commit" | sed -n '/./{p;q}')
+              subject="${title:-$subject}"
+            fi
+            changes+="- $subject (${commit::7})"$'\n'
+          done
+          cat > release-notes.md <<EOF
+          基于 [EhViewer](https://codeberg.org/EhViewer/EhViewer)，附加 OneDrive 同步（设置、收藏、历史、阅读进度、快速搜索、搜索建议）和给 Mihon 改版用的收藏清单。
+
+          ### 本次更新
+          ${changes:-- 无代码改动}
+          ### 下载
+          - 大多数手机选 \`EhViewer-$TAG-arm64-v8a.apk\`
+          - 不确定就选通用版 \`EhViewer-$TAG-universal.apk\`
+
+          包名 \`moe.tarsin.ehviewer\`，签名和官方版相同，可以直接覆盖安装，数据保留。versionCode $VERSION_CODE。
+
+          ---
+
+          Based on [EhViewer](https://codeberg.org/EhViewer/EhViewer), with OneDrive sync and a favorites list for the Mihon fork. The changes are listed above.
+
+          **Download:** most phones take \`EhViewer-$TAG-arm64-v8a.apk\`; if unsure, the universal \`EhViewer-$TAG-universal.apk\`. Package \`moe.tarsin.ehviewer\`, signed like the official build, so it installs over it and keeps the data. versionCode $VERSION_CODE.
+          EOF
+          cat release-notes.md
+
+      - name: Publish GitHub Release
+        if: steps.version.outputs.skip != 'true' && steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release delete nightly --cleanup-tag --yes || true
-          gh release create nightly release/*.apk \
-            --prerelease \
+          set -euo pipefail
+          gh release create "$TAG" release/*.apk \
             --target "$GITHUB_SHA" \
-            --title "Nightly ${GITHUB_SHA::7}" \
-            --notes "main 分支最新自动构建（${GITHUB_SHA::7}）。手机一般下载 arm64-v8a 版本；不确定就下载 universal。
-
-          Latest automatic build of main (${GITHUB_SHA::7}). Most phones take the arm64-v8a APK; if unsure, take universal."
-          .github/scripts/upload-update-manifest.sh nightly
-
-      - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" release/*.apk \
-            --title "EhViewer $GITHUB_REF_NAME" \
-            --notes "手机一般下载 arm64-v8a 版本；不确定就下载 universal。/ Most phones take the arm64-v8a APK; if unsure, take universal." \
-            --generate-notes
-          .github/scripts/upload-update-manifest.sh "$GITHUB_REF_NAME"
+            --title "EhViewer $TAG" \
+            --notes-file release-notes.md \
+            --latest
+          .github/scripts/upload-update-manifest.sh "$TAG"
+          # The single nightly pre-release of the earlier scheme is replaced by these releases
+          gh release delete nightly --cleanup-tag --yes || true

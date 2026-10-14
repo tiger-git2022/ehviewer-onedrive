@@ -18,7 +18,7 @@
   - 这个 keystore 和官方发布版用的是同一个，所以用户可以**直接覆盖安装到官方 EhViewer 上，数据不丢**；
   - versionCode 不要调低（当前是 180063）。
 - **CI 必须保持通过**：
-  - `.github/workflows/build.yml` 在每次 push 到 `main` 时运行 `./gradlew assembleDefaultRelease`，并发布 `nightly` 预发布版；
+  - `.github/workflows/build.yml` 在每次 push 到 `main` 时运行 `./gradlew assembleDefaultRelease -Ptiger.buildNumber=N`，并发布带编号的版本 `v<上游版本>-tN`（和 Mihon 改版的发布方式一样，旧版本保留，附上距上一版的更新内容）；
   - 每次改动后都要检查 Actions 运行结果。
 - **新增文案**至少加到这两个文件：
   - `core/i18n/src/commonMain/moko-resources/base/strings.xml`（英文）
@@ -315,7 +315,7 @@ suggestions.json.gz  List<{query, date}>          // search_database.db 中的 s
 
 - `app/build.gradle.kts` 第 50 行左右的 `repoName`：现在只去掉 `https://codeberg.org/` 前缀，需要同时去掉 `https://github.com/`。
 - `updater/AppUpdater.kt` 现在用的是 Codeberg API（`https://codeberg.org/api/v1/repos/...`）。二选一：
-  - 改成用 GitHub Releases API 检查 `tiger-git2022/ehviewer-onedrive` 的更新，包括 `nightly` 预发布版和 `v*` 标签版，APK 文件名形如 `EhViewer-<版本>-arm64-v8a.apk`；
+  - 改成用 GitHub Releases API 检查 `tiger-git2022/ehviewer-onedrive` 的更新，只看最新的编号版本，按 `ForkVersion` 比较版本号，APK 文件名形如 `EhViewer-v<版本>-arm64-v8a.apk`；
   - 或者默认**关闭**从官方上游检查更新，避免被官方版覆盖。
 - `ui/settings/AboutScreen.kt` 的 `REPO_URL` 现在指向 Codeberg，改成 GitHub。
 
