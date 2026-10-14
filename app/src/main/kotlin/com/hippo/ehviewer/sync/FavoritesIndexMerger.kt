@@ -86,6 +86,26 @@ object FavoritesIndexMerger {
         return cloud.copy(updatedAt = now, refreshedAt = now, slotNames = names, galleries = merged)
     }
 
+    /** Galleries added, removed or moved to another slot between [before] and [after]. */
+    fun changedGids(before: CloudFavorites, after: CloudFavorites): Set<Long> {
+        if (before.galleries === after.galleries) return emptySet()
+        val old = before.galleries.associate { it.gid to it.slot }
+        val new = after.galleries.associate { it.gid to it.slot }
+        return (old.keys + new.keys).filterTo(HashSet()) { old[it] != new[it] }
+    }
+
+    /** Pages of an unfinished refresh: their galleries are added to the known list, [touched] ones are left alone. */
+    fun withRefreshPages(cloud: CloudFavorites, galleries: List<IndexedGallery>, touched: Set<Long>, now: Long): CloudFavorites = upsert(cloud, galleries.filterNot { it.gid in touched }, now)
+
+    /**
+     * End of a full refresh: the pages read replace the known list, except for the [touched] galleries changed in the
+     * app meanwhile, which keep their known state.
+     */
+    fun completeRefresh(cloud: CloudFavorites, galleries: List<IndexedGallery>, touched: Set<Long>, slotNames: List<String>, now: Long): CloudFavorites {
+        val kept = cloud.galleries.filter { it.gid in touched }
+        return replaceAll(cloud, galleries.filterNot { it.gid in touched } + kept, slotNames, now)
+    }
+
     /** Adds the Japanese titles looked up (gid -> title, empty if the gallery has none). */
     fun withJapaneseTitles(cloud: CloudFavorites, titles: Map<Long, String>): CloudFavorites {
         val added = titles.filter { (gid, title) -> cloud.japaneseTitles[gid] != title }

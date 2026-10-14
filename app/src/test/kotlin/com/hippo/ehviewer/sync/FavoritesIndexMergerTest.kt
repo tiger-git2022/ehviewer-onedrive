@@ -128,4 +128,36 @@ class FavoritesIndexMergerTest {
         val index = FavoritesIndexMerger.buildIndex(emptyList(), withTitles, "dev", "", now = 1)
         assertEquals(mapOf(1L to "一"), FavoritesIndexMerger.pruneTitles(withTitles, index).japaneseTitles)
     }
+
+    @Test
+    fun changedGidsAreTheAddedRemovedAndMovedOnes() {
+        val before = CloudFavorites(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 2)))
+        val after = CloudFavorites(galleries = listOf(gallery(1, slot = 0, title = "renamed"), gallery(2, slot = 4), gallery(4, slot = 0)))
+        assertEquals(setOf(2L, 3L, 4L), FavoritesIndexMerger.changedGids(before, after))
+        assertEquals(emptySet(), FavoritesIndexMerger.changedGids(before, before))
+    }
+
+    @Test
+    fun unfinishedRefreshOnlyAddsAndLeavesTouchedGalleriesAlone() {
+        val cloud = CloudFavorites(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 5)))
+        // 2 was moved to slot 5 in the app after its page was read in slot 1
+        val pages = listOf(gallery(2, slot = 1), gallery(3, slot = 1))
+        val partial = FavoritesIndexMerger.withRefreshPages(cloud, pages, touched = setOf(2L), now = 10)
+        assertEquals(listOf(1L to 0, 2L to 5, 3L to 1), partial.galleries.map { it.gid to it.slot })
+        // Nothing removed and not marked as refreshed before the last page
+        assertEquals(0, partial.refreshedAt)
+    }
+
+    @Test
+    fun completedRefreshReplacesTheListButKeepsTouchedGalleries() {
+        val cloud = CloudFavorites(
+            slotNames = names,
+            galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 5), gallery(9, slot = 3)),
+        )
+        // 1 is gone on the website, 2 moved in the app after its page was read, 4 removed in the app after its page
+        val pages = listOf(gallery(2, slot = 1), gallery(3, slot = 1), gallery(4, slot = 2), gallery(9, slot = 3))
+        val done = FavoritesIndexMerger.completeRefresh(cloud, pages, touched = setOf(2L, 4L), names, now = 20)
+        assertEquals(listOf(3L to 1, 9L to 3, 2L to 5), done.galleries.map { it.gid to it.slot })
+        assertEquals(20, done.refreshedAt)
+    }
 }

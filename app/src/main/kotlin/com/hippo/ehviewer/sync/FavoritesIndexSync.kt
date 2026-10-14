@@ -52,8 +52,22 @@ object FavoritesIndexSync {
     private const val MAX_ATTEMPTS = 3
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
     private const val PAGE_INTERVAL_MILLIS = 1_000L
-    private const val TITLE_LOOKUPS_PER_SYNC = 500
-    private const val TITLE_LOOKUP_CHUNK = 100
+
+    /** A refresh started by a sync reads pages this long, then goes on in the next sync (background work gets 10 min). */
+    private const val SYNC_REFRESH_BUDGET_MILLIS = 4 * 60_000L
+
+    /** Pages read between two saves of the refresh checkpoint. */
+    private const val CHECKPOINT_PAGES = 5
+
+    /** An unfinished refresh older than this starts again: its first pages are too old. */
+    private const val CHECKPOINT_MAX_AGE_MILLIS = 3 * 24 * 60 * 60_000L
+
+    private const val TITLE_LOOKUPS_PER_SYNC = 5_000
+    private const val TITLE_LOOKUP_BUDGET_MILLIS = 2 * 60_000L
+
+    // One batch of EhEngine.fillGalleryListByApi (5 requests of 25 galleries) and its pause before the next batch
+    private const val TITLE_LOOKUP_CHUNK = 125
+    private const val TITLE_LOOKUP_INTERVAL_MILLIS = 5_000L
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
@@ -68,6 +82,7 @@ object FavoritesIndexSync {
     private val storeFile get() = File(appCtx.filesDir, "cloud_favorites.json.gz")
     private val syncDir get() = File(appCtx.filesDir, "onedrive_sync")
     private val lastIndexFile get() = File(syncDir, "favorites_index.json.gz")
+    private val checkpointFile get() = File(appCtx.filesDir, "cloud_favorites_refresh.json.gz")
 
     @Volatile
     private var cache: CloudFavorites? = null
@@ -80,11 +95,9 @@ object FavoritesIndexSync {
     @Volatile
     private var lastCheckUser: String? = null
 
-    /**
-     * Changes made while a full refresh reads its pages, replayed on top of its result so the older pages do not undo
-     * them. Null when no refresh runs. Guarded by [mutex].
-     */
-    private var journal: MutableList<(CloudFavorites) -> CloudFavorites>? = null
+    /** The unfinished refresh, see [CloudRefreshCheckpoint]. Guarded by [mutex], read once from [checkpointFile]. */
+    private var checkpoint: CloudRefreshCheckpoint? = null
+    private var checkpointLoaded = false
 
     private val mutableRefreshing = MutableStateFlow(false)
 
@@ -142,9 +155,39 @@ object FavoritesIndexSync {
     ): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (userKey() != user) return@withLock false
-            journal?.add(transform)
-            saveLocked(transform(FavoritesIndexMerger.forUser(loadLocked(), userKey())))
+            val before = FavoritesIndexMerger.forUser(loadLocked(), user)
+            val after = transform(before)
+            // Pages of an unfinished refresh read before this change must not undo it
+            val pending = loadCheckpointLocked()
+            if (pending != null && pending.userKey == user) {
+                val touched = FavoritesIndexMerger.changedGids(before, after)
+                if (!pending.touched.containsAll(touched)) saveCheckpointLocked(pending.copy(touched = pending.touched + touched))
+            }
+            saveLocked(after)
         }
+    }
+
+    private fun loadCheckpointLocked(): CloudRefreshCheckpoint? {
+        if (!checkpointLoaded) {
+            checkpointLoaded = true
+            checkpoint = runCatching { readGzip(checkpointFile, CloudRefreshCheckpoint.serializer()) }
+                .onFailure { if (checkpointFile.exists()) logcat(TAG, it) }
+                .getOrNull()
+                ?.takeIf { it.version <= FAVORITES_INDEX_VERSION }
+        }
+        return checkpoint
+    }
+
+    private fun saveCheckpointLocked(new: CloudRefreshCheckpoint?) {
+        checkpoint = new
+        checkpointLoaded = true
+        if (new == null) checkpointFile.delete() else writeGzip(checkpointFile, CloudRefreshCheckpoint.serializer(), new)
+    }
+
+    private fun CloudRefreshCheckpoint.usableFor(user: String?, now: Long) = userKey == user && now - startedAt in 0..CHECKPOINT_MAX_AGE_MILLIS
+
+    private suspend fun hasUnfinishedRefresh(user: String?): Boolean = withContext(Dispatchers.IO) {
+        mutex.withLock { loadCheckpointLocked()?.usableFor(user, now()) == true }
     }
 
     private fun saveLocked(new: CloudFavorites): Boolean {
@@ -228,58 +271,106 @@ object FavoritesIndexSync {
 
     // region E-Hentai
 
-    /** Reads all cloud favorites again, page by page. Called by a sync or by the user. */
-    suspend fun refreshCloudFavorites(): Unit = withContext(Dispatchers.IO) {
+    /**
+     * Reads all cloud favorites again, page by page, going on from an unfinished refresh. With [budgetMillis] it stops
+     * after that long and the next sync goes on; returns true when all pages were read. Called by a sync or by the user.
+     */
+    suspend fun refreshCloudFavorites(budgetMillis: Long? = null): Boolean = withContext(Dispatchers.IO) {
         // A refresh asked while one runs is answered by the running one
         if (refreshMutex.isLocked) {
             refreshMutex.withLock { }
-            return@withContext
+            return@withContext !hasUnfinishedRefresh(userKey())
         }
-        refreshMutex.withLock { refreshLocked() }
+        refreshMutex.withLock { refreshLocked(budgetMillis) }
     }
 
-    private suspend fun refreshLocked() {
+    private suspend fun refreshLocked(budgetMillis: Long?): Boolean {
+        val started = SystemClock.elapsedRealtime()
         mutableRefreshing.value = true
-        withContext(Dispatchers.IO) { mutex.withLock { journal = ArrayList() } }
         try {
             val user = userKey()
             val first = EhEngine.getFavoritesPage(FavListUrlBuilder().build())
             // Each page is checked: another account, even one signed in and out again, makes the pages unusable
-            if (userKey() != user) return
+            if (userKey() != user) return false
             val slotNames = first.catArray
+            val counts = first.countArray
             updateSettings(first)
-            val galleries = ArrayList<IndexedGallery>()
-            val total = first.countArray.sum()
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, 0, total)
-            first.countArray.forEachIndexed { slot, count ->
-                if (count <= 0) return@forEachIndexed
-                var next: String? = null
-                do {
-                    delay(PAGE_INTERVAL_MILLIS)
-                    val cursor = next
-                    val url = FavListUrlBuilder(favCat = slot).apply { if (cursor != null) setIndex(cursor, isNext = true) }.build()
-                    val page = EhEngine.getFavoritesPage(url)
-                    if (userKey() != user) return
-                    page.galleryInfoList.mapTo(galleries) { it.toIndexed(slot) }
-                    mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, galleries.size, total)
-                    next = page.next
-                } while (next != null)
-            }
-            withContext(Dispatchers.IO) {
+            val resumed = withContext(Dispatchers.IO) {
                 mutex.withLock {
-                    val changes = journal.orEmpty()
-                    journal = null
-                    // Signed in to another account meanwhile: these pages belong to the previous one
-                    if (userKey() != user) return@withLock
-                    val refreshed = FavoritesIndexMerger.replaceAll(FavoritesIndexMerger.forUser(loadLocked(), user), galleries, slotNames, now())
-                    saveLocked(changes.fold(refreshed) { cloud, change -> change(cloud) })
+                    val now = now()
+                    loadCheckpointLocked()?.takeIf { it.usableFor(user, now) }
+                        ?: CloudRefreshCheckpoint(userKey = user, startedAt = now).also { saveCheckpointLocked(it) }
                 }
             }
-            logcat(TAG) { "Cloud favorites refreshed: ${galleries.size} galleries" }
+            var slot = resumed.slot
+            var next = resumed.next
+            var read = resumed.galleries.size
+            val total = counts.sum()
+            val pages = ArrayList<IndexedGallery>()
+            var pageCount = 0
+            if (resumed.galleries.isNotEmpty()) logcat(TAG) { "Cloud favorites: going on from slot $slot, $read read" }
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
+            while (slot < CLOUD_SLOT_COUNT) {
+                if (counts.getOrElse(slot) { 0 } <= 0) {
+                    slot++
+                    next = null
+                    continue
+                }
+                delay(PAGE_INTERVAL_MILLIS)
+                val cursor = next
+                val readSlot = slot
+                val url = FavListUrlBuilder(favCat = readSlot).apply { if (cursor != null) setIndex(cursor, isNext = true) }.build()
+                val page = EhEngine.getFavoritesPage(url)
+                if (userKey() != user) return false
+                page.galleryInfoList.mapTo(pages) { it.toIndexed(readSlot) }
+                read += page.galleryInfoList.size
+                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
+                next = page.next
+                if (next == null) slot++
+                pageCount++
+                val outOfTime = budgetMillis != null && SystemClock.elapsedRealtime() - started > budgetMillis
+                if (pageCount % CHECKPOINT_PAGES == 0 || next == null || outOfTime) {
+                    if (!saveRefreshPages(user, slot, next, pages)) return false
+                    pages.clear()
+                    if (outOfTime && slot < CLOUD_SLOT_COUNT) {
+                        logcat(TAG) { "Cloud favorites: $read of $total read, the next sync goes on" }
+                        // Goes on in a sync after this one
+                        OneDriveSync.notifyFavoritesIndexChanged()
+                        return false
+                    }
+                }
+            }
+            return completeRefresh(user, slotNames)
         } finally {
-            withContext(NonCancellable + Dispatchers.IO) { mutex.withLock { journal = null } }
             mutableRefreshing.value = false
             mutableProgress.value = null
+        }
+    }
+
+    /**
+     * Saves the position of the refresh and adds the galleries of its last [pages] to the known list, so the index
+     * shows them before the refresh ends. False if the refresh no longer belongs to the signed in account.
+     */
+    private suspend fun saveRefreshPages(user: String?, slot: Int, next: String?, pages: List<IndexedGallery>): Boolean = withContext(NonCancellable + Dispatchers.IO) {
+        mutex.withLock {
+            val pending = loadCheckpointLocked()
+            if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
+            saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages))
+            saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now()))
+            true
+        }
+    }
+
+    private suspend fun completeRefresh(user: String?, slotNames: List<String>): Boolean = withContext(NonCancellable + Dispatchers.IO) {
+        mutex.withLock {
+            val pending = loadCheckpointLocked()
+            // Signed in to another account meanwhile: these pages belong to the previous one
+            if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
+            val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
+            saveLocked(FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now()))
+            saveCheckpointLocked(null)
+            logcat(TAG) { "Cloud favorites refreshed: ${pending.galleries.size} galleries" }
+            true
         }
     }
 
@@ -293,7 +384,8 @@ object FavoritesIndexSync {
     private suspend fun checkCloudFavorites() {
         val elapsed = SystemClock.elapsedRealtime()
         val user = userKey()
-        if (lastCheck != 0L && lastCheckUser == user && elapsed - lastCheck < CHECK_INTERVAL_MILLIS) return
+        val unfinished = hasUnfinishedRefresh(user)
+        if (!unfinished && lastCheck != 0L && lastCheckUser == user && elapsed - lastCheck < CHECK_INTERVAL_MILLIS) return
         val first = EhEngine.getFavoritesPage(FavListUrlBuilder().build())
         if (userKey() != user) return
         lastCheck = elapsed
@@ -301,23 +393,29 @@ object FavoritesIndexSync {
         updateSettings(first)
         // The newest favorites are on the first page of "all"
         update(user, pageUpdate(FavListUrlBuilder.FAV_CAT_ALL, first))
-        if (FavoritesIndexMerger.needsRefresh(current(), first.countArray, now())) {
-            refreshCloudFavorites()
+        if (unfinished || FavoritesIndexMerger.needsRefresh(current(), first.countArray, now())) {
+            refreshCloudFavorites(SYNC_REFRESH_BUDGET_MILLIS)
         }
     }
 
-    /** Looks up the Japanese titles the index does not have yet, a limited number per sync. */
+    /** Looks up the Japanese titles the index does not have yet, for a limited time per sync. */
     private suspend fun lookUpJapaneseTitles(index: FavoritesIndex) {
         val missing = FavoritesIndexMerger.missingJapaneseTitles(index, TITLE_LOOKUPS_PER_SYNC)
         if (missing.isEmpty()) return
-        val infos = missing.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
-        infos.chunked(TITLE_LOOKUP_CHUNK).forEachIndexed { index, chunk ->
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, index * TITLE_LOOKUP_CHUNK, infos.size)
-            EhEngine.fillGalleryListByApi(chunk)
+        val started = SystemClock.elapsedRealtime()
+        var found = 0
+        for ((i, chunk) in missing.chunked(TITLE_LOOKUP_CHUNK).withIndex()) {
+            if (SystemClock.elapsedRealtime() - started > TITLE_LOOKUP_BUDGET_MILLIS) break
+            if (i != 0) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size)
+            val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
+            EhEngine.fillGalleryListByApi(infos)
+            val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
+            // Saved per batch: a failed request later keeps what was found
+            update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
+            found += titles.size
         }
-        val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
-        update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
-        logcat(TAG) { "Looked up ${titles.size} Japanese titles" }
+        logcat(TAG) { "Looked up $found of ${missing.size} Japanese titles" }
     }
 
     // endregion

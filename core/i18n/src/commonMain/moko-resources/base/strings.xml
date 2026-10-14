@@ -685,7 +685,7 @@
     <string name="onedrive_sync_favorites_index">Share favorites with other apps</string>
     <string name="onedrive_sync_favorites_index_summary">Uploads a list of local and cloud favorites (titles and slots) to ehviewer/export/, so the Mihon fork signed in to the same account can mark them. Turning this off deletes the uploaded list on the next sync.</string>
     <string name="onedrive_sync_favorites_index_refresh">Read cloud favorites again</string>
-    <string name="onedrive_sync_favorites_index_refresh_summary">Normally a sync checks the slot counts with one request and reads all pages only when they changed. Use this after changing favorites on the website.</string>
+    <string name="onedrive_sync_favorites_index_refresh_summary">Normally a sync checks the slot counts with one request and reads all pages only when they changed. Use this after changing favorites on the website. A read cut short goes on where it stopped.</string>
     <string name="onedrive_sync_favorites_index_refreshing">Reading cloud favorites page by page…</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">Sign in to E-Hentai first</string>
     <string name="onedrive_sync_favorites_index_failed">Favorites list for other apps failed: %s</string>
