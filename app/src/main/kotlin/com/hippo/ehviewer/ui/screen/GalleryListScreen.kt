@@ -111,7 +111,8 @@ import com.hippo.ehviewer.ui.awaitSelectDate
 import com.hippo.ehviewer.ui.destinations.ProgressScreenDestination
 import com.hippo.ehviewer.ui.doGalleryInfoAction
 import com.hippo.ehviewer.ui.main.AdvancedSearchOption
-import com.hippo.ehviewer.ui.main.AvatarIcon
+import com.hippo.ehviewer.ui.main.CHINESE_LANGUAGE_FILTER
+import com.hippo.ehviewer.ui.main.ChineseOnlyButton
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
@@ -506,7 +507,20 @@ fun AnimatedVisibilityScope.GalleryListScreen(
                     Icon(imageVector = Icons.Outlined.Bookmarks, contentDescription = stringResource(id = R.string.quick_search))
                 }
             }
-            AvatarIcon()
+            // Fork: Chinese only, refreshing the list; the image limits moved to Settings → EH
+            ChineseOnlyButton(
+                checked = languageFilter == CHINESE_LANGUAGE_FILTER,
+                onCheckedChange = { on ->
+                    languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1
+                    when (urlBuilder.mode) {
+                        // From the first page; the other lists have no language
+                        MODE_NORMAL, MODE_SUBSCRIPTION, MODE_TAG, MODE_UPLOADER -> {
+                            urlBuilder = urlBuilder.copy(language = languageFilter).apply { setRange(0) }
+                            data.refresh()
+                        }
+                    }
+                },
+            )
         },
         filter = {
             SearchFilter(

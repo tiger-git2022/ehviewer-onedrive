@@ -148,13 +148,22 @@ data class ListUrlBuilder(
         }
     }
 
+    /**
+     * Fork: the language of this list, else the language filter of the search options: a tag opened from a gallery
+     * follows "汉" next to the search bar too.
+     */
+    private val effectiveLanguage: Int
+        get() = language.takeIf { it != -1 } ?: Settings.languageFilter.value
+
     fun build(): String = when (mode) {
         MODE_NORMAL, MODE_SUBSCRIPTION -> ehUrl(EhUrl.WATCHED_PATH.takeIf { mode == MODE_SUBSCRIPTION }) {
             val category = if (!Settings.hasSignedIn.value && category <= 0) EhUtils.NON_H else category
             if (category > 0) {
                 addQueryParameter("f_cats", "${EhUtils.invCategory(category)}")
             }
-            val query = keyword?.let { keyword ->
+            // Fork: the language filter also applies to the list without a search ("汉" next to the search bar)
+            val language = effectiveLanguage
+            val query = (keyword ?: "".takeIf { language != -1 })?.let { keyword ->
                 if (language == -1 || "gid:" in keyword || "l:" in keyword || "language:" in keyword) {
                     keyword
                 } else {
@@ -206,7 +215,24 @@ data class ListUrlBuilder(
                 }
             }
         }.buildString()
-        MODE_UPLOADER, MODE_TAG -> {
+        MODE_UPLOADER, MODE_TAG -> if (effectiveLanguage != -1) {
+            // Fork: a tag or an uploader in one language is a search, the tag pages have no language filter
+            ehUrl {
+                val tag = requireNotNull(keyword)
+                val term = if (mode == MODE_UPLOADER) {
+                    "uploader:\"$tag\""
+                } else {
+                    val ns = tag.substringBefore(':', "")
+                    val value = tag.substringAfter(':')
+                    if (ns.isEmpty()) "\"$value$\"" else "$ns:\"$value$\""
+                }
+                addQueryParameter("f_search", "$term ${GalleryInfo.S_LANG_TAGS[effectiveLanguage]}")
+                addQueryParameterIfNotBlank("prev", prev)
+                addQueryParameterIfNotBlank("next", next)
+                addQueryParameterIfNotBlank("seek", jumpTo)
+                addQueryParameterIfNotBlank("range", range.takeIf { it > 0 }?.toString())
+            }.buildString()
+        } else {
             val path = if (mode == MODE_UPLOADER) "uploader" else "tag"
             ehUrl([path, requireNotNull(keyword)]) {
                 addQueryParameterIfNotBlank("prev", prev)
