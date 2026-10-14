@@ -308,8 +308,8 @@ object FavoritesIndexMerger {
     /**
      * The default title of the archive among [archives] (default title to Japanese title) whose Japanese title is the
      * one of [gallery], "" if none is. Square bracket groups (circle, translators, language: the raw copy of a
-     * translation has others), a leading event group, spaces and punctuation aside; round brackets inside the title
-     * ("(前編)", "(後編)") must agree.
+     * translation has others), a leading event group, spaces and punctuation aside; other round brackets ("(前編)",
+     * "(後編)") must agree.
      */
     fun pandaDefaultTitle(gallery: IndexedGallery, archives: List<Pair<String?, String?>>): String {
         val wanted = matchKey(gallery.titleJpn?.takeIf { it.isNotEmpty() } ?: gallery.title.orEmpty())
@@ -334,7 +334,9 @@ object FavoritesIndexMerger {
     }
 
     private val SQUARE_GROUPS = Regex("""\[[^\]]*\]|【[^】]*】|［[^］]*］""")
-    private val LEADING_ROUND_GROUPS = Regex("""^\s*(?:\([^)]*\)|（[^）]*）)\s*""")
+
+    // An event: "(C102)", "(COMIC1☆23)", "(紅楼夢19)" all have a number, "(前編)" has none and stays
+    private val LEADING_ROUND_GROUPS = Regex("""^\s*(?:\([^)]*\d[^)]*\)|（[^）]*\d[^）]*）)\s*""")
 
     private fun matchKey(title: String) = compact(title.substringBefore('|').replace(LEADING_ROUND_GROUPS, "").replace(SQUARE_GROUPS, " "))
 
