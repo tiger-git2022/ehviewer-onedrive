@@ -20,12 +20,16 @@ import com.ehviewer.core.util.unescapeXml
 import com.hippo.ehviewer.client.EhUtils.getCategory
 import com.hippo.ehviewer.client.getThumbKey
 import com.hippo.ehviewer.client.parseAs
+import com.hippo.ehviewer.download.GallerySizes
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 object GalleryApiParser {
     fun parse(body: String, galleryInfoList: List<GalleryInfo>) {
-        body.parseAs<Result>().items.forEach { item ->
+        val items = body.parseAs<Result>().items
+        // Fork: sizes for the download list
+        GallerySizes.remember(items.filter { it.error == null }.associate { it.gid to it.filesize })
+        items.forEach { item ->
             // Fork: a gallery the API cannot return comes as {"gid", "error"} and must not fail the others
             if (item.error != null) return@forEach
             val gi = galleryInfoList.find { it.gid == item.gid } ?: return@forEach
@@ -63,6 +67,8 @@ object GalleryApiParser {
         val pages: Int = 0,
         val rating: Float = 0f,
         val tags: List<String> = emptyList(),
+        // Fork: bytes of the original archive
+        val filesize: Long = 0,
         val error: String? = null,
     )
 }

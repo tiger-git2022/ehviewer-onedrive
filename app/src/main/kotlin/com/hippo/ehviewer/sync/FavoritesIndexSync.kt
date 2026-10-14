@@ -221,6 +221,7 @@ object FavoritesIndexSync {
         if (new == loadLocked()) return false
         cache = new
         writeGzip(storeFile, CloudFavorites.serializer(), new)
+        AutoDownload.onCloudFavoritesSaved(new)
         return true
     }
 
@@ -268,6 +269,9 @@ object FavoritesIndexSync {
 
     /** The E-Hentai account to pass to [onPageLoaded], taken when a page is requested. */
     fun accountKey(): String? = userKey()
+
+    /** The cloud favorites known for the signed in account, see [AutoDownload]. */
+    suspend fun cloudFavorites(): CloudFavorites = current()
 
     /** A page of the cloud favorites requested with the E-Hentai account [user] was loaded in the favorites screen. */
     fun onPageLoaded(favCat: Int, result: FavParserResult, user: String?) = updateLater(user, transform = pageUpdate(favCat, result))

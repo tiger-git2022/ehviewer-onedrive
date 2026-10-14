@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -155,12 +156,16 @@ fun DownloadCard(
                     GalleryListCardRating(rating = info.rating, modifier = Modifier.padding(top = 1.dp, bottom = 3.dp))
                     val categoryColor = EhUtils.getCategoryColor(info.category)
                     val categoryText = EhUtils.getCategory(info.category).uppercase()
-                    Text(
-                        text = categoryText,
-                        modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 2.dp, horizontal = 8.dp),
-                        color = EhUtils.getCategoryTextColor(categoryColor),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = categoryText,
+                            modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 2.dp, horizontal = 8.dp),
+                            color = EhUtils.getCategoryTextColor(categoryColor),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        // Fork: the size, to decide whether to download it
+                        DownloadSizeText(info = info, state = downloadState, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 val running = downloadState == DownloadInfo.STATE_WAIT || downloadState == DownloadInfo.STATE_DOWNLOAD

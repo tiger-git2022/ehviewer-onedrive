@@ -302,7 +302,11 @@ object OneDriveSync {
                 OneDriveSyncState.autoSyncIntervalMinutes.changesFlow(),
                 OneDriveSyncState.wifiOnly.changesFlow(),
                 OneDriveSyncState.exportFavoritesIndex.changesFlow(),
-            ).collect { updateOneDriveSyncWork(appCtx) }
+            ).collect {
+                updateOneDriveSyncWork(appCtx)
+                // Signed out or the index turned off ends auto download; back on, it starts from then
+                AutoDownload.onOptionChanged()
+            }
         }
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             LifecycleEventObserver { _, event ->
