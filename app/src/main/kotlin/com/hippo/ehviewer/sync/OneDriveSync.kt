@@ -301,6 +301,7 @@ object OneDriveSync {
                 OneDriveSyncState.autoSync.changesFlow(),
                 OneDriveSyncState.autoSyncIntervalMinutes.changesFlow(),
                 OneDriveSyncState.wifiOnly.changesFlow(),
+                OneDriveSyncState.exportFavoritesIndex.changesFlow(),
             ).collect { updateOneDriveSyncWork(appCtx) }
         }
         ProcessLifecycleOwner.get().lifecycle.addObserver(
@@ -308,6 +309,8 @@ object OneDriveSync {
                 when (event) {
                     Lifecycle.Event.ON_START -> {
                         inForeground = true
+                        // Started now, the cloud favorites work runs in the foreground with its notification
+                        scope.launch { runCatching { resumeWaitingCloudFavoritesWork(appCtx) }.onFailure { logcat(TAG, it) } }
                         if (!launchSyncDone) {
                             launchSyncDone = true
                             scope.launch { syncOnLaunch() }

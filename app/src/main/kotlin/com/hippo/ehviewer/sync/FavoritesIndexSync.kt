@@ -321,10 +321,13 @@ object FavoritesIndexSync {
             // A check of a sync may start another refresh meanwhile: it goes on here
             do {
                 if (readPages(widen, uploadIfDue)) OneDriveSync.uploadFavoritesIndex()
+                if (widen) OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesFullRequested] = false }
                 widen = false
                 lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, progress = mutableWorkProgress, wait = true, onBatch = uploadIfDue)
             } while (hasUnfinishedRefresh(userKey()) && ++rounds < 3)
             OneDriveSync.uploadFavoritesIndex()
+            // The upload failed (no network, OneDrive unreachable): the work tries again, whatever the auto sync options
+            check(!enabled || !OneDriveSyncState.favoritesIndexDirty.value) { appCtx.getString(R.string.onedrive_sync_favorites_index_upload_failed) }
         } finally {
             mutableWorking.value = false
             mutableWorkProgress.value = null
@@ -488,6 +491,22 @@ object FavoritesIndexSync {
 
     /** Reads the cloud favorites and looks up every missing Japanese title again in the background. */
     fun refreshInBackground() = enqueueCloudFavoritesWork(appCtx, full = true)
+
+    /** How far the cloud favorites are read ([read] of [total] when a refresh is [unfinished]) and looked up. */
+    data class Status(val unfinished: Boolean = false, val read: Int = 0, val total: Int = 0, val missingTitles: Int = 0)
+
+    suspend fun status(): Status = withContext(Dispatchers.IO) {
+        if (!Settings.hasSignedIn.value) return@withContext Status()
+        val user = userKey()
+        val pending = mutex.withLock { loadCheckpointLocked()?.takeIf { it.userKey == user } }
+        val missing = FavoritesIndexMerger.missingJapaneseTitles(currentIndex(), Int.MAX_VALUE).size
+        Status(
+            unfinished = pending != null,
+            read = pending?.galleries?.size ?: 0,
+            total = pending?.let { checkpoint -> checkpoint.slots.sumOf { checkpoint.counts.getOrElse(it) { 0 } } } ?: 0,
+            missingTitles = missing,
+        )
+    }
 
     private suspend fun currentIndex(): FavoritesIndex {
         val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }

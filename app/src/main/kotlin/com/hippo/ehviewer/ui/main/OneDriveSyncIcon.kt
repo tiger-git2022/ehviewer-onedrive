@@ -17,6 +17,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -25,16 +26,20 @@ import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.CloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.SyncTrigger
+import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
+import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
 import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
+import splitties.init.appCtx
 
 /** The shared favorites changed, the next sync uploads (or deletes) them. */
 @Composable
@@ -65,7 +70,11 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val syncProgress by OneDriveSync.progress.collectAsState()
     val working by FavoritesIndexSync.working.collectAsState()
     val workProgress by FavoritesIndexSync.workProgress.collectAsState()
-    val running = syncing || working
+    // Queued to go on later: the shared favorites it changed are not "waiting" for the user, it uploads them itself
+    val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
+    val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
+    val workQueued = export && workInfo.active
+    val running = syncing || working || workQueued
     val changesPending by OneDriveSync.changesPending.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
     val lastSyncFailed by OneDriveSyncState.lastSyncFailed.collectAsState()
@@ -85,9 +94,14 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     }
     val runningText = when {
         syncing -> syncProgress?.let { syncProgressText(it) }
-        else -> workProgress?.let { stepProgressText(it) }
+        working -> workProgress?.let { stepProgressText(it) }
+        else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued)
     }
-    val runningFraction = if (syncing) syncProgress?.fraction else workProgress?.fraction
+    val runningFraction = when {
+        syncing -> syncProgress?.fraction
+        working -> workProgress?.fraction
+        else -> null
+    }
     val description = when (state) {
         SyncIconState.RUNNING -> runningText ?: stringResource(id = R.string.onedrive_sync_running)
         SyncIconState.PENDING -> stringResource(id = R.string.onedrive_sync_status_pending)
@@ -98,13 +112,18 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     IconButton(
         onClick = {
             launch {
-                // The cloud favorites work runs for long with many favorites: a sync can run beside it
-                if (syncing) {
-                    snackbar(description)
-                } else {
-                    val result = OneDriveSync.sync(SyncTrigger.MANUAL)
-                    onSynced()
-                    snackbar(OneDriveSync.summaryOf(result))
+                when {
+                    syncing || working -> snackbar(description)
+                    // Waiting to go on: it goes on now, in the foreground
+                    workQueued -> {
+                        resumeCloudFavoritesWork(appCtx)
+                        snackbar(appCtx.getString(R.string.onedrive_sync_cloud_favorites_resumed))
+                    }
+                    else -> {
+                        val result = OneDriveSync.sync(SyncTrigger.MANUAL)
+                        onSynced()
+                        snackbar(OneDriveSync.summaryOf(result))
+                    }
                 }
             }
         },
