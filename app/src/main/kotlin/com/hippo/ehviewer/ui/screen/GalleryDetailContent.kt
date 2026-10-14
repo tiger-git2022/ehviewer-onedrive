@@ -86,7 +86,6 @@ import com.ehviewer.core.model.VoteStatus
 import com.ehviewer.core.ui.component.CrystalCard
 import com.ehviewer.core.ui.component.FastScrollLazyVerticalGrid
 import com.ehviewer.core.ui.component.FilledTertiaryIconButton
-import com.ehviewer.core.ui.component.FilledTertiaryIconToggleButton
 import com.ehviewer.core.ui.component.GalleryDetailRating
 import com.ehviewer.core.ui.component.GalleryRatingBar
 import com.ehviewer.core.ui.icons.EhIcons
@@ -492,26 +491,28 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             val addSucceed = stringResource(R.string.add_to_favorite_success)
             // val removeFailed = stringResource(R.string.remove_from_favorite_failure)
             val addFailed = stringResource(R.string.add_to_favorite_failure)
-            FilledTertiaryIconToggleButton(
-                checked = favSlot != NOT_FAVORITED,
-                onCheckedChange = {
-                    launchIO {
-                        favoritesLock.mutate {
-                            runSuspendCatching {
-                                modifyFavorites(galleryDetail)
-                            }.onSuccess { add ->
-                                if (add) {
-                                    snackbar(addSucceed)
-                                } else {
-                                    snackbar(removeSucceed)
-                                }
-                            }.onFailure {
-                                // TODO: We don't know if it's add or remove
-                                snackbar(addFailed)
-                            }
+            fun toggleFavorite(choose: Boolean) = launchIO {
+                favoritesLock.mutate {
+                    runSuspendCatching {
+                        modifyFavorites(galleryDetail, choose)
+                    }.onSuccess { add ->
+                        if (add) {
+                            snackbar(addSucceed)
+                        } else {
+                            snackbar(removeSucceed)
                         }
+                    }.onFailure {
+                        // TODO: We don't know if it's add or remove
+                        snackbar(addFailed)
                     }
-                },
+                }
+            }
+            // Fork: a tap uses the default collection, a long press asks for one
+            FavoriteToggleButton(
+                checked = favSlot != NOT_FAVORITED,
+                onClick = { toggleFavorite(choose = false) },
+                onLongClick = { toggleFavorite(choose = true) },
+                onLongClickLabel = stringResource(R.string.add_favorites_dialog_title),
             ) {
                 Icon(
                     imageVector = getFavoriteIcon(favSlot != NOT_FAVORITED),

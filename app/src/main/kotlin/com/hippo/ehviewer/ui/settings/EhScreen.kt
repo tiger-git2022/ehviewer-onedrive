@@ -136,8 +136,8 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
             val disabled = stringResource(id = R.string.disabled_nav)
             val localFav = stringResource(id = R.string.local_favorites)
             val summary = when (defaultFavSlot) {
-                -1 -> localFav
-                in 0..9 -> Settings.favCat[defaultFavSlot]
+                -1 -> stringResource(id = R.string.default_favorites_long_press, localFav)
+                in 0..9 -> stringResource(id = R.string.default_favorites_long_press, Settings.favCat[defaultFavSlot])
                 else -> stringResource(id = R.string.default_favorites_warning)
             }
             Preference(
