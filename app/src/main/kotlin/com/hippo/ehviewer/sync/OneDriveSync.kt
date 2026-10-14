@@ -301,6 +301,7 @@ object OneDriveSync {
                 OneDriveSyncState.autoSync.changesFlow(),
                 OneDriveSyncState.autoSyncIntervalMinutes.changesFlow(),
                 OneDriveSyncState.wifiOnly.changesFlow(),
+                OneDriveSyncState.exportFavoritesIndex.changesFlow(),
             ).collect { updateOneDriveSyncWork(appCtx) }
         }
         ProcessLifecycleOwner.get().lifecycle.addObserver(

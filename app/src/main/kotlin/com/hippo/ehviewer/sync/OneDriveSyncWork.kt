@@ -139,11 +139,12 @@ private fun syncConstraints() = Constraints.Builder()
     .setRequiredNetworkType(if (OneDriveSyncState.wifiOnly.value) NetworkType.UNMETERED else NetworkType.CONNECTED)
     .build()
 
-/** Schedules or cancels the periodic sync after a change of the account or the auto sync options. */
+/** Schedules or cancels the periodic sync after a change of the account or the auto sync options, and the cloud favorites work. */
 fun updateOneDriveSyncWork(context: Context) {
     val workManager = WorkManager.getInstance(context)
     workManager.cancelUniqueWork(CONTINUATION_WORK_NAME)
-    if (!OneDriveSyncState.isSignedIn) workManager.cancelUniqueWork(CLOUD_FAVORITES_WORK_NAME)
+    // A work waiting for the network would otherwise stay queued, and show, until it gets it
+    if (!OneDriveSyncState.isSignedIn || !OneDriveSyncState.exportFavoritesIndex.value) workManager.cancelUniqueWork(CLOUD_FAVORITES_WORK_NAME)
     if (OneDriveClient.isSupported && OneDriveSyncState.isSignedIn && OneDriveSyncState.autoSync.value) {
         val interval = OneDriveSyncState.autoSyncIntervalMinutes.value.toLong().coerceAtLeast(15)
         val request = PeriodicWorkRequestBuilder<OneDriveSyncWork>(interval, TimeUnit.MINUTES)

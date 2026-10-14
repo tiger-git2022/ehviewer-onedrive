@@ -73,7 +73,8 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val workProgress by FavoritesIndexSync.workProgress.collectAsState()
     // Queued to go on later: the shared favorites it changed are not "waiting" for the user, it uploads them itself
     val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
-    val workQueued = workInfo.active
+    val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
+    val workQueued = export && workInfo.active
     val running = syncing || working || workQueued
     val changesPending by OneDriveSync.changesPending.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
