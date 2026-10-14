@@ -159,7 +159,8 @@ object OneDriveSync {
         markDirty(category)
         // The local favorites are in the favorites index too, also when their own category is not synced
         if (category == SyncCategory.FAVORITES) markFavoritesIndexChanged()
-        if (category.automatic) scheduleChangeSync()
+        // Opening a gallery writes the history: no sync for it while the history is not synced
+        if (category.automatic && OneDriveSyncState.isEnabled(category)) scheduleChangeSync()
     }
 
     private val favoritesIndexVersion = AtomicLong()

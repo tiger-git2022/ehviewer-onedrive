@@ -161,7 +161,12 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         state = OneDriveSyncState.syncFavorites.asMutableState(),
                     )
                     SwitchPreference(
-                        title = stringResource(id = R.string.onedrive_sync_category_history_progress),
+                        title = stringResource(id = R.string.onedrive_sync_category_progress),
+                        state = OneDriveSyncState.syncProgress.asMutableState(),
+                    )
+                    SwitchPreference(
+                        title = stringResource(id = R.string.onedrive_sync_category_history),
+                        summary = stringResource(id = R.string.onedrive_sync_category_history_summary),
                         state = OneDriveSyncState.syncHistory.asMutableState(),
                     )
                     SwitchPreference(

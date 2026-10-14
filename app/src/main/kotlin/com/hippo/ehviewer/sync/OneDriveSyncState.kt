@@ -20,7 +20,12 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     // Categories
     val syncSettings = boolPref("sync_settings", true)
     val syncFavorites = boolPref("sync_favorites", true)
-    val syncHistory = boolPref("sync_history", true)
+
+    // The old "history and progress" switch keeps its key for the reading progress
+    val syncProgress = boolPref("sync_history", true)
+
+    /** The list of galleries read: off unless turned on, only the reading progress is synced. */
+    val syncHistory = boolPref("sync_history_list", false)
     val syncQuickSearch = boolPref("sync_quick_search", true)
     val syncSuggestions = boolPref("sync_suggestions", true)
     val uploadDownloads = boolPref("upload_downloads", true)
@@ -75,7 +80,8 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     fun categoryPref(category: SyncCategory): PrefDelegate<Boolean> = when (category) {
         SyncCategory.SETTINGS -> syncSettings
         SyncCategory.FAVORITES -> syncFavorites
-        SyncCategory.HISTORY, SyncCategory.PROGRESS -> syncHistory
+        SyncCategory.HISTORY -> syncHistory
+        SyncCategory.PROGRESS -> syncProgress
         SyncCategory.QUICK_SEARCH -> syncQuickSearch
         SyncCategory.SUGGESTIONS -> syncSuggestions
     }
