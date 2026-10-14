@@ -42,9 +42,22 @@ object AutoDownload {
         val handled: Set<Long>,
     )
 
+    /**
+     * The slot whose new galleries are added, null when off. Its option shows only while signed in to OneDrive with
+     * the favorites index on, so it is off otherwise too: nothing is added that the user cannot stop from there.
+     */
+    private val slot: Int?
+        get() = OneDriveSyncState.autoDownloadSlot.value.takeIf {
+            it in 0 until CLOUD_SLOT_COUNT && OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value
+        }
+
     /** After the cloud favorites list changed, see [FavoritesIndexSync]. */
     fun onCloudFavoritesSaved(cloud: CloudFavorites) {
-        if (OneDriveSyncState.autoDownloadSlot.value !in 0 until CLOUD_SLOT_COUNT) return
+        if (slot == null) {
+            // Off: on again, it starts from then
+            if (file.exists()) scope.launch { mutex.withLock { file.delete() } }
+            return
+        }
         scope.launch { runCatching { check(cloud) }.onFailure { logcat(TAG, it) } }
     }
 
@@ -54,8 +67,8 @@ object AutoDownload {
     }
 
     private suspend fun check(cloud: CloudFavorites) = mutex.withLock {
-        val slot = OneDriveSyncState.autoDownloadSlot.value
-        if (slot !in 0 until CLOUD_SLOT_COUNT) {
+        val slot = slot
+        if (slot == null) {
             // Turned off: turning it on again starts from then
             file.delete()
             return@withLock
