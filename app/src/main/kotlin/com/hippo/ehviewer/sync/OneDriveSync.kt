@@ -4,6 +4,7 @@ import android.app.Activity
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.SystemClock
+import androidx.annotation.StringRes
 import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -559,6 +560,19 @@ object OneDriveSync {
         }
     }
 
+    /** Shows a part of the category step running now, see [SyncRunProgress.phase]. */
+    private fun phase(@StringRes phase: Int, part: ClosedFloatingPointRange<Float>, done: Long = 0, total: Long = 0, bytes: Boolean = false) {
+        val current = mutableProgress.value ?: return
+        mutableProgress.value = current.copy(
+            phase = phase,
+            partStart = part.start,
+            partEnd = part.endInclusive,
+            done = done.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
+            total = total.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
+            bytes = bytes,
+        )
+    }
+
     private suspend fun <T> syncSection(section: SyncSection<T>, remote: RemoteItem?, deviceId: String): CategoryResult {
         val category = section.category
         val start = SystemClock.elapsedRealtime()
@@ -587,7 +601,11 @@ object OneDriveSync {
                 else -> {
                     action = SyncAction.MERGED
                     val download = File(syncDir, "$fileName.download")
-                    if (!OneDriveClient.download("$SHARED_FOLDER/$fileName", download)) {
+                    phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD)
+                    val downloaded = OneDriveClient.download("$SHARED_FOLDER/$fileName", download) { done, total ->
+                        phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD, done, total, bytes = true)
+                    }
+                    if (!downloaded) {
                         // Deleted since the listing: handle it as a missing file, never as "everything deleted"
                         item = null
                         continue
@@ -595,13 +613,18 @@ object OneDriveSync {
                     readSection(download, section.serializer).items.also { download.delete() }
                 }
             }
+            phase(R.string.onedrive_sync_phase_read_local, StepProgress.READ_LOCAL)
             val local = section.collect(baseline, localChangedAt(category))
+            phase(R.string.onedrive_sync_phase_merge, StepProgress.MERGE)
             val merged = section.merge(local, cloud, baseline)
             val output = File(syncDir, "$fileName.upload")
             writeSection(output, section.serializer, SectionFile(updatedAt = now(), deviceId = deviceId, items = merged))
             val newETag = if (merged != cloud || current == null) {
                 try {
-                    OneDriveClient.upload("$SHARED_FOLDER/$fileName", output, current?.eTag)
+                    phase(R.string.onedrive_sync_phase_upload, StepProgress.UPLOAD_SECTION)
+                    OneDriveClient.upload("$SHARED_FOLDER/$fileName", output, current?.eTag) { done, total ->
+                        phase(R.string.onedrive_sync_phase_upload, StepProgress.UPLOAD_SECTION, done, total, bytes = true)
+                    }
                 } catch (e: OneDrivePreconditionException) {
                     if (attempt == MAX_ATTEMPTS - 1) throw e
                     logcat(TAG) { "$category: changed on another device during the sync, retrying" }
@@ -613,6 +636,7 @@ object OneDriveSync {
                 current.eTag
             }
             // Only after the cloud has the merged copy: write the difference back
+            phase(R.string.onedrive_sync_phase_apply, StepProgress.APPLY)
             val counts = section.apply(local, merged)
             cacheFile.parentFile?.mkdirs()
             if (!output.renameTo(cacheFile)) {

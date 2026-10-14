@@ -401,6 +401,8 @@
     <string name="default_favorites_collection">默认收藏夹</string>
     <string name="default_favorites_warning">启用此项将无法添加收藏备注</string>
     <string name="default_favorites_long_press">%s。长按收藏按钮可以选其他收藏夹</string>
+    <string name="image_limits_settings_summary">查看图片配额用量和账户余额</string>
+    <string name="chinese_only">只看中文</string>
     <string name="let_me_select">让我选择</string>
     <string name="favorite_note">收藏备注</string>
     <string name="collections">收藏夹</string>
@@ -636,6 +638,14 @@
     <string name="onedrive_sync_status_failed">OneDrive：上次同步失败</string>
     <string name="onedrive_sync_progress">正在同步 %1$d%%（%2$d/%3$d）：%4$s</string>
     <string name="onedrive_sync_progress_count">%1$s %2$d/%3$d（%4$d%%）</string>
+    <string name="onedrive_sync_step_phase">%1$s · %2$s</string>
+    <string name="onedrive_sync_phase_download">下载云端</string>
+    <string name="onedrive_sync_phase_read_local">读取本机</string>
+    <string name="onedrive_sync_phase_merge">合并</string>
+    <string name="onedrive_sync_phase_upload">上传</string>
+    <string name="onedrive_sync_phase_apply">写入本机</string>
+    <string name="onedrive_sync_progress_size">%1$s %2$s/%3$s MB（%4$d%%）</string>
+    <string name="onedrive_sync_progress_size_unknown">%1$s %2$s MB</string>
     <string name="onedrive_sync_step_connect">连接 OneDrive</string>
     <string name="onedrive_sync_step_devices">下载记录</string>
     <string name="onedrive_sync_step_favorites_index">共享给其他应用的收藏</string>

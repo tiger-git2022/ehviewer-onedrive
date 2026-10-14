@@ -42,6 +42,7 @@ import com.hippo.ehviewer.ui.destinations.FilterScreenDestination
 import com.hippo.ehviewer.ui.destinations.MyTagsScreenDestination
 import com.hippo.ehviewer.ui.destinations.UConfigScreenDestination
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.main.showImageLimits
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
 import com.hippo.ehviewer.ui.tools.awaitSelectTime
@@ -131,6 +132,11 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                     title = stringResource(id = R.string.settings_my_tags),
                     summary = stringResource(id = R.string.settings_my_tags_summary),
                 ) { navigate(MyTagsScreenDestination) }
+                // Fork: moved here from the avatar next to the search bar, now "汉"
+                Preference(
+                    title = stringResource(id = R.string.image_limits),
+                    summary = stringResource(id = R.string.image_limits_settings_summary),
+                ) { showImageLimits() }
             }
             var defaultFavSlot by Settings.defaultFavSlot.asMutableState()
             val disabled = stringResource(id = R.string.disabled_nav)

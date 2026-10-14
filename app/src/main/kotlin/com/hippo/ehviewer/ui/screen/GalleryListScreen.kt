@@ -111,7 +111,8 @@ import com.hippo.ehviewer.ui.awaitSelectDate
 import com.hippo.ehviewer.ui.destinations.ProgressScreenDestination
 import com.hippo.ehviewer.ui.doGalleryInfoAction
 import com.hippo.ehviewer.ui.main.AdvancedSearchOption
-import com.hippo.ehviewer.ui.main.AvatarIcon
+import com.hippo.ehviewer.ui.main.CHINESE_LANGUAGE_FILTER
+import com.hippo.ehviewer.ui.main.ChineseOnlyButton
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
@@ -506,7 +507,20 @@ fun AnimatedVisibilityScope.GalleryListScreen(
                     Icon(imageVector = Icons.Outlined.Bookmarks, contentDescription = stringResource(id = R.string.quick_search))
                 }
             }
-            AvatarIcon()
+            // Fork: Chinese only, refreshing the list; the image limits moved to Settings → EH
+            val filterable = urlBuilder.mode.let { it == MODE_NORMAL || it == MODE_SUBSCRIPTION || it == MODE_TAG || it == MODE_UPLOADER }
+            ChineseOnlyButton(
+                // The language of this list, which may differ from the setting when another list changed it
+                checked = urlBuilder.language == CHINESE_LANGUAGE_FILTER,
+                onCheckedChange = { on ->
+                    languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1
+                    // From the first page
+                    urlBuilder = urlBuilder.copy(language = languageFilter).apply { setRange(0) }
+                    data.refresh()
+                },
+                // What's hot, toplists and image search have no language
+                enabled = filterable,
+            )
         },
         filter = {
             SearchFilter(
