@@ -34,14 +34,16 @@ import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
 
-/** The download list of this device or the cloud favorites changed and are uploaded by the next sync. */
+/** The download list of this device or the shared favorites changed, the next sync uploads (or deletes) them. */
 @Composable
 private fun downloadsChanged(): Boolean {
     val dirty by OneDriveSyncState.downloadsDirty.collectAsState()
     val upload by OneDriveSyncState.uploadDownloads.collectAsState()
     val indexDirty by OneDriveSyncState.favoritesIndexDirty.collectAsState()
     val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
-    return dirty && upload || indexDirty && export
+    // Sharing turned on after the index was deleted, or off while it is still on OneDrive
+    val indexRemoved by OneDriveSyncState.favoritesIndexRemoved.collectAsState()
+    return dirty && upload || indexDirty && export || export == indexRemoved
 }
 
 /** What [OneDriveSyncIcon] shows, the first that applies. */

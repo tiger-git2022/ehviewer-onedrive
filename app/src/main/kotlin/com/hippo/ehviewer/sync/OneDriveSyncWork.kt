@@ -14,6 +14,7 @@ import androidx.work.workDataOf
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.first
 
 private const val PERIODIC_WORK_NAME = "OneDriveSyncWork"
 private const val CATCH_UP_WORK_NAME = "OneDriveSyncCatchUpWork"
@@ -24,14 +25,15 @@ private const val MAX_CONTINUATION_RETRIES = 5
 class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
     override suspend fun doWork(): Result = withIOContext {
         if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return@withIOContext Result.success()
-        FavoritesIndexSync.takeContinuationQueued()
         OneDriveSync.sync(SyncTrigger.BACKGROUND).fold(
             onSuccess = {
                 // A continuation whose refresh failed on E-Hentai (it does not fail the sync) tries again later; one
-                // that ran out of time queued the next continuation itself
-                val queued = FavoritesIndexSync.takeContinuationQueued()
-                val unfinished = inputData.getBoolean(KEY_CONTINUATION, false) && !queued && FavoritesIndexSync.hasUnfinishedRefresh()
-                if (unfinished && runAttemptCount < MAX_CONTINUATION_RETRIES) Result.retry() else Result.success()
+                // that ran out of time already queued the next continuation
+                val retry = inputData.getBoolean(KEY_CONTINUATION, false) &&
+                    runAttemptCount < MAX_CONTINUATION_RETRIES &&
+                    FavoritesIndexSync.hasUnfinishedRefresh() &&
+                    !hasNextContinuation()
+                if (retry) Result.retry() else Result.success()
             },
             onFailure = {
                 logcat(PERIODIC_WORK_NAME, it)
@@ -41,6 +43,12 @@ class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : Corou
         )
     }
 }
+
+/** Another continuation than this work waits to run. */
+private suspend fun CoroutineWorker.hasNextContinuation(): Boolean = WorkManager.getInstance(applicationContext)
+    .getWorkInfosForUniqueWorkFlow(CONTINUATION_WORK_NAME)
+    .first()
+    .any { it.id != id && !it.state.isFinished }
 
 private fun syncConstraints() = Constraints.Builder()
     .setRequiredNetworkType(if (OneDriveSyncState.wifiOnly.value) NetworkType.UNMETERED else NetworkType.CONNECTED)
