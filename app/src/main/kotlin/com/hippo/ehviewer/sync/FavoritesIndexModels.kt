@@ -112,4 +112,9 @@ data class CloudRefreshCheckpoint(
      * change are not.
      */
     val touched: Set<Long> = emptySet(),
+    /**
+     * Slot the user put a gallery in since [startedAt] ([NO_CLOUD_SLOT] when removed): pages read before the change
+     * are corrected with it, also for galleries the known list did not have yet.
+     */
+    val intended: Map<Long, Int> = emptyMap(),
 )

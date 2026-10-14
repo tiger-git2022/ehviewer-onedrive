@@ -148,12 +148,12 @@ object FavoritesIndexSync {
     /**
      * Applies [transform] to the list of the signed in E-Hentai account (an empty one after switching accounts) and
      * saves the result; returns true if the list changed. With [user], a change made for another account than the
-     * signed in one is dropped. [gids] are the galleries the change is about, also when it changes nothing in the list
-     * (a gallery an unfinished refresh has read but not saved yet).
+     * signed in one is dropped. [intended] is the slot the change puts each gallery in ([NO_CLOUD_SLOT] when removed),
+     * kept for an unfinished refresh that may have read the gallery but not saved it yet.
      */
     private suspend fun update(
         user: String? = userKey(),
-        gids: Collection<Long> = emptyList(),
+        intended: Map<Long, Int> = emptyMap(),
         transform: (CloudFavorites) -> CloudFavorites,
     ): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -163,8 +163,10 @@ object FavoritesIndexSync {
             // Pages of an unfinished refresh read before this change must not undo it
             val pending = loadCheckpointLocked()
             if (pending != null && pending.userKey == user) {
-                val touched = FavoritesIndexMerger.changedGids(before, after) + gids
-                if (!pending.touched.containsAll(touched)) saveCheckpointLocked(pending.copy(touched = pending.touched + touched))
+                val touched = FavoritesIndexMerger.changedGids(before, after)
+                if (!pending.touched.containsAll(touched) || intended.isNotEmpty()) {
+                    saveCheckpointLocked(pending.copy(touched = pending.touched + touched, intended = pending.intended + intended))
+                }
             }
             saveLocked(after)
         }
@@ -207,11 +209,11 @@ object FavoritesIndexSync {
     private fun updateLater(
         // The account the change was made with, not the one signed in when it runs
         user: String? = userKey(),
-        gids: Collection<Long> = emptyList(),
+        intended: Map<Long, Int> = emptyMap(),
         transform: (CloudFavorites) -> CloudFavorites,
     ) {
         scope.launch {
-            runCatching { update(user, gids, transform) }
+            runCatching { update(user, intended, transform) }
                 .onFailure { logcat(TAG, it) }
                 .onSuccess { changed -> if (changed && enabled) OneDriveSync.notifyFavoritesIndexChanged() }
         }
@@ -250,7 +252,8 @@ object FavoritesIndexSync {
     fun onFavoriteChanged(info: GalleryInfo) {
         val slot = info.favoriteSlot
         val gallery = info.toIndexed(slot)
-        updateLater(gids = listOf(info.gid)) { cloud ->
+        val intended = if (FavListUrlBuilder.isValidFavCat(slot)) slot else NO_CLOUD_SLOT
+        updateLater(intended = mapOf(info.gid to intended)) { cloud ->
             if (FavListUrlBuilder.isValidFavCat(slot)) {
                 FavoritesIndexMerger.upsert(cloud, listOf(gallery), now())
             } else {
@@ -262,13 +265,16 @@ object FavoritesIndexSync {
     /** Galleries added to cloud slot [slot] from the local favorites. */
     fun onAdded(infos: Collection<GalleryInfo>, slot: Int) {
         val galleries = infos.map { it.toIndexed(slot) }
-        updateLater(gids = galleries.map { it.gid }) { cloud -> FavoritesIndexMerger.upsert(cloud, galleries, now()) }
+        // Not a cloud slot: nothing is added, nor removed
+        val intended = if (FavListUrlBuilder.isValidFavCat(slot)) galleries.associate { it.gid to slot } else emptyMap()
+        updateLater(intended = intended) { cloud -> FavoritesIndexMerger.upsert(cloud, galleries, now()) }
     }
 
     /** Cloud favorites moved to [slot], or removed when [slot] is not a cloud slot. */
     fun onMoved(gids: Collection<Long>, slot: Int) {
         val list = gids.toList()
-        updateLater(gids = list) { cloud -> FavoritesIndexMerger.move(cloud, list, slot, now()) }
+        val intended = if (FavListUrlBuilder.isValidFavCat(slot)) slot else NO_CLOUD_SLOT
+        updateLater(intended = list.associateWith { intended }) { cloud -> FavoritesIndexMerger.move(cloud, list, slot, now()) }
     }
 
     // endregion
@@ -363,7 +369,7 @@ object FavoritesIndexSync {
             val pending = loadCheckpointLocked()
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages))
-            saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now()))
+            saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now(), pending.intended))
             true
         }
     }
@@ -374,7 +380,7 @@ object FavoritesIndexSync {
             // Signed in to another account meanwhile: these pages belong to the previous one
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
-            saveLocked(FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now()))
+            saveLocked(FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended))
             saveCheckpointLocked(null)
             logcat(TAG) { "Cloud favorites refreshed: ${pending.galleries.size} galleries" }
             true

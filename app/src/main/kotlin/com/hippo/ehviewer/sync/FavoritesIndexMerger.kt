@@ -110,16 +110,42 @@ object FavoritesIndexMerger {
         )
     }
 
-    /** Pages of an unfinished refresh: their galleries are added to the known list, [touched] ones are left alone. */
-    fun withRefreshPages(cloud: CloudFavorites, galleries: List<IndexedGallery>, touched: Set<Long>, now: Long): CloudFavorites = upsert(cloud, galleries.filterNot { it.gid in touched }, now)
+    /**
+     * The galleries of refresh pages as they are now: moved to the slot the user [intended] or dropped when removed,
+     * and dropped when [touched] otherwise (the known list is right about them).
+     */
+    private fun correctedPages(galleries: List<IndexedGallery>, touched: Set<Long>, intended: Map<Long, Int>) = galleries.mapNotNull { gallery ->
+        val slot = intended[gallery.gid]
+        when {
+            slot != null -> gallery.copy(slot = slot).takeIf { slot in 0 until CLOUD_SLOT_COUNT }
+            gallery.gid in touched -> null
+            else -> gallery
+        }
+    }
+
+    /** Pages of an unfinished refresh: their galleries are added to the known list, corrected by the user's changes. */
+    fun withRefreshPages(
+        cloud: CloudFavorites,
+        galleries: List<IndexedGallery>,
+        touched: Set<Long>,
+        now: Long,
+        intended: Map<Long, Int> = emptyMap(),
+    ): CloudFavorites = upsert(cloud, correctedPages(galleries, touched, intended), now)
 
     /**
-     * End of a full refresh: the pages read replace the known list, except for the [touched] galleries changed in the
-     * app meanwhile, which keep their known state.
+     * End of a full refresh: the pages read replace the known list. Galleries changed in the app meanwhile keep their
+     * known state ([touched]) or take the slot the user put them in ([intended]).
      */
-    fun completeRefresh(cloud: CloudFavorites, galleries: List<IndexedGallery>, touched: Set<Long>, slotNames: List<String>, now: Long): CloudFavorites {
-        val kept = cloud.galleries.filter { it.gid in touched }
-        return replaceAll(cloud, galleries.filterNot { it.gid in touched } + kept, slotNames, now)
+    fun completeRefresh(
+        cloud: CloudFavorites,
+        galleries: List<IndexedGallery>,
+        touched: Set<Long>,
+        slotNames: List<String>,
+        now: Long,
+        intended: Map<Long, Int> = emptyMap(),
+    ): CloudFavorites {
+        val kept = cloud.galleries.filter { it.gid in touched || it.gid in intended }
+        return replaceAll(cloud, correctedPages(galleries, touched, intended) + kept, slotNames, now)
     }
 
     /** Adds the Japanese titles looked up (gid -> title, empty if the gallery has none). */

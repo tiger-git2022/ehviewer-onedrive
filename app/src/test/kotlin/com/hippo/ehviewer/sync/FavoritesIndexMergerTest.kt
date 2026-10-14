@@ -202,4 +202,16 @@ class FavoritesIndexMergerTest {
         // A checkpoint without counts starts again
         assertEquals(0, FavoritesIndexMerger.resumeCheckpoint(checkpoint.copy(counts = emptyList()), counts).slot)
     }
+
+    @Test
+    fun userMovesCorrectPagesReadBeforeThem() {
+        val cloud = CloudFavorites(slotNames = names, galleries = listOf(gallery(1, slot = 0)))
+        // 2 and 3 were only in pages not saved yet when the user moved 2 to slot 4 and removed 3
+        val pages = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 1))
+        val intended = mapOf(2L to 4, 3L to NO_CLOUD_SLOT)
+        val partial = FavoritesIndexMerger.withRefreshPages(cloud, pages, setOf(2L, 3L), now = 10, intended = intended)
+        assertEquals(listOf(1L to 0, 2L to 4), partial.galleries.map { it.gid to it.slot })
+        val done = FavoritesIndexMerger.completeRefresh(cloud, pages, setOf(2L, 3L), names, now = 20, intended = intended)
+        assertEquals(setOf(1L to 0, 2L to 4), done.galleries.map { it.gid to it.slot }.toSet())
+    }
 }

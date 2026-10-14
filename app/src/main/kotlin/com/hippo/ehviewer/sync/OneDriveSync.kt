@@ -159,6 +159,8 @@ object OneDriveSync {
 
     /** Called when the cloud favorites known to [FavoritesIndexSync] changed. */
     fun notifyFavoritesIndexChanged() {
+        // Waits for a sync also when none is scheduled for it (sync on change turned off)
+        if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value) mutableChangesPending.value = true
         scheduleChangeSync()
     }
 
