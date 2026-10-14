@@ -42,6 +42,8 @@ import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryInfo
+import com.ehviewer.core.model.GalleryTagGroup
+import com.ehviewer.core.model.TagNamespace
 import com.ehviewer.core.ui.util.LocalWindowSizeClass
 import com.ehviewer.core.ui.util.isExpanded
 import com.ehviewer.core.ui.util.launchInVM
@@ -60,6 +62,7 @@ import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.spider.SpiderDen
+import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
@@ -67,6 +70,7 @@ import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
+import com.hippo.ehviewer.ui.tools.awaitSelectAction
 import com.hippo.ehviewer.ui.tools.awaitSelectTags
 import com.hippo.ehviewer.util.AppHelper
 import com.hippo.ehviewer.util.awaitActivityResult
@@ -166,6 +170,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val clearCache = stringResource(id = R.string.clear_image_cache)
     val cacheCleared = stringResource(R.string.image_cache_cleared)
     val openInBrowser = stringResource(id = R.string.open_in_other_app)
+    val searchInMihon = stringResource(id = R.string.search_in_mihon)
+    val mihonNotInstalled = stringResource(id = R.string.mihon_not_installed)
     val exportArchive = stringResource(id = R.string.export_as_archive)
     val exportSuccess = stringResource(id = R.string.export_as_archive_success)
     val exportFailed = stringResource(id = R.string.export_as_archive_failed)
@@ -262,6 +268,27 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                             icon = {},
                             label = openInBrowser,
                         )
+                        // Fork: a global search in Mihon of the title or of the artist
+                        clickableItem(
+                            onClick = {
+                                val info = galleryInfo ?: return@clickableItem
+                                val title = info.titleJpn?.takeIf { it.isNotBlank() } ?: info.title.orEmpty()
+                                val core = MihonSearch.coreTitle(title)
+                                val artist = MihonSearch.artist(title, listOfNotNull((info as? GalleryDetail)?.tagGroups?.artistName()))
+                                val activity = contextOf<MainActivity>()
+                                launchIO {
+                                    awaitSelectAction(title = R.string.search_in_mihon) {
+                                        listOfNotNull(core, artist).distinct().forEach { query ->
+                                            onSelect(query) {
+                                                if (!MihonSearch.search(activity, query)) snackbar(mihonNotInstalled)
+                                            }
+                                        }
+                                    }()
+                                }
+                            },
+                            icon = {},
+                            label = searchInMihon,
+                        )
                         clickableItem(
                             onClick = {
                                 launchIO {
@@ -338,3 +365,6 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         }
     }
 }
+
+// Fork: the first artist tag, for a search in Mihon
+private fun List<GalleryTagGroup>.artistName() = find { it.namespace == TagNamespace.Artist }?.tags?.firstOrNull()?.text

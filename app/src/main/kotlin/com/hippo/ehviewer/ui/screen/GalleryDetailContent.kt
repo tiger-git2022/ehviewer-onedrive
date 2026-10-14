@@ -118,6 +118,7 @@ import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.confirmRemoveDownload
@@ -721,6 +722,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val upTag = stringResource(R.string.tag_vote_up)
         val downTag = stringResource(R.string.tag_vote_down)
         val withDraw = stringResource(R.string.tag_vote_withdraw)
+        val mihonNotInstalled = stringResource(R.string.mihon_not_installed)
         fun search(tag: String) = navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_TAG, keyword = tag).asDst())
         GalleryTags(
             tagGroups = tags,
@@ -731,6 +733,12 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     awaitSelectAction {
                         onSelect(ctx.getString(R.string.search_bar_hint, tag)) {
                             withUIContext { search(tag) }
+                        }
+                        // Fork: a global search in Mihon of the tag, and of its translation (often the Japanese name)
+                        listOf(rawValue, translation).distinct().forEach { query ->
+                            onSelect(ctx.getString(R.string.search_in_mihon_query, query)) {
+                                if (!MihonSearch.search(ctx, query)) snackbar(mihonNotInstalled)
+                            }
                         }
                         onSelect(copy) {
                             addTextToClipboard(tag)
