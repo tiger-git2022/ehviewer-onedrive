@@ -191,6 +191,13 @@ object FavoritesIndexSync {
 
     private fun CloudRefreshCheckpoint.usableFor(user: String?, now: Long) = userKey == user && now - startedAt in 0..CHECKPOINT_MAX_AGE_MILLIS
 
+    /** A refresh ran out of time and queued the sync going on with it. */
+    @Volatile
+    private var continuationQueued = false
+
+    /** Whether a refresh queued its continuation since the last call. */
+    fun takeContinuationQueued(): Boolean = continuationQueued.also { continuationQueued = false }
+
     /** A refresh of the cloud favorites of the signed in account has not read all pages yet. */
     suspend fun hasUnfinishedRefresh(): Boolean = hasUnfinishedRefresh(userKey())
 
@@ -352,6 +359,7 @@ object FavoritesIndexSync {
                         logcat(TAG) { "Cloud favorites: $read of $total read, the next sync goes on" }
                         // Goes on in a sync after this one, also with automatic syncs turned off
                         enqueueOneDriveContinuationWork(appCtx)
+                        continuationQueued = true
                         return false
                     }
                 }
@@ -422,7 +430,8 @@ object FavoritesIndexSync {
         if (!Settings.hasSignedIn.value) return@withContext
         mutableRefreshing.value = true
         try {
-            lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, budgetMillis = null)
+            // A failed request keeps the titles found before it, and the sync after this still runs
+            runEhStep { lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, budgetMillis = null) }
         } finally {
             mutableRefreshing.value = false
             mutableProgress.value = null

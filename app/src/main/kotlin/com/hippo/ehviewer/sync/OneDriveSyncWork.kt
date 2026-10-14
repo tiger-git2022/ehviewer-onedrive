@@ -24,10 +24,13 @@ private const val MAX_CONTINUATION_RETRIES = 5
 class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
     override suspend fun doWork(): Result = withIOContext {
         if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return@withIOContext Result.success()
+        FavoritesIndexSync.takeContinuationQueued()
         OneDriveSync.sync(SyncTrigger.BACKGROUND).fold(
             onSuccess = {
-                // A continuation whose refresh failed on E-Hentai (it does not fail the sync) tries again later
-                val unfinished = inputData.getBoolean(KEY_CONTINUATION, false) && FavoritesIndexSync.hasUnfinishedRefresh()
+                // A continuation whose refresh failed on E-Hentai (it does not fail the sync) tries again later; one
+                // that ran out of time queued the next continuation itself
+                val queued = FavoritesIndexSync.takeContinuationQueued()
+                val unfinished = inputData.getBoolean(KEY_CONTINUATION, false) && !queued && FavoritesIndexSync.hasUnfinishedRefresh()
                 if (unfinished && runAttemptCount < MAX_CONTINUATION_RETRIES) Result.retry() else Result.success()
             },
             onFailure = {
