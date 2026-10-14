@@ -145,14 +145,6 @@ object FavoritesIndexSync {
         mutex.withLock { FavoritesIndexMerger.forUser(loadLocked(), userKey()) }
     }
 
-    /**
-     * The known list with the version of the changes it has (OneDriveSync.favoritesIndexVersion): changes mark the
-     * index under the same lock as they save the list.
-     */
-    private suspend fun currentWithVersion(): Pair<CloudFavorites, Long> = withContext(Dispatchers.IO) {
-        mutex.withLock { FavoritesIndexMerger.forUser(loadLocked(), userKey()) to OneDriveSync.favoritesIndexVersion() }
-    }
-
     /** A saved change of the list waits for a sync, also when it came from a refresh or a title lookup. */
     private suspend fun markChangedLocked() {
         if (enabled) OneDriveSync.markFavoritesIndexChanged()
@@ -517,13 +509,13 @@ object FavoritesIndexSync {
             mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, part = StepProgress.CHECK)
             runEhStep { checkCloudFavorites() }
         }
-        val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
         var version = 0L
         val build = suspend {
+            // Before reading: the changes up to this version are in the index built now, a later one keeps it waiting
+            version = OneDriveSync.favoritesIndexVersion()
+            val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
             // Without an E-Hentai account the cloud favorites are unknown, the names of the slots too
-            val (cloud, builtVersion) = if (signedIn) currentWithVersion() else CloudFavorites() to OneDriveSync.favoritesIndexVersion()
-            // The changes up to this version are in the index built now
-            version = builtVersion
+            val cloud = if (signedIn) current() else CloudFavorites()
             FavoritesIndexMerger.buildIndex(local, cloud, deviceId, deviceName, now())
         }
         var index = build()

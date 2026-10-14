@@ -154,6 +154,8 @@ object OneDriveSync {
     suspend fun notifyChanged(category: SyncCategory) {
         if (currentCoroutineContext()[SyncWrite] != null) return
         markDirty(category)
+        // The local favorites are in the favorites index too, also when their own category is not synced
+        if (category == SyncCategory.FAVORITES) markFavoritesIndexChanged()
         scheduleChangeSync()
     }
 
@@ -169,7 +171,7 @@ object OneDriveSync {
      */
     fun scheduleFavoritesIndexSync() = scheduleChangeSync()
 
-    /** The cloud favorites changed: the index waits for a sync (also with sync on change off, and across restarts). */
+    /** The local or cloud favorites changed: the index waits for a sync (also with sync on change off, and across restarts). */
     suspend fun markFavoritesIndexChanged() = favoritesIndexDirtyMutex.withLock {
         favoritesIndexVersion.incrementAndGet()
         if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
@@ -177,7 +179,7 @@ object OneDriveSync {
         }
     }
 
-    /** Version of the cloud favorites changes, taken before building the index a sync uploads. */
+    /** Version of the favorites changes, taken before building the index a sync uploads. */
     fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
 
     /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
