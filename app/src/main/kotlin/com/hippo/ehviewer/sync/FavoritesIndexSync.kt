@@ -154,9 +154,11 @@ object FavoritesIndexSync {
     private suspend fun update(
         user: String? = userKey(),
         intended: Map<Long, Int> = emptyMap(),
+        // False for a change the index does not show
+        markChanged: Boolean = true,
         transform: (CloudFavorites) -> CloudFavorites,
     ): Boolean = withContext(Dispatchers.IO) {
-        mutex.withLock {
+        val changed = mutex.withLock {
             if (userKey() != user) return@withLock false
             val before = FavoritesIndexMerger.forUser(loadLocked(), user)
             val after = transform(before)
@@ -170,6 +172,9 @@ object FavoritesIndexSync {
             }
             saveLocked(after)
         }
+        // Until a sync uploads the index with it, also when the change came from a refresh or a title lookup
+        if (changed && markChanged && enabled) OneDriveSync.markFavoritesIndexChanged()
+        changed
     }
 
     private fun loadCheckpointLocked(): CloudRefreshCheckpoint? {
@@ -347,6 +352,7 @@ object FavoritesIndexSync {
                 val outOfTime = budgetMillis != null && SystemClock.elapsedRealtime() - started > budgetMillis
                 if (pageCount % CHECKPOINT_PAGES == 0 || next == null || outOfTime) {
                     if (!saveRefreshPages(user, slot, next, pages)) return false
+                    if (enabled) OneDriveSync.markFavoritesIndexChanged()
                     pages.clear()
                     if (outOfTime && slot < CLOUD_SLOT_COUNT) {
                         logcat(TAG) { "Cloud favorites: $read of $total read, the next sync goes on" }
@@ -356,7 +362,7 @@ object FavoritesIndexSync {
                     }
                 }
             }
-            return completeRefresh(user, slotNames)
+            return completeRefresh(user, slotNames).also { if (it && enabled) OneDriveSync.markFavoritesIndexChanged() }
         } finally {
             mutableRefreshing.value = false
             mutableProgress.value = null
@@ -476,18 +482,19 @@ object FavoritesIndexSync {
      */
     suspend fun sync(deviceId: String, deviceName: String) {
         try {
-            val version = OneDriveSync.favoritesIndexVersion()
-            syncIndex(deviceId, deviceName)
+            val version = syncIndex(deviceId, deviceName)
             OneDriveSync.favoritesIndexSynced(version)
         } finally {
             mutableProgress.value = null
         }
     }
 
-    private suspend fun syncIndex(deviceId: String, deviceName: String) {
+    /** Returns the version of the cloud favorites changes the uploaded index includes. */
+    private suspend fun syncIndex(deviceId: String, deviceName: String): Long {
         if (!OneDriveSyncState.exportFavoritesIndex.value) {
+            val version = OneDriveSync.favoritesIndexVersion()
             removeExport()
-            return
+            return version
         }
         var remote = OneDriveClient.list(EXPORT_FOLDER)[INDEX_FILE]
         adoptRemote(remote)
@@ -497,7 +504,10 @@ object FavoritesIndexSync {
             runEhStep { checkCloudFavorites() }
         }
         val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
+        var version = 0L
         val build = suspend {
+            // The changes made up to here are in the index built now
+            version = OneDriveSync.favoritesIndexVersion()
             // Without an E-Hentai account the cloud favorites are unknown, the names of the slots too
             val cloud = if (signedIn) current() else CloudFavorites()
             FavoritesIndexMerger.buildIndex(local, cloud, deviceId, deviceName, now())
@@ -507,7 +517,8 @@ object FavoritesIndexSync {
             runEhStep { lookUpJapaneseTitles(index) }
             index = build()
             val listed = index
-            update { cloud -> FavoritesIndexMerger.pruneTitles(cloud, listed) }
+            // Titles of galleries the index no longer lists: nothing to upload
+            update(markChanged = false) { cloud -> FavoritesIndexMerger.pruneTitles(cloud, listed) }
         }
 
         mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.UPLOAD)
@@ -516,7 +527,7 @@ object FavoritesIndexSync {
             val storedETag = OneDriveSyncState.favoritesIndexETag.value
             if (remote != null && remote.eTag == storedETag && last != null && last.sameContent(index)) {
                 logcat(TAG) { "Index unchanged" }
-                return
+                return version
             }
             val output = File(syncDir, "favorites_index.upload")
             writeGzip(output, FavoritesIndex.serializer(), index)
@@ -539,8 +550,9 @@ object FavoritesIndexSync {
                 it[OneDriveSyncState.favoritesIndexRemoved] = false
             }
             logcat(TAG) { "Index uploaded: ${index.galleries.size} galleries" }
-            return
+            return version
         }
+        throw OneDrivePreconditionException()
     }
 
     /**

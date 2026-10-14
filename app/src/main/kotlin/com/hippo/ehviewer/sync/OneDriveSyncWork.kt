@@ -32,7 +32,8 @@ class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : Corou
                 val retry = inputData.getBoolean(KEY_CONTINUATION, false) &&
                     runAttemptCount < MAX_CONTINUATION_RETRIES &&
                     OneDriveSyncState.exportFavoritesIndex.value &&
-                    (report.indexError != null || FavoritesIndexSync.hasUnfinishedRefresh() && !hasNextContinuation())
+                    (report.indexError != null || FavoritesIndexSync.hasUnfinishedRefresh()) &&
+                    !hasNextContinuation()
                 if (retry) Result.retry() else Result.success()
             },
             onFailure = {
