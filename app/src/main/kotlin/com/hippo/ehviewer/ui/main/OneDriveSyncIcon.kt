@@ -1,27 +1,37 @@
 package com.hippo.ehviewer.ui.main
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncProblem
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
@@ -35,6 +45,8 @@ import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.SyncTrigger
 import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
+import com.hippo.ehviewer.ui.settings.SyncLinearProgress
+import com.hippo.ehviewer.ui.settings.SyncRingProgress
 import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
@@ -131,20 +143,70 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
         shapes = IconButtonDefaults.shapes(),
     ) {
         when (state) {
-            SyncIconState.RUNNING -> {
-                val fraction = runningFraction
-                val modifier = Modifier.size(22.dp)
-                if (fraction != null) {
-                    val animated by animateFloatAsState(targetValue = fraction, label = "syncProgress")
-                    CircularProgressIndicator(progress = { animated }, modifier = modifier, color = LocalContentColor.current, strokeWidth = 2.5.dp)
-                } else {
-                    CircularProgressIndicator(modifier = modifier, color = LocalContentColor.current, strokeWidth = 2.5.dp)
-                }
-            }
+            SyncIconState.RUNNING -> SyncRingProgress(fraction = runningFraction, color = LocalContentColor.current, modifier = Modifier.size(22.dp))
             SyncIconState.PENDING -> Icon(imageVector = Icons.Default.Schedule, contentDescription = null)
             SyncIconState.FAILED -> Icon(imageVector = Icons.Default.SyncProblem, contentDescription = null, tint = MaterialTheme.colorScheme.error)
             SyncIconState.SUCCEEDED -> Icon(imageVector = Icons.Default.DoneAll, contentDescription = null)
             SyncIconState.NOT_SYNCED -> Icon(imageVector = Icons.Default.Sync, contentDescription = null)
+        }
+    }
+}
+
+/**
+ * The progress of a running sync or cloud favorites work below the search bar, so it is seen without tapping the sync
+ * icon; nothing while neither runs, or with the option turned off. [onHeightChanged]: its height in pixels, 0 hidden.
+ */
+@Composable
+fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val account by OneDriveSyncState.accountId.collectAsState()
+    val enabled by OneDriveSyncState.showProgressBar.collectAsState()
+    val syncing by OneDriveSync.running.collectAsState()
+    val syncProgress by OneDriveSync.progress.collectAsState()
+    val working by FavoritesIndexSync.working.collectAsState()
+    val workProgress by FavoritesIndexSync.workProgress.collectAsState()
+    val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
+    val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
+    val queued = export && workInfo.active
+    val shown = OneDriveClient.isSupported && account != null && enabled && (syncing || working || queued)
+    // A sync and the work at once: the sync is short, it shows first
+    val text = when {
+        syncing -> syncProgress?.let { syncProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_running)
+        working -> workProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
+        else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued)
+    }
+    val fraction = when {
+        syncing -> syncProgress?.fraction
+        working -> workProgress?.fraction
+        else -> null
+    }
+    // Keeps the last text while it hides
+    val last = remember { arrayOfNulls<Pair<String, Float?>>(1) }
+    if (shown) last[0] = text to fraction
+    AnimatedVisibility(
+        visible = shown,
+        modifier = modifier.onSizeChanged { onHeightChanged(it.height) },
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        val (shownText, shownFraction) = last[0] ?: return@AnimatedVisibility
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(
+                    text = shownText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Waiting to go on: no bar, nothing moves
+                if (syncing || working) {
+                    SyncLinearProgress(fraction = shownFraction, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                }
+            }
         }
     }
 }

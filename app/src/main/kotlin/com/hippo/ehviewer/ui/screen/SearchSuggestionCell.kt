@@ -26,7 +26,8 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
     Surface(
         onClick = { suggestion.onClick() },
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        // The expanded search bar is surfaceContainerHigh itself: a brighter card stands out from it
+        color = MaterialTheme.colorScheme.surfaceBright,
         modifier = modifier,
     ) {
         Row(verticalAlignment = Alignment.Top) {
