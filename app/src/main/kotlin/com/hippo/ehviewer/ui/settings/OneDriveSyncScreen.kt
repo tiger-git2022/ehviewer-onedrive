@@ -204,9 +204,11 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         val workText = workProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
                         val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
                         val workError by OneDriveSyncState.cloudFavoritesWorkError.collectAsState()
+                        val fullRequested by OneDriveSyncState.cloudFavoritesFullRequested.collectAsState()
                         // Read again when the work starts or stops
                         val status by produceState<FavoritesIndexSync.Status?>(null, working, workInfo) { value = FavoritesIndexSync.status() }
-                        val unfinished = status?.let { it.unfinished || it.missingTitles > 0 } == true || workInfo.waiting
+                        // Also stopped before its first page was saved: no checkpoint yet, but the reason or the asked read is kept
+                        val unfinished = status?.let { it.unfinished || it.missingTitles > 0 } == true || workInfo.waiting || workError != null || fullRequested
                         val statusText = status.takeIf { unfinished }?.let { cloudFavoritesStatusText(it, workInfo, workError) }
                         Column {
                             Preference(
