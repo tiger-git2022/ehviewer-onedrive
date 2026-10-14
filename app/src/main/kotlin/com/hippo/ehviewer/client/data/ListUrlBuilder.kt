@@ -149,11 +149,15 @@ data class ListUrlBuilder(
     }
 
     /**
-     * Fork: the language of this list, else the language filter of the search options: a tag opened from a gallery
-     * follows "汉" next to the search bar too.
+     * Fork: this list with the language filter of the search options when it has none, so a tag opened from a gallery
+     * follows "汉" next to the search bar too. Taken once when the list opens: the pages loaded later keep it.
      */
-    private val effectiveLanguage: Int
-        get() = language.takeIf { it != -1 } ?: Settings.languageFilter.value
+    fun withLanguageFilter(): ListUrlBuilder = when {
+        language != -1 -> this
+        mode == MODE_NORMAL || mode == MODE_SUBSCRIPTION || mode == MODE_TAG || mode == MODE_UPLOADER ->
+            copy(language = Settings.languageFilter.value)
+        else -> this
+    }
 
     fun build(): String = when (mode) {
         MODE_NORMAL, MODE_SUBSCRIPTION -> ehUrl(EhUrl.WATCHED_PATH.takeIf { mode == MODE_SUBSCRIPTION }) {
@@ -162,7 +166,6 @@ data class ListUrlBuilder(
                 addQueryParameter("f_cats", "${EhUtils.invCategory(category)}")
             }
             // Fork: the language filter also applies to the list without a search ("汉" next to the search bar)
-            val language = effectiveLanguage
             val query = (keyword ?: "".takeIf { language != -1 })?.let { keyword ->
                 if (language == -1 || "gid:" in keyword || "l:" in keyword || "language:" in keyword) {
                     keyword
@@ -215,7 +218,7 @@ data class ListUrlBuilder(
                 }
             }
         }.buildString()
-        MODE_UPLOADER, MODE_TAG -> if (effectiveLanguage != -1) {
+        MODE_UPLOADER, MODE_TAG -> if (language != -1) {
             // Fork: a tag or an uploader in one language is a search, the tag pages have no language filter
             ehUrl {
                 val tag = requireNotNull(keyword)
@@ -226,7 +229,7 @@ data class ListUrlBuilder(
                     val value = tag.substringAfter(':')
                     if (ns.isEmpty()) "\"$value$\"" else "$ns:\"$value$\""
                 }
-                addQueryParameter("f_search", "$term ${GalleryInfo.S_LANG_TAGS[effectiveLanguage]}")
+                addQueryParameter("f_search", "$term ${GalleryInfo.S_LANG_TAGS[language]}")
                 addQueryParameterIfNotBlank("prev", prev)
                 addQueryParameterIfNotBlank("next", next)
                 addQueryParameterIfNotBlank("seek", jumpTo)

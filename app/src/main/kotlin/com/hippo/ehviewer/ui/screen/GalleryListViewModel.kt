@@ -25,7 +25,8 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
     private val mutex = Mutex()
 
     val urlBuilder by savedStateHandle.saved(MutableStateSerializer()) {
-        mutableStateOf(lub)
+        // Fork: the language filter ("汉") of when the list opened
+        mutableStateOf(lub.withLanguageFilter())
     }
 
     // Use a smaller prefetch distance to avoid prepending an additional page after jumping
