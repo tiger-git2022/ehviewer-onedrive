@@ -682,7 +682,7 @@
     <string name="onedrive_sync_category_favorites">Local favorites</string>
     <string name="onedrive_sync_category_history">History</string>
     <string name="onedrive_sync_category_progress">Reading progress</string>
-    <string name="onedrive_sync_category_history_progress">History and reading progress</string>
+    <string name="onedrive_sync_category_history_summary">The list of galleries read. Off by default: the reading progress is enough to go on reading on another device</string>
     <string name="onedrive_sync_category_quick_search">Quick search and filters</string>
     <string name="onedrive_sync_category_quick_search_filters">Quick search and filters</string>
     <string name="onedrive_sync_category_suggestions">Search history</string>
