@@ -2,7 +2,6 @@ package com.hippo.ehviewer.sync
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -54,10 +53,26 @@ class FavoritesIndexMergerTest {
         assertEquals(mapOf(1L to "一"), refreshed.japaneseTitles)
 
         val counts = List(CLOUD_SLOT_COUNT) { if (it == 3) 2 else 0 }
-        assertFalse(FavoritesIndexMerger.needsRefresh(refreshed, counts, now = 200))
-        assertTrue(FavoritesIndexMerger.needsRefresh(refreshed, counts.mapIndexed { i, c -> if (i == 0) 1 else c }, now = 200))
-        assertTrue(FavoritesIndexMerger.needsRefresh(refreshed, counts, now = 100 + FavoritesIndexMerger.REFRESH_MAX_AGE_MILLIS + 1))
-        assertTrue(FavoritesIndexMerger.needsRefresh(CloudFavorites(), List(CLOUD_SLOT_COUNT) { 0 }, now = 1))
+        assertEquals(emptyList(), FavoritesIndexMerger.slotsToRefresh(refreshed, counts))
+        // Only the slots whose counts differ, however old the list
+        assertEquals(
+            listOf(0, 3),
+            FavoritesIndexMerger.slotsToRefresh(
+                refreshed,
+                counts.mapIndexed { i, c ->
+                    if (i == 0) {
+                        1
+                    } else if (i == 3) {
+                        1
+                    } else {
+                        c
+                    }
+                },
+            ),
+        )
+        // Never read completely: all slots
+        assertEquals(ALL_CLOUD_SLOTS, FavoritesIndexMerger.slotsToRefresh(CloudFavorites(), List(CLOUD_SLOT_COUNT) { 0 }))
+        assertEquals(emptyList(), FavoritesIndexMerger.slotsToRefresh(refreshed, emptyList()))
     }
 
     @Test
@@ -116,7 +131,7 @@ class FavoritesIndexMergerTest {
         assertSame(cloud, FavoritesIndexMerger.forUser(cloud, "a"))
         val other = FavoritesIndexMerger.forUser(cloud, "b")
         assertEquals(CloudFavorites(userKey = "b", japaneseTitles = mapOf(1L to "一")), other)
-        assertTrue(FavoritesIndexMerger.needsRefresh(other, List(CLOUD_SLOT_COUNT) { 0 }, now = 4))
+        assertEquals(ALL_CLOUD_SLOTS, FavoritesIndexMerger.slotsToRefresh(other, List(CLOUD_SLOT_COUNT) { 0 }))
         assertEquals("b", FavoritesIndexMerger.buildIndex(emptyList(), other, "dev", "", now = 5).ehUserKey)
     }
 
@@ -213,5 +228,42 @@ class FavoritesIndexMergerTest {
         assertEquals(listOf(1L to 0, 2L to 4), partial.galleries.map { it.gid to it.slot })
         val done = FavoritesIndexMerger.completeRefresh(cloud, pages, setOf(2L, 3L), names, now = 20, intended = intended)
         assertEquals(setOf(1L to 0, 2L to 4), done.galleries.map { it.gid to it.slot }.toSet())
+    }
+
+    @Test
+    fun partialRefreshReplacesOnlyItsSlots() {
+        val cloud = CloudFavorites(
+            refreshedAt = 1,
+            slotNames = names,
+            galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 1), gallery(4, slot = 2)),
+        )
+        // Slot 1 read again: 3 was removed on the website, 4 moved there from slot 2 (read too), 5 is new
+        val pages = listOf(gallery(2, slot = 1), gallery(4, slot = 1), gallery(5, slot = 1))
+        val done = FavoritesIndexMerger.completeRefresh(cloud, pages, emptySet(), names, now = 30, slots = listOf(1, 2))
+        assertEquals(setOf(1L to 0, 2L to 1, 4L to 1, 5L to 1), done.galleries.map { it.gid to it.slot }.toSet())
+        // A slot not read keeps its galleries, unless the pages found them in a read slot
+        val onlySlot1 = FavoritesIndexMerger.completeRefresh(cloud, pages, emptySet(), names, now = 30, slots = listOf(1))
+        assertEquals(setOf(1L to 0, 2L to 1, 4L to 1, 5L to 1), onlySlot1.galleries.map { it.gid to it.slot }.toSet())
+    }
+
+    @Test
+    fun newGalleriesAreUnknownOrInAnotherSlot() {
+        val cloud = CloudFavorites(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1)))
+        val page = listOf(gallery(1, slot = 0), gallery(2, slot = 3), gallery(3, slot = 0), gallery(4))
+        assertEquals(listOf(2L, 3L), FavoritesIndexMerger.newGalleries(cloud, page).map { it.gid })
+    }
+
+    @Test
+    fun resumedPartialRefreshOnlyLooksAtItsSlots() {
+        val counts = List(CLOUD_SLOT_COUNT) { 2 }
+        val checkpoint = CloudRefreshCheckpoint(slots = listOf(2, 5), slot = 5, galleries = listOf(gallery(1, slot = 2)), counts = counts)
+        // Slot 3 is not read by this refresh: going on
+        val other = counts.mapIndexed { slot, count -> if (slot == 3) 9 else count }
+        assertEquals(checkpoint.copy(counts = other), FavoritesIndexMerger.resumeCheckpoint(checkpoint, other))
+        // Slot 2 changed since it was read: read again from it
+        val changed = counts.mapIndexed { slot, count -> if (slot == 2) 9 else count }
+        val resumed = FavoritesIndexMerger.resumeCheckpoint(checkpoint, changed)
+        assertEquals(2, resumed.slot)
+        assertEquals(emptyList(), resumed.galleries)
     }
 }

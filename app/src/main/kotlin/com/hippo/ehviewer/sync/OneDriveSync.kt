@@ -87,6 +87,9 @@ data class DownloadImportResult(val imported: Int, val skipped: Int)
  * OneDrive sync engine. All the shared categories live in `ehviewer/v1/` of the OneDrive app folder, one
  * gzip JSON file each with its own ETag, the download list of every device in `ehviewer/devices/`.
  *
+ * A manual sync takes everything; an automatic one only the [SyncCategory.automatic] categories and the favorites
+ * index, so settings, quick searches and download lists wait for the next manual sync.
+ *
  * Every sync runs under [mutex] on the IO dispatcher. A sync first lists `ehviewer/v1` once to get all
  * ETags, then per category either skips it (nothing changed anywhere), merges against the cached cloud
  * copy (only this device changed) or downloads the new cloud copy first. The cached copy of the last
@@ -150,13 +153,13 @@ object OneDriveSync {
 
     private fun now() = Clock.System.now().toEpochMilliseconds()
 
-    /** Called by EhDB writes of synced data. */
+    /** Called by EhDB writes of synced data. Only data an automatic sync takes schedules one. */
     suspend fun notifyChanged(category: SyncCategory) {
         if (currentCoroutineContext()[SyncWrite] != null) return
         markDirty(category)
         // The local favorites are in the favorites index too, also when their own category is not synced
         if (category == SyncCategory.FAVORITES) markFavoritesIndexChanged()
-        scheduleChangeSync()
+        if (category.automatic) scheduleChangeSync()
     }
 
     private val favoritesIndexVersion = AtomicLong()
@@ -193,14 +196,13 @@ object OneDriveSync {
         }
     }
 
-    /** Called by EhDB writes of the download list. */
+    /** Called by EhDB writes of the download list, which the next manual sync uploads. */
     suspend fun notifyDownloadsChanged() {
         if (currentCoroutineContext()[SyncWrite] != null) return
         downloadsVersion.incrementAndGet()
         if (!OneDriveSyncState.downloadsDirty.value) {
             OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.downloadsDirty] = true }
         }
-        if (OneDriveSyncState.uploadDownloads.value) scheduleChangeSync()
     }
 
     private suspend fun markDirty(category: SyncCategory) {
@@ -242,8 +244,8 @@ object OneDriveSync {
                     val times = OneDriveSyncState.readLongMap(OneDriveSyncState.settingsModifiedAt) + changed.associateWith { time }
                     OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.settingsModifiedAt] = OneDriveSyncState.encodeLongMap(times) }
                 }
+                // Synced by the next manual sync
                 markDirty(SyncCategory.SETTINGS)
-                scheduleChangeSync()
             }
         }
     }
@@ -465,7 +467,7 @@ object OneDriveSync {
             mutableChangesPending.value = false
             try {
                 val start = SystemClock.elapsedRealtime()
-                val report = withContext(SyncWrite()) { doSync() }
+                val report = withContext(SyncWrite()) { doSync(manual = trigger == SyncTrigger.MANUAL) }
                 logcat(TAG) { "Sync ($trigger) finished in ${SystemClock.elapsedRealtime() - start} ms" }
                 Result.success(report)
             } catch (e: CancellationException) {
@@ -498,10 +500,10 @@ object OneDriveSync {
         result
     }
 
-    private suspend fun doSync(): SyncReport {
-        val sections = SyncSection.all.filter { OneDriveSyncState.isEnabled(it.category) }
-        // Connecting, each category, the download lists and the favorites index
-        val steps = sections.size + 3
+    private suspend fun doSync(manual: Boolean): SyncReport {
+        val sections = SyncSection.all.filter { OneDriveSyncState.isEnabled(it.category) && (manual || it.category.automatic) }
+        // Connecting, each category, the download lists (manual syncs only) and the favorites index
+        val steps = sections.size + if (manual) 3 else 2
         mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_connect, 1, steps)
         val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
         updateAccount(account)
@@ -511,9 +513,13 @@ object OneDriveSync {
             mutableProgress.value = SyncRunProgress(categoryTitle(section.category), index + 2, steps)
             syncSection(section, listing[section.category.fileName], deviceId)
         }
-        mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_devices, steps - 1, steps)
         var imported = 0
-        val devicesError = runCatching { imported = syncDevices(deviceId) }.exceptionOrNull()
+        val devicesError = if (manual) {
+            mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_devices, steps - 1, steps)
+            runCatching { imported = syncDevices(deviceId) }.exceptionOrNull()
+        } else {
+            null
+        }
         if (devicesError is CancellationException) throw devicesError
         devicesError?.let { logcat(TAG, it) }
         mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_favorites_index, steps, steps, favoritesIndex = true)
@@ -522,6 +528,27 @@ object OneDriveSync {
         if (indexError is CancellationException) throw indexError
         indexError?.let { logcat(TAG, it) }
         return SyncReport(results, imported, devicesError, indexError)
+    }
+
+    /**
+     * Uploads the favorites index alone, for [CloudFavoritesWork] while it reads the cloud favorites. A failure is
+     * left to the next sync, which uploads the index too.
+     */
+    suspend fun uploadFavoritesIndex() {
+        if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn || !OneDriveSyncState.exportFavoritesIndex.value) return
+        try {
+            withContext(Dispatchers.IO) {
+                mutex.withLock {
+                    val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
+                    updateAccount(account)
+                    FavoritesIndexSync.sync(ensureDeviceId(), deviceName, fromWork = true)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+        }
     }
 
     private suspend fun <T> syncSection(section: SyncSection<T>, remote: RemoteItem?, deviceId: String): CategoryResult {

@@ -1,41 +1,51 @@
 package com.hippo.ehviewer.sync
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.launch
 
 private const val PERIODIC_WORK_NAME = "OneDriveSyncWork"
 private const val CATCH_UP_WORK_NAME = "OneDriveSyncCatchUpWork"
+
+// A continuation of a refresh by the sync itself, from before CloudFavoritesWork: only cancelled now
 private const val CONTINUATION_WORK_NAME = "OneDriveSyncContinuationWork"
-private const val KEY_CONTINUATION = "continuation"
-private const val MAX_CONTINUATION_RETRIES = 5
+private const val CLOUD_FAVORITES_WORK_NAME = "CloudFavoritesWork"
+private const val KEY_FULL = "full"
+private const val MAX_CLOUD_FAVORITES_ATTEMPTS = 10
+private const val CHANNEL_ID = "onedrive_sync"
+private const val NOTIFICATION_ID = 0x0D51
+private const val NOTIFICATION_INTERVAL_MILLIS = 2_000L
 
 class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
     override suspend fun doWork(): Result = withIOContext {
         if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return@withIOContext Result.success()
         OneDriveSync.sync(SyncTrigger.BACKGROUND).fold(
-            onSuccess = { report ->
-                // A continuation whose refresh failed on E-Hentai, or whose index failed to upload (neither fails the
-                // sync), tries again later; one that ran out of time already queued the next continuation
-                val retry = inputData.getBoolean(KEY_CONTINUATION, false) &&
-                    runAttemptCount < MAX_CONTINUATION_RETRIES &&
-                    OneDriveSyncState.exportFavoritesIndex.value &&
-                    (report.indexError != null || FavoritesIndexSync.hasUnfinishedRefresh()) &&
-                    !hasNextContinuation()
-                if (retry) Result.retry() else Result.success()
-            },
+            onSuccess = { Result.success() },
             onFailure = {
                 logcat(PERIODIC_WORK_NAME, it)
                 // Signing in again needs the user, retrying cannot help
@@ -45,11 +55,78 @@ class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : Corou
     }
 }
 
-/** Another continuation than this work waits to run. */
-private suspend fun CoroutineWorker.hasNextContinuation(): Boolean = WorkManager.getInstance(applicationContext)
-    .getWorkInfosForUniqueWorkFlow(CONTINUATION_WORK_NAME)
-    .first()
-    .any { it.id != id && !it.state.isFinished }
+/**
+ * Reads the cloud favorites page by page and looks up their Japanese titles, see [FavoritesIndexSync.runWork]. With
+ * many favorites this takes hours, so it runs in the foreground with a notification when Android allows it (started
+ * while the app is open): leaving the app and the 10 minute limit of background work do not stop it. Stopped anyway,
+ * it goes on from its checkpoint.
+ */
+class CloudFavoritesWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
+    @OptIn(FlowPreview::class)
+    override suspend fun doWork(): Result = withIOContext {
+        if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn || !OneDriveSyncState.exportFavoritesIndex.value) {
+            return@withIOContext Result.success()
+        }
+        runCatching { setForeground(foregroundInfo(null)) }.onFailure { logcat(CLOUD_FAVORITES_WORK_NAME, it) }
+        coroutineScope {
+            val notification = launch {
+                FavoritesIndexSync.workProgress.sample(NOTIFICATION_INTERVAL_MILLIS).collect { progress ->
+                    runCatching { setForeground(foregroundInfo(progress)) }
+                }
+            }
+            try {
+                FavoritesIndexSync.runWork(inputData.getBoolean(KEY_FULL, false))
+                Result.success()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // E-Hentai or the network failed: the checkpoint keeps what was read
+                logcat(CLOUD_FAVORITES_WORK_NAME, e)
+                if (runAttemptCount < MAX_CLOUD_FAVORITES_ATTEMPTS) Result.retry() else Result.failure()
+            } finally {
+                notification.cancel()
+            }
+        }
+    }
+
+    private fun foregroundInfo(progress: StepProgress?): ForegroundInfo {
+        val context = applicationContext
+        NotificationManagerCompat.from(context).createNotificationChannel(
+            NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+                .setName(context.getString(R.string.onedrive_sync_channel))
+                .build(),
+        )
+        val text = progress?.let {
+            val name = context.getString(it.title)
+            val percent = it.percent
+            if (percent != null) context.getString(R.string.onedrive_sync_progress_count, name, it.done, it.total, percent) else name
+        }
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+            PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE)
+        }
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle(context.getString(R.string.onedrive_sync_cloud_favorites_work))
+            .setContentText(text)
+            .setProgress(progress?.total ?: 0, progress?.done ?: 0, progress?.percent == null)
+            .setContentIntent(open)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                context.getString(R.string.onedrive_sync_cloud_favorites_work_pause),
+                WorkManager.getInstance(context).createCancelPendingIntent(id),
+            )
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
+    }
+}
 
 private fun syncConstraints() = Constraints.Builder()
     .setRequiredNetworkType(if (OneDriveSyncState.wifiOnly.value) NetworkType.UNMETERED else NetworkType.CONNECTED)
@@ -58,6 +135,8 @@ private fun syncConstraints() = Constraints.Builder()
 /** Schedules or cancels the periodic sync after a change of the account or the auto sync options. */
 fun updateOneDriveSyncWork(context: Context) {
     val workManager = WorkManager.getInstance(context)
+    workManager.cancelUniqueWork(CONTINUATION_WORK_NAME)
+    if (!OneDriveSyncState.isSignedIn) workManager.cancelUniqueWork(CLOUD_FAVORITES_WORK_NAME)
     if (OneDriveClient.isSupported && OneDriveSyncState.isSignedIn && OneDriveSyncState.autoSync.value) {
         val interval = OneDriveSyncState.autoSyncIntervalMinutes.value.toLong().coerceAtLeast(15)
         val request = PeriodicWorkRequestBuilder<OneDriveSyncWork>(interval, TimeUnit.MINUTES)
@@ -80,13 +159,15 @@ fun enqueueOneDriveCatchUpWork(context: Context) {
 }
 
 /**
- * Another sync after this one, for a refresh of the cloud favorites that ran out of time. Queued after a running one
- * (also when this sync is that work), whatever the automatic sync options.
+ * Starts [CloudFavoritesWork] unless it runs already, whatever the automatic sync options. [full] reads all slots
+ * again, also when the work runs (it starts over from the checkpoint).
  */
-fun enqueueOneDriveContinuationWork(context: Context) {
-    val request = OneTimeWorkRequestBuilder<OneDriveSyncWork>()
+fun enqueueCloudFavoritesWork(context: Context, full: Boolean = false) {
+    val request = OneTimeWorkRequestBuilder<CloudFavoritesWork>()
         .setConstraints(syncConstraints())
-        .setInputData(workDataOf(KEY_CONTINUATION to true))
+        .setInputData(workDataOf(KEY_FULL to full))
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
         .build()
-    WorkManager.getInstance(context).enqueueUniqueWork(CONTINUATION_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+    val policy = if (full) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+    WorkManager.getInstance(context).enqueueUniqueWork(CLOUD_FAVORITES_WORK_NAME, policy, request)
 }

@@ -668,7 +668,7 @@
     <string name="onedrive_sync_downloads_imported">Imported %d downloads from subscribed devices</string>
     <string name="onedrive_sync_devices_failed">Download lists failed: %s</string>
     <string name="onedrive_sync_auto">Automatic sync</string>
-    <string name="onedrive_sync_auto_summary">Sync periodically, on app start and after changes</string>
+    <string name="onedrive_sync_auto_summary">Sync favorites, history and search history periodically, on app start and after changes</string>
     <string name="onedrive_sync_interval">Sync interval</string>
     <string name="onedrive_sync_interval_minutes">Every %d minutes</string>
     <string name="onedrive_sync_interval_hour">Every hour</string>
@@ -691,8 +691,13 @@
     <string name="onedrive_sync_favorites_index">Share favorites with other apps</string>
     <string name="onedrive_sync_favorites_index_summary">Uploads a list of local and cloud favorites (titles and slots) to ehviewer/export/, so the Mihon fork signed in to the same account can mark them. Turning this off deletes the uploaded list on the next sync.</string>
     <string name="onedrive_sync_favorites_index_refresh">Read cloud favorites again</string>
-    <string name="onedrive_sync_favorites_index_refresh_summary">Normally a sync checks the slot counts with one request and reads all pages only when they changed. Use this after changing favorites on the website; it also looks up every missing Japanese title. A read cut short goes on where it stopped.</string>
+    <string name="onedrive_sync_favorites_index_refresh_summary">Normally a sync checks the slot counts with one request: favorites added on the website come from the newest pages, and only slots whose counts still differ are read again page by page, in the background. This reads all slots again and looks up every missing Japanese title, in the background with a notification. A read cut short goes on where it stopped.</string>
     <string name="onedrive_sync_favorites_index_refreshing">Reading cloud favorites page by page…</string>
+    <string name="onedrive_sync_favorites_index_refresh_started">Reading in the background, the notification shows the progress</string>
+    <string name="onedrive_sync_manual_only">Synced by manual syncs only</string>
+    <string name="onedrive_sync_channel">OneDrive sync</string>
+    <string name="onedrive_sync_cloud_favorites_work">Updating the favorites shared with other apps</string>
+    <string name="onedrive_sync_cloud_favorites_work_pause">Pause</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">Sign in to E-Hentai first</string>
     <string name="onedrive_sync_favorites_index_failed">Favorites list for other apps failed: %s</string>
     <string name="onedrive_sync_devices">Devices</string>
