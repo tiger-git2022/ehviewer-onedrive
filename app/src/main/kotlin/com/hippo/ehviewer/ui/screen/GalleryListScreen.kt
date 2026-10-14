@@ -103,6 +103,8 @@ import com.hippo.ehviewer.client.data.ListUrlBuilder.Companion.MODE_WHATS_HOT
 import com.hippo.ehviewer.client.parser.GalleryDetailUrlParser
 import com.hippo.ehviewer.client.parser.GalleryPageUrlParser
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.OneDriveClient
+import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.awaitSelectDate
@@ -113,6 +115,7 @@ import com.hippo.ehviewer.ui.main.AvatarIcon
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
+import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.SearchFilter
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
@@ -490,9 +493,16 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         localSearch = false,
         searchBarOffsetY = { searchBarOffsetY },
         trailingIcon = {
-            val sheetState = LocalSideSheetState.current
-            IconButton(onClick = { launch { sheetState.open() } }, shapes = IconButtonDefaults.shapes()) {
-                Icon(imageVector = Icons.Outlined.Bookmarks, contentDescription = stringResource(id = R.string.quick_search))
+            val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
+            if (OneDriveClient.isSupported && oneDriveAccount != null) {
+                // Fork: the OneDrive sync state takes the place of the quick search button, which stays a swipe
+                // from the right edge away
+                OneDriveSyncIcon()
+            } else {
+                val sheetState = LocalSideSheetState.current
+                IconButton(onClick = { launch { sheetState.open() } }, shapes = IconButtonDefaults.shapes()) {
+                    Icon(imageVector = Icons.Outlined.Bookmarks, contentDescription = stringResource(id = R.string.quick_search))
+                }
             }
             AvatarIcon()
         },

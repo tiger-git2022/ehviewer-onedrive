@@ -86,3 +86,35 @@ data class CloudFavorites(
         return counts.toList()
     }
 }
+
+/**
+ * A full refresh of the cloud favorites that has not finished, kept in `files/cloud_favorites_refresh.json.gz`: a
+ * refresh cut short (the time limit of a sync, the app closed, no network) goes on from [slot] and [next] instead of
+ * reading every page again.
+ */
+@Serializable
+data class CloudRefreshCheckpoint(
+    @EncodeDefault
+    val version: Int = FAVORITES_INDEX_VERSION,
+    /** [CloudFavorites.userKey] of the account the pages belong to. */
+    val userKey: String? = null,
+    val startedAt: Long = 0,
+    /** Slot read now; the slots before it are done. */
+    val slot: Int = 0,
+    /** Cursor of the next page of [slot], null at its first page. */
+    val next: String? = null,
+    /** Galleries of the pages read so far. */
+    val galleries: List<IndexedGallery> = emptyList(),
+    /** Count of each slot when its pages were read: a slot read before that changed since is read again. */
+    val counts: List<Int> = emptyList(),
+    /**
+     * Galleries changed in the app since [startedAt]: the known list is right about them, the pages read before the
+     * change are not.
+     */
+    val touched: Set<Long> = emptySet(),
+    /**
+     * Slot the user put a gallery in since [startedAt] ([NO_CLOUD_SLOT] when removed): pages read before the change
+     * are corrected with it, also for galleries the known list did not have yet.
+     */
+    val intended: Map<Long, Int> = emptyMap(),
+)

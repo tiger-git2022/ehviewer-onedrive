@@ -34,9 +34,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -106,6 +109,18 @@ object OneDriveSync {
     private val mutableRunning = MutableStateFlow(false)
     val running: StateFlow<Boolean> = mutableRunning.asStateFlow()
 
+    private val mutableChangesPending = MutableStateFlow(false)
+
+    /** True while changes wait for a sync scheduled for them: the change countdown, a rerun or background work. */
+    val changesPending: StateFlow<Boolean> = mutableChangesPending.asStateFlow()
+
+    private val mutableProgress = MutableStateFlow<SyncRunProgress?>(null)
+
+    /** Step of the running sync, null when no sync runs. The step of the favorites index shows its own progress. */
+    val progress: StateFlow<SyncRunProgress?> = combine(mutableProgress, FavoritesIndexSync.progress) { progress, detail ->
+        if (progress != null && progress.favoritesIndex && detail != null) progress.withDetail(detail) else progress
+    }.stateIn(scope, SharingStarted.Eagerly, null)
+
     private val json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -139,12 +154,43 @@ object OneDriveSync {
     suspend fun notifyChanged(category: SyncCategory) {
         if (currentCoroutineContext()[SyncWrite] != null) return
         markDirty(category)
+        // The local favorites are in the favorites index too, also when their own category is not synced
+        if (category == SyncCategory.FAVORITES) markFavoritesIndexChanged()
         scheduleChangeSync()
     }
 
-    /** Called when the cloud favorites known to [FavoritesIndexSync] changed. */
-    fun notifyFavoritesIndexChanged() {
-        scheduleChangeSync()
+    private val favoritesIndexVersion = AtomicLong()
+
+    // A change and the sync that uploads it update the version and the flag one after the other
+    private val favoritesIndexDirtyMutex = Mutex()
+
+    /**
+     * Called after [FavoritesIndexSync] saved a change of the cloud favorites, which marked it already
+     * ([markFavoritesIndexChanged]): schedules a sync. Marking again would let a sync that built the index in between
+     * leave the flag set.
+     */
+    fun scheduleFavoritesIndexSync() = scheduleChangeSync()
+
+    /** The local or cloud favorites changed: the index waits for a sync (also with sync on change off, and across restarts). */
+    suspend fun markFavoritesIndexChanged() {
+        favoritesIndexDirtyMutex.withLock {
+            favoritesIndexVersion.incrementAndGet()
+            if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = true }
+            }
+        }
+    }
+
+    /** Version of the favorites changes, taken before building the index a sync uploads. */
+    fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
+
+    /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
+    suspend fun favoritesIndexSynced(version: Long) {
+        favoritesIndexDirtyMutex.withLock {
+            if (favoritesIndexVersion.get() == version && OneDriveSyncState.favoritesIndexDirty.value) {
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = false }
+            }
+        }
     }
 
     /** Called by EhDB writes of the download list. */
@@ -295,6 +341,7 @@ object OneDriveSync {
     private fun scheduleChangeSync() {
         if (!autoSyncAllowed || !OneDriveSyncState.syncOnChange.value) return
         synchronized(debounceLock) {
+            mutableChangesPending.value = true
             if (mutex.isLocked) {
                 pendingAfterSync = true
                 return
@@ -370,6 +417,7 @@ object OneDriveSync {
 
     suspend fun signOut() = mutex.withLock {
         OneDriveClient.signOut()
+        mutableChangesPending.value = false
         OneDriveSyncState.withMutableSnapshot {
             it[OneDriveSyncState.accountId] = null
             it[OneDriveSyncState.accountName] = null
@@ -413,6 +461,8 @@ object OneDriveSync {
     suspend fun sync(trigger: SyncTrigger): Result<SyncReport> = withContext(Dispatchers.IO) {
         val result: Result<SyncReport> = mutex.withLock {
             mutableRunning.value = true
+            // This sync takes every change made so far; a change from now on schedules the next one
+            mutableChangesPending.value = false
             try {
                 val start = SystemClock.elapsedRealtime()
                 val report = withContext(SyncWrite()) { doSync() }
@@ -425,6 +475,7 @@ object OneDriveSync {
                 Result.failure<SyncReport>(e)
             } finally {
                 mutableRunning.value = false
+                mutableProgress.value = null
             }
         }
         result.onSuccess { report ->
@@ -448,17 +499,24 @@ object OneDriveSync {
     }
 
     private suspend fun doSync(): SyncReport {
+        val sections = SyncSection.all.filter { OneDriveSyncState.isEnabled(it.category) }
+        // Connecting, each category, the download lists and the favorites index
+        val steps = sections.size + 3
+        mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_connect, 1, steps)
         val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
         updateAccount(account)
         val deviceId = ensureDeviceId()
         val listing = OneDriveClient.list(SHARED_FOLDER)
-        val results = SyncSection.all.filter { OneDriveSyncState.isEnabled(it.category) }.map { section ->
+        val results = sections.mapIndexed { index, section ->
+            mutableProgress.value = SyncRunProgress(categoryTitle(section.category), index + 2, steps)
             syncSection(section, listing[section.category.fileName], deviceId)
         }
+        mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_devices, steps - 1, steps)
         var imported = 0
         val devicesError = runCatching { imported = syncDevices(deviceId) }.exceptionOrNull()
         if (devicesError is CancellationException) throw devicesError
         devicesError?.let { logcat(TAG, it) }
+        mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_favorites_index, steps, steps, favoritesIndex = true)
         // Last: it reads the local favorites the favorites step just merged
         val indexError = runCatching { FavoritesIndexSync.sync(deviceId, deviceName) }.exceptionOrNull()
         if (indexError is CancellationException) throw indexError
@@ -749,6 +807,13 @@ object OneDriveSync {
         mutex.withLock {
             OneDriveClient.delete(ROOT_FOLDER)
             resetCloudState()
+            OneDriveSyncState.withMutableSnapshot {
+                // Nothing is on OneDrive any more: shown as not synced until the next sync uploads everything again
+                it[OneDriveSyncState.lastSyncTime] = 0L
+                it[OneDriveSyncState.lastSyncFailed] = false
+                // The index is gone too, nothing to delete when sharing is off
+                it[OneDriveSyncState.favoritesIndexRemoved] = true
+            }
         }
     }
 

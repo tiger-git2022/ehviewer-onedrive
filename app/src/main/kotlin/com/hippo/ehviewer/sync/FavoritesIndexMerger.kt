@@ -86,17 +86,87 @@ object FavoritesIndexMerger {
         return cloud.copy(updatedAt = now, refreshedAt = now, slotNames = names, galleries = merged)
     }
 
+    /** Galleries added, removed or moved to another slot between [before] and [after]. */
+    fun changedGids(before: CloudFavorites, after: CloudFavorites): Set<Long> {
+        if (before.galleries === after.galleries) return emptySet()
+        val old = before.galleries.associate { it.gid to it.slot }
+        val new = after.galleries.associate { it.gid to it.slot }
+        return (old.keys + new.keys).filterTo(HashSet()) { old[it] != new[it] }
+    }
+
+    /**
+     * An unfinished refresh going on with the slot [counts] E-Hentai shows now: from the first slot already read (or
+     * being read) whose count changed since, the slots are read again and their galleries dropped.
+     */
+    fun resumeCheckpoint(checkpoint: CloudRefreshCheckpoint, counts: List<Int>): CloudRefreshCheckpoint {
+        val changed = (0..minOf(checkpoint.slot, CLOUD_SLOT_COUNT - 1)).firstOrNull { slot ->
+            checkpoint.counts.getOrNull(slot) != counts.getOrNull(slot)
+        } ?: return checkpoint.copy(counts = counts)
+        return checkpoint.copy(
+            slot = changed,
+            next = null,
+            galleries = checkpoint.galleries.filter { it.slot < changed },
+            counts = counts,
+        )
+    }
+
+    /**
+     * The galleries of refresh pages as they are now: moved to the slot the user [intended] or dropped when removed,
+     * and dropped when [touched] otherwise (the known list is right about them).
+     */
+    private fun correctedPages(galleries: List<IndexedGallery>, touched: Set<Long>, intended: Map<Long, Int>) = galleries.mapNotNull { gallery ->
+        val slot = intended[gallery.gid]
+        when {
+            slot != null -> gallery.copy(slot = slot).takeIf { slot in 0 until CLOUD_SLOT_COUNT }
+            gallery.gid in touched -> null
+            else -> gallery
+        }
+    }
+
+    /** Pages of an unfinished refresh: their galleries are added to the known list, corrected by the user's changes. */
+    fun withRefreshPages(
+        cloud: CloudFavorites,
+        galleries: List<IndexedGallery>,
+        touched: Set<Long>,
+        now: Long,
+        intended: Map<Long, Int> = emptyMap(),
+    ): CloudFavorites = upsert(cloud, correctedPages(galleries, touched, intended), now)
+
+    /**
+     * End of a full refresh: the pages read replace the known list. Galleries changed in the app meanwhile keep their
+     * known state ([touched]) or take the slot the user put them in ([intended]).
+     */
+    fun completeRefresh(
+        cloud: CloudFavorites,
+        galleries: List<IndexedGallery>,
+        touched: Set<Long>,
+        slotNames: List<String>,
+        now: Long,
+        intended: Map<Long, Int> = emptyMap(),
+    ): CloudFavorites {
+        val kept = cloud.galleries.filter { it.gid in touched || it.gid in intended }
+        return replaceAll(cloud, correctedPages(galleries, touched, intended) + kept, slotNames, now)
+    }
+
     /** Adds the Japanese titles looked up (gid -> title, empty if the gallery has none). */
     fun withJapaneseTitles(cloud: CloudFavorites, titles: Map<Long, String>): CloudFavorites {
         val added = titles.filter { (gid, title) -> cloud.japaneseTitles[gid] != title }
         return if (added.isEmpty()) cloud else cloud.copy(japaneseTitles = cloud.japaneseTitles + added)
     }
 
-    /** Galleries of [index] whose Japanese title is still unknown, at most [limit]. */
-    fun missingJapaneseTitles(index: FavoritesIndex, limit: Int): List<IndexedGallery> = index.galleries.asSequence()
-        .filter { it.titleJpn == null }
-        .take(limit)
-        .toList()
+    /**
+     * Galleries of [index] whose Japanese title is still unknown, at most [limit]: the local favorites, then the
+     * cloud slots in turn, so the newest favorites of every slot come first.
+     */
+    fun missingJapaneseTitles(index: FavoritesIndex, limit: Int): List<IndexedGallery> {
+        val missing = index.galleries.filter { it.titleJpn == null }
+        val (local, cloud) = missing.partition { it.local || it.slot !in 0 until CLOUD_SLOT_COUNT }
+        val bySlot = cloud.groupBy { it.slot }.values.map { it.iterator() }
+        val interleaved = sequence {
+            while (bySlot.any { it.hasNext() }) bySlot.forEach { if (it.hasNext()) yield(it.next()) }
+        }
+        return (local.asSequence() + interleaved).take(limit).toList()
+    }
 
     /** True when the counts shown by E-Hentai differ from the known list, or the list is too old or was never read. */
     fun needsRefresh(cloud: CloudFavorites, counts: List<Int>, now: Long): Boolean = cloud.refreshedAt == 0L ||

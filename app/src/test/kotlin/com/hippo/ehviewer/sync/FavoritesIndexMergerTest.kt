@@ -128,4 +128,90 @@ class FavoritesIndexMergerTest {
         val index = FavoritesIndexMerger.buildIndex(emptyList(), withTitles, "dev", "", now = 1)
         assertEquals(mapOf(1L to "一"), FavoritesIndexMerger.pruneTitles(withTitles, index).japaneseTitles)
     }
+
+    @Test
+    fun changedGidsAreTheAddedRemovedAndMovedOnes() {
+        val before = CloudFavorites(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 2)))
+        val after = CloudFavorites(galleries = listOf(gallery(1, slot = 0, title = "renamed"), gallery(2, slot = 4), gallery(4, slot = 0)))
+        assertEquals(setOf(2L, 3L, 4L), FavoritesIndexMerger.changedGids(before, after))
+        assertEquals(emptySet(), FavoritesIndexMerger.changedGids(before, before))
+    }
+
+    @Test
+    fun unfinishedRefreshOnlyAddsAndLeavesTouchedGalleriesAlone() {
+        val cloud = CloudFavorites(galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 5)))
+        // 2 was moved to slot 5 in the app after its page was read in slot 1
+        val pages = listOf(gallery(2, slot = 1), gallery(3, slot = 1))
+        val partial = FavoritesIndexMerger.withRefreshPages(cloud, pages, touched = setOf(2L), now = 10)
+        assertEquals(listOf(1L to 0, 2L to 5, 3L to 1), partial.galleries.map { it.gid to it.slot })
+        // Nothing removed and not marked as refreshed before the last page
+        assertEquals(0, partial.refreshedAt)
+    }
+
+    @Test
+    fun completedRefreshReplacesTheListButKeepsTouchedGalleries() {
+        val cloud = CloudFavorites(
+            slotNames = names,
+            galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 5), gallery(9, slot = 3)),
+        )
+        // 1 is gone on the website, 2 moved in the app after its page was read, 4 removed in the app after its page
+        val pages = listOf(gallery(2, slot = 1), gallery(3, slot = 1), gallery(4, slot = 2), gallery(9, slot = 3))
+        val done = FavoritesIndexMerger.completeRefresh(cloud, pages, touched = setOf(2L, 4L), names, now = 20)
+        assertEquals(listOf(3L to 1, 9L to 3, 2L to 5), done.galleries.map { it.gid to it.slot })
+        assertEquals(20, done.refreshedAt)
+    }
+
+    @Test
+    fun missingTitlesTakeEverySlotInTurn() {
+        val index = FavoritesIndex(
+            galleries = listOf(
+                gallery(1, slot = 0),
+                gallery(2, slot = 0),
+                gallery(3, slot = 0),
+                gallery(4, slot = 1),
+                gallery(5, slot = 1, titleJpn = "五"),
+                gallery(6, slot = 2),
+                gallery(7).copy(local = true),
+            ),
+        )
+        assertEquals(listOf(7L, 1L, 4L, 6L, 2L, 3L), FavoritesIndexMerger.missingJapaneseTitles(index, 10).map { it.gid })
+        assertEquals(listOf(7L, 1L, 4L), FavoritesIndexMerger.missingJapaneseTitles(index, 3).map { it.gid })
+    }
+
+    @Test
+    fun resumedRefreshReadsChangedSlotsAgain() {
+        val counts = List(CLOUD_SLOT_COUNT) { if (it < 3) 2 else 0 }
+        val checkpoint = CloudRefreshCheckpoint(
+            slot = 2,
+            next = "cursor",
+            galleries = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 2)),
+            counts = counts,
+        )
+        // Nothing changed: goes on where it stopped
+        assertEquals(checkpoint, FavoritesIndexMerger.resumeCheckpoint(checkpoint, counts))
+        // A slot not read yet changed: also goes on
+        val later = counts.mapIndexed { slot, count -> if (slot == 5) 1 else count }
+        assertEquals(checkpoint.copy(counts = later), FavoritesIndexMerger.resumeCheckpoint(checkpoint, later))
+        // Slot 1 changed on the website: slots 1 and 2 are read again
+        val changed = counts.mapIndexed { slot, count -> if (slot == 1) 0 else count }
+        val resumed = FavoritesIndexMerger.resumeCheckpoint(checkpoint, changed)
+        assertEquals(1, resumed.slot)
+        assertEquals(null, resumed.next)
+        assertEquals(listOf(1L), resumed.galleries.map { it.gid })
+        assertEquals(changed, resumed.counts)
+        // A checkpoint without counts starts again
+        assertEquals(0, FavoritesIndexMerger.resumeCheckpoint(checkpoint.copy(counts = emptyList()), counts).slot)
+    }
+
+    @Test
+    fun userMovesCorrectPagesReadBeforeThem() {
+        val cloud = CloudFavorites(slotNames = names, galleries = listOf(gallery(1, slot = 0)))
+        // 2 and 3 were only in pages not saved yet when the user moved 2 to slot 4 and removed 3
+        val pages = listOf(gallery(1, slot = 0), gallery(2, slot = 1), gallery(3, slot = 1))
+        val intended = mapOf(2L to 4, 3L to NO_CLOUD_SLOT)
+        val partial = FavoritesIndexMerger.withRefreshPages(cloud, pages, setOf(2L, 3L), now = 10, intended = intended)
+        assertEquals(listOf(1L to 0, 2L to 4), partial.galleries.map { it.gid to it.slot })
+        val done = FavoritesIndexMerger.completeRefresh(cloud, pages, setOf(2L, 3L), names, now = 20, intended = intended)
+        assertEquals(setOf(1L to 0, 2L to 4), done.galleries.map { it.gid to it.slot }.toSet())
+    }
 }

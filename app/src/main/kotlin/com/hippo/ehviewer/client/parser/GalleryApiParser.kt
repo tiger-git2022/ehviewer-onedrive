@@ -26,6 +26,8 @@ import kotlinx.serialization.Serializable
 object GalleryApiParser {
     fun parse(body: String, galleryInfoList: List<GalleryInfo>) {
         body.parseAs<Result>().items.forEach { item ->
+            // Fork: a gallery the API cannot return comes as {"gid", "error"} and must not fail the others
+            if (item.error != null) return@forEach
             val gi = galleryInfoList.find { it.gid == item.gid } ?: return@forEach
             gi.apply {
                 title = item.title.unescapeXml()
@@ -48,17 +50,19 @@ object GalleryApiParser {
     @Serializable
     data class Item(
         val gid: Long,
-        val title: String,
+        // Fork: defaults, so an error entry without them still parses
+        val title: String = "",
         @SerialName("title_jpn")
-        val titleJpn: String,
-        val category: String,
-        val thumb: String,
+        val titleJpn: String = "",
+        val category: String = "",
+        val thumb: String = "",
         // Null in some old galleries
-        val uploader: String?,
-        val posted: Long,
+        val uploader: String? = null,
+        val posted: Long = 0,
         @SerialName("filecount")
-        val pages: Int,
-        val rating: Float,
-        val tags: List<String>,
+        val pages: Int = 0,
+        val rating: Float = 0f,
+        val tags: List<String> = emptyList(),
+        val error: String? = null,
     )
 }

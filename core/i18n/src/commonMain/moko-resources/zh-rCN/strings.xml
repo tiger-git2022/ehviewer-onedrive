@@ -627,6 +627,18 @@
     <string name="onedrive_sync_not_signed_in">尚未登录 OneDrive</string>
     <string name="onedrive_sync_now">立即同步</string>
     <string name="onedrive_sync_running">正在同步…</string>
+    <string name="onedrive_sync_status_pending">OneDrive：有改动等待同步</string>
+    <string name="onedrive_sync_status_succeeded">OneDrive：已同步</string>
+    <string name="onedrive_sync_status_failed">OneDrive：上次同步失败</string>
+    <string name="onedrive_sync_progress">正在同步 %1$d%%（%2$d/%3$d）：%4$s</string>
+    <string name="onedrive_sync_progress_count">%1$s %2$d/%3$d（%4$d%%）</string>
+    <string name="onedrive_sync_step_connect">连接 OneDrive</string>
+    <string name="onedrive_sync_step_devices">下载记录</string>
+    <string name="onedrive_sync_step_favorites_index">共享给其他应用的收藏</string>
+    <string name="onedrive_sync_step_check_cloud_favorites">核对云端收藏</string>
+    <string name="onedrive_sync_step_read_cloud_favorites">读取云端收藏</string>
+    <string name="onedrive_sync_step_japanese_titles">查找日文标题</string>
+    <string name="onedrive_sync_step_upload_index">上传收藏清单</string>
     <string name="onedrive_sync_never">尚未同步过</string>
     <string name="onedrive_sync_last_success">上次同步：%1$s\n%2$s</string>
     <string name="onedrive_sync_last_failed">上次同步失败：%1$s\n%2$s</string>
@@ -658,7 +670,7 @@
     <string name="onedrive_sync_favorites_index">把收藏共享给其他应用</string>
     <string name="onedrive_sync_favorites_index_summary">把本地收藏和云端收藏的清单（标题和所在收藏夹）上传到 ehviewer/export/，登录同一账号的 Mihon 改版可据此标记已收藏的漫画。关闭后，下次同步会删除已上传的清单。</string>
     <string name="onedrive_sync_favorites_index_refresh">重新读取云端收藏</string>
-    <string name="onedrive_sync_favorites_index_refresh_summary">平时每次同步只用一次请求核对各收藏夹的数量，数量变了才逐页读取。在网页上改过收藏后可以手动点这里。</string>
+    <string name="onedrive_sync_favorites_index_refresh_summary">平时每次同步只用一次请求核对各收藏夹的数量，数量变了才逐页读取。在网页上改过收藏后可以手动点这里，还会一次补全所有缺的日文标题（用于和其他平台匹配）。读到一半中断的，下次会接着读。</string>
     <string name="onedrive_sync_favorites_index_refreshing">正在逐页读取云端收藏…</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">请先登录 E-Hentai</string>
     <string name="onedrive_sync_favorites_index_failed">共享给其他应用的收藏清单同步失败：%s</string>
