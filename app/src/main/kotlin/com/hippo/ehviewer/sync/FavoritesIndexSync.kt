@@ -298,11 +298,15 @@ object FavoritesIndexSync {
      */
     suspend fun refreshCloudFavorites(budgetMillis: Long? = null): Boolean = withContext(Dispatchers.IO) {
         // A refresh asked while one runs is answered by the running one
-        if (refreshMutex.isLocked) {
+        if (!refreshMutex.tryLock()) {
             refreshMutex.withLock { }
             return@withContext !hasUnfinishedRefresh(userKey())
         }
-        refreshMutex.withLock { refreshLocked(budgetMillis) }
+        try {
+            refreshLocked(budgetMillis)
+        } finally {
+            refreshMutex.unlock()
+        }
     }
 
     private suspend fun refreshLocked(budgetMillis: Long?): Boolean {

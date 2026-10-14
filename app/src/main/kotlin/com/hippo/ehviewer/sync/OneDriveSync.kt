@@ -803,6 +803,13 @@ object OneDriveSync {
         mutex.withLock {
             OneDriveClient.delete(ROOT_FOLDER)
             resetCloudState()
+            OneDriveSyncState.withMutableSnapshot {
+                // Nothing is on OneDrive any more: shown as not synced until the next sync uploads everything again
+                it[OneDriveSyncState.lastSyncTime] = 0L
+                it[OneDriveSyncState.lastSyncFailed] = false
+                // The index is gone too, nothing to delete when sharing is off
+                it[OneDriveSyncState.favoritesIndexRemoved] = true
+            }
         }
     }
 
