@@ -160,4 +160,21 @@ class FavoritesIndexMergerTest {
         assertEquals(listOf(3L to 1, 9L to 3, 2L to 5), done.galleries.map { it.gid to it.slot })
         assertEquals(20, done.refreshedAt)
     }
+
+    @Test
+    fun missingTitlesTakeEverySlotInTurn() {
+        val index = FavoritesIndex(
+            galleries = listOf(
+                gallery(1, slot = 0),
+                gallery(2, slot = 0),
+                gallery(3, slot = 0),
+                gallery(4, slot = 1),
+                gallery(5, slot = 1, titleJpn = "五"),
+                gallery(6, slot = 2),
+                gallery(7).copy(local = true),
+            ),
+        )
+        assertEquals(listOf(7L, 1L, 4L, 6L, 2L, 3L), FavoritesIndexMerger.missingJapaneseTitles(index, 10).map { it.gid })
+        assertEquals(listOf(7L, 1L, 4L), FavoritesIndexMerger.missingJapaneseTitles(index, 3).map { it.gid })
+    }
 }

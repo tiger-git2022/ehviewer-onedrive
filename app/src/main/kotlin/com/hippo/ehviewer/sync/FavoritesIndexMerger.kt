@@ -112,11 +112,19 @@ object FavoritesIndexMerger {
         return if (added.isEmpty()) cloud else cloud.copy(japaneseTitles = cloud.japaneseTitles + added)
     }
 
-    /** Galleries of [index] whose Japanese title is still unknown, at most [limit]. */
-    fun missingJapaneseTitles(index: FavoritesIndex, limit: Int): List<IndexedGallery> = index.galleries.asSequence()
-        .filter { it.titleJpn == null }
-        .take(limit)
-        .toList()
+    /**
+     * Galleries of [index] whose Japanese title is still unknown, at most [limit]: the local favorites, then the
+     * cloud slots in turn, so the newest favorites of every slot come first.
+     */
+    fun missingJapaneseTitles(index: FavoritesIndex, limit: Int): List<IndexedGallery> {
+        val missing = index.galleries.filter { it.titleJpn == null }
+        val (local, cloud) = missing.partition { it.local || it.slot !in 0 until CLOUD_SLOT_COUNT }
+        val bySlot = cloud.groupBy { it.slot }.values.map { it.iterator() }
+        val interleaved = sequence {
+            while (bySlot.any { it.hasNext() }) bySlot.forEach { if (it.hasNext()) yield(it.next()) }
+        }
+        return (local.asSequence() + interleaved).take(limit).toList()
+    }
 
     /** True when the counts shown by E-Hentai differ from the known list, or the list is too old or was never read. */
     fun needsRefresh(cloud: CloudFavorites, counts: List<Int>, now: Long): Boolean = cloud.refreshedAt == 0L ||

@@ -441,7 +441,8 @@ object FavoritesIndexSync {
                 mutableProgress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size, StepProgress.TITLES)
                 val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
                 EhEngine.fillGalleryListByApi(infos)
-                val titles = infos.filter { !it.title.isNullOrEmpty() }.associate { it.gid to it.titleJpn.orEmpty() }
+                // A gallery the API does not return (removed, for one) is not asked again: it has no title to find
+                val titles = infos.associate { it.gid to if (it.title.isNullOrEmpty()) "" else it.titleJpn.orEmpty() }
                 // Saved per batch: a failed request later keeps what was found
                 update { cloud -> FavoritesIndexMerger.withJapaneseTitles(cloud, titles) }
                 found += titles.size
