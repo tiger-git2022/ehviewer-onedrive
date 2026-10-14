@@ -16,13 +16,13 @@ object MihonSearch {
 
     // A leading group naming translators or a language rather than the artist
     private val NOT_ARTIST = Regex(
-        """汉化|漢化|翻訳|翻译|翻譯|中国|中國|中文|chinese|english|translat|個人|个人|無修正|无修正|DL版|digital""",
+        """汉化|漢化|翻訳|翻译|翻譯|中文|中国|中國|chinese|english|translat|個人|个人|机翻|機翻|嵌字|修正|dl版|digital""",
         RegexOption.IGNORE_CASE,
     )
 
     /** The title without its bracket groups, the first of several titles separated by "|". */
     fun coreTitle(title: String): String {
-        val first = title.substringBefore(" | ").trim()
+        val first = title.substringBefore('|').trim()
         val core = first.replace(BRACKET_GROUPS, " ").replace(SPACES, " ").trim()
         return core.ifEmpty { first }
     }
