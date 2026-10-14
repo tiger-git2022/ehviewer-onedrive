@@ -119,7 +119,6 @@ object Settings : DataStorePreferences(null) {
 
     // About
     val backupBeforeUpdate = boolPref("backup_before_update", false)
-    val useCIUpdateChannel = boolPref("ci_update_channel", BuildConfig.SNAPSHOT)
     val updateIntervalDays = intPref("update_interval_days", 7)
 
     // Misc

@@ -102,10 +102,6 @@ fun AnimatedVisibilityScope.AboutScreen(navigator: DestinationsNavigator) = Scre
                 title = stringResource(id = R.string.backup_before_update),
                 state = Settings.backupBeforeUpdate.asMutableState(),
             )
-            SwitchPreference(
-                title = stringResource(id = R.string.use_ci_update_channel),
-                state = Settings.useCIUpdateChannel.asMutableState(),
-            )
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.auto_updates),
                 entry = com.hippo.ehviewer.R.array.update_frequency,

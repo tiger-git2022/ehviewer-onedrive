@@ -54,6 +54,11 @@ android {
 
     val snapshot = !hasProperty("release")
 
+    // Fork: the Build APK workflow passes -Ptiger.buildNumber=N. The build is then version "<upstream>-tN" (upstream
+    // without -SNAPSHOT), versionCode "<upstream versionCode> * 1000 + N", so every release of the fork is newer than
+    // the one before; the in-app updater compares versions the same way (updater/ForkVersion.kt).
+    val tigerBuildNumber = providers.gradleProperty("tiger.buildNumber").orNull?.toInt()
+
     defaultConfig {
         applicationId = "moe.tarsin.ehviewer"
         versionCode = 180063
@@ -61,6 +66,11 @@ android {
             "1.15.0-SNAPSHOT"
         } else {
             "1.14.6"
+        }
+        if (tigerBuildNumber != null) {
+            require(tigerBuildNumber in 1..999) { "tiger.buildNumber must be between 1 and 999" }
+            versionCode = versionCode!! * 1000 + tigerBuildNumber
+            versionName = "${versionName!!.removeSuffix("-SNAPSHOT")}-t$tigerBuildNumber"
         }
         buildConfigField("boolean", "SNAPSHOT", "$snapshot")
         buildConfigField("String", "RAW_VERSION_NAME", "\"$versionName\"")
