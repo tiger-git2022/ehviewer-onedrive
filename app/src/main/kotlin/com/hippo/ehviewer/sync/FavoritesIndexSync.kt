@@ -146,6 +146,19 @@ object FavoritesIndexSync {
     }
 
     /**
+     * The known list with the version of the changes it has (OneDriveSync.favoritesIndexVersion): changes mark the
+     * index under the same lock as they save the list.
+     */
+    private suspend fun currentWithVersion(): Pair<CloudFavorites, Long> = withContext(Dispatchers.IO) {
+        mutex.withLock { FavoritesIndexMerger.forUser(loadLocked(), userKey()) to OneDriveSync.favoritesIndexVersion() }
+    }
+
+    /** A saved change of the list waits for a sync, also when it came from a refresh or a title lookup. */
+    private suspend fun markChangedLocked() {
+        if (enabled) OneDriveSync.markFavoritesIndexChanged()
+    }
+
+    /**
      * Applies [transform] to the list of the signed in E-Hentai account (an empty one after switching accounts) and
      * saves the result; returns true if the list changed. With [user], a change made for another account than the
      * signed in one is dropped. [intended] is the slot the change puts each gallery in ([NO_CLOUD_SLOT] when removed),
@@ -170,10 +183,8 @@ object FavoritesIndexSync {
                     saveCheckpointLocked(pending.copy(touched = pending.touched + touched, intended = pending.intended + intended))
                 }
             }
-            saveLocked(after)
+            saveLocked(after).also { if (it && markChanged) markChangedLocked() }
         }
-        // Until a sync uploads the index with it, also when the change came from a refresh or a title lookup
-        if (changed && markChanged && enabled) OneDriveSync.markFavoritesIndexChanged()
         changed
     }
 
@@ -223,7 +234,7 @@ object FavoritesIndexSync {
         scope.launch {
             runCatching { update(user, intended, transform) }
                 .onFailure { logcat(TAG, it) }
-                .onSuccess { changed -> if (changed && enabled) OneDriveSync.notifyFavoritesIndexChanged() }
+                .onSuccess { changed -> if (changed && enabled) OneDriveSync.scheduleFavoritesIndexSync() }
         }
     }
 
@@ -352,7 +363,6 @@ object FavoritesIndexSync {
                 val outOfTime = budgetMillis != null && SystemClock.elapsedRealtime() - started > budgetMillis
                 if (pageCount % CHECKPOINT_PAGES == 0 || next == null || outOfTime) {
                     if (!saveRefreshPages(user, slot, next, pages)) return false
-                    if (enabled) OneDriveSync.markFavoritesIndexChanged()
                     pages.clear()
                     if (outOfTime && slot < CLOUD_SLOT_COUNT) {
                         logcat(TAG) { "Cloud favorites: $read of $total read, the next sync goes on" }
@@ -362,7 +372,7 @@ object FavoritesIndexSync {
                     }
                 }
             }
-            return completeRefresh(user, slotNames).also { if (it && enabled) OneDriveSync.markFavoritesIndexChanged() }
+            return completeRefresh(user, slotNames)
         } finally {
             mutableRefreshing.value = false
             mutableProgress.value = null
@@ -378,7 +388,9 @@ object FavoritesIndexSync {
             val pending = loadCheckpointLocked()
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages))
-            saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now(), pending.intended))
+            if (saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now(), pending.intended))) {
+                markChangedLocked()
+            }
             true
         }
     }
@@ -389,7 +401,9 @@ object FavoritesIndexSync {
             // Signed in to another account meanwhile: these pages belong to the previous one
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
-            saveLocked(FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended))
+            if (saveLocked(FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended))) {
+                markChangedLocked()
+            }
             saveCheckpointLocked(null)
             logcat(TAG) { "Cloud favorites refreshed: ${pending.galleries.size} galleries" }
             true
@@ -506,10 +520,10 @@ object FavoritesIndexSync {
         val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
         var version = 0L
         val build = suspend {
-            // The changes made up to here are in the index built now
-            version = OneDriveSync.favoritesIndexVersion()
             // Without an E-Hentai account the cloud favorites are unknown, the names of the slots too
-            val cloud = if (signedIn) current() else CloudFavorites()
+            val (cloud, builtVersion) = if (signedIn) currentWithVersion() else CloudFavorites() to OneDriveSync.favoritesIndexVersion()
+            // The changes up to this version are in the index built now
+            version = builtVersion
             FavoritesIndexMerger.buildIndex(local, cloud, deviceId, deviceName, now())
         }
         var index = build()

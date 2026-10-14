@@ -162,11 +162,12 @@ object OneDriveSync {
     // A change and the sync that uploads it update the version and the flag one after the other
     private val favoritesIndexDirtyMutex = Mutex()
 
-    /** Called when the cloud favorites known to [FavoritesIndexSync] changed: marks the index and schedules a sync. */
-    suspend fun notifyFavoritesIndexChanged() {
-        markFavoritesIndexChanged()
-        scheduleChangeSync()
-    }
+    /**
+     * Called after [FavoritesIndexSync] saved a change of the cloud favorites, which marked it already
+     * ([markFavoritesIndexChanged]): schedules a sync. Marking again would let a sync that built the index in between
+     * leave the flag set.
+     */
+    fun scheduleFavoritesIndexSync() = scheduleChangeSync()
 
     /** The cloud favorites changed: the index waits for a sync (also with sync on change off, and across restarts). */
     suspend fun markFavoritesIndexChanged() = favoritesIndexDirtyMutex.withLock {
