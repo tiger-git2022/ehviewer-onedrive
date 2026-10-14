@@ -176,13 +176,17 @@ suspend fun startDownload(forceDefault: Boolean, vararg galleryInfos: BaseGaller
     }
 }
 
+/**
+ * Adds [galleryInfo] to the default collection or removes it from the favorites; with no default collection, or with
+ * [choose] (fork: a long press on the favorite button), asks for the collection.
+ */
 context(_: DialogState)
-suspend fun modifyFavorites(galleryInfo: GalleryInfo): Boolean {
+suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): Boolean {
     val localFavorited = EhDB.containLocalFavorites(galleryInfo.gid)
     if (Settings.hasSignedIn.value) {
         val isFavorited = galleryInfo.favoriteSlot != NOT_FAVORITED
         val defaultFavSlot = Settings.defaultFavSlot.value
-        if (defaultFavSlot == -2) {
+        if (defaultFavSlot == -2 || choose) {
             val localFav = getFavoriteIcon(localFavorited) to appCtx.getString(R.string.local_favorites)
             val cloudFav = Settings.favCat.mapIndexed { index, name ->
                 getFavoriteIcon(galleryInfo.favoriteSlot == index) to name

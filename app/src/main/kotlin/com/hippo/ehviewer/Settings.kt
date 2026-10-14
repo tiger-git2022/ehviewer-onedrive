@@ -71,7 +71,9 @@ object Settings : DataStorePreferences(null) {
 
     // Eh
     val gallerySite = intPref("gallery_site_2", 0).observed(::updateWhenGallerySiteChanges)
-    val defaultFavSlot = intPref("default_favorite_slot", -2)
+
+    // Fork: local favorites unless changed; a long press on the favorite button still offers every collection
+    val defaultFavSlot = intPref("default_favorite_slot", -1)
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
     val blackDarkTheme = boolPref("black_dark_theme", false)
     val harmonizeCategoryColor = boolPref("harmonize_category_color", true)
