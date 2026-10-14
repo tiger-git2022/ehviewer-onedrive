@@ -80,7 +80,9 @@ class CloudFavoritesWork(context: Context, workerParams: WorkerParameters) : Cor
                 }
             }
             try {
-                FavoritesIndexSync.runWork(OneDriveSyncState.cloudFavoritesFullRequested.value || inputData.getBoolean(KEY_FULL, false))
+                // The input only on the first attempt: a retry (the final upload failed) must not read every slot again
+                val full = OneDriveSyncState.cloudFavoritesFullRequested.value || runAttemptCount == 0 && inputData.getBoolean(KEY_FULL, false)
+                FavoritesIndexSync.runWork(full)
                 OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesWorkError] = null }
                 Result.success()
             } catch (e: CancellationException) {
