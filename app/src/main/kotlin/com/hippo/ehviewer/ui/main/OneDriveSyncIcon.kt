@@ -39,7 +39,6 @@ import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
-import moe.tarsin.string
 import splitties.init.appCtx
 
 /** The shared favorites changed, the next sync uploads (or deletes) them. */
@@ -118,7 +117,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
                     // Waiting to go on: it goes on now, in the foreground
                     workQueued -> {
                         resumeCloudFavoritesWork(appCtx)
-                        snackbar(string(R.string.onedrive_sync_cloud_favorites_resumed))
+                        snackbar(appCtx.getString(R.string.onedrive_sync_cloud_favorites_resumed))
                     }
                     else -> {
                         val result = OneDriveSync.sync(SyncTrigger.MANUAL)
