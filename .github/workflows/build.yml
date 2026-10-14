@@ -24,8 +24,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Releases wait for each other, so build numbers never collide; test builds of other branches are replaced
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Every push waits for the runs before it (not only the latest pending one), so each gets its own release and build
+  # numbers never collide. queue: max does not allow cancel-in-progress.
+  cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: write
