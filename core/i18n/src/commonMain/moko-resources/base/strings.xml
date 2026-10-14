@@ -698,6 +698,7 @@
     <string name="onedrive_sync_channel">OneDrive sync</string>
     <string name="onedrive_sync_cloud_favorites_work">Updating the favorites shared with other apps</string>
     <string name="onedrive_sync_cloud_favorites_work_pause">Pause</string>
+    <string name="onedrive_sync_cloud_favorites_work_queued">The shared favorites are read in the background, it goes on shortly</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">Sign in to E-Hentai first</string>
     <string name="onedrive_sync_favorites_index_failed">Favorites list for other apps failed: %s</string>
     <string name="onedrive_sync_devices">Devices</string>

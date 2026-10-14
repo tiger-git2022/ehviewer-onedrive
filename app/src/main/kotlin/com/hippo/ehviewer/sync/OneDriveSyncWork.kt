@@ -26,6 +26,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 
@@ -157,6 +160,15 @@ fun enqueueOneDriveCatchUpWork(context: Context) {
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(CATCH_UP_WORK_NAME, ExistingWorkPolicy.KEEP, request)
 }
+
+/**
+ * True while [CloudFavoritesWork] runs or waits to run (or to run again: after a failure, after Android stopped it,
+ * or for the network). Its own saves mark the favorites index as changed meanwhile, and it uploads them itself.
+ */
+fun cloudFavoritesWorkActive(context: Context): Flow<Boolean> = WorkManager.getInstance(context)
+    .getWorkInfosForUniqueWorkFlow(CLOUD_FAVORITES_WORK_NAME)
+    .map { infos -> infos.any { !it.state.isFinished } }
+    .distinctUntilChanged()
 
 /**
  * Starts [CloudFavoritesWork] unless it runs already, whatever the automatic sync options. [full] reads all slots

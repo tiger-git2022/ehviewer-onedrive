@@ -17,6 +17,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -31,10 +32,12 @@ import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.SyncTrigger
+import com.hippo.ehviewer.sync.cloudFavoritesWorkActive
 import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
+import splitties.init.appCtx
 
 /** The shared favorites changed, the next sync uploads (or deletes) them. */
 @Composable
@@ -65,7 +68,9 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val syncProgress by OneDriveSync.progress.collectAsState()
     val working by FavoritesIndexSync.working.collectAsState()
     val workProgress by FavoritesIndexSync.workProgress.collectAsState()
-    val running = syncing || working
+    // Queued to go on later: the shared favorites it changed are not "waiting" for the user, it uploads them itself
+    val workQueued by remember { cloudFavoritesWorkActive(appCtx) }.collectAsState(initial = false)
+    val running = syncing || working || workQueued
     val changesPending by OneDriveSync.changesPending.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
     val lastSyncFailed by OneDriveSyncState.lastSyncFailed.collectAsState()
@@ -85,9 +90,14 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     }
     val runningText = when {
         syncing -> syncProgress?.let { syncProgressText(it) }
-        else -> workProgress?.let { stepProgressText(it) }
+        working -> workProgress?.let { stepProgressText(it) }
+        else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued)
     }
-    val runningFraction = if (syncing) syncProgress?.fraction else workProgress?.fraction
+    val runningFraction = when {
+        syncing -> syncProgress?.fraction
+        working -> workProgress?.fraction
+        else -> null
+    }
     val description = when (state) {
         SyncIconState.RUNNING -> runningText ?: stringResource(id = R.string.onedrive_sync_running)
         SyncIconState.PENDING -> stringResource(id = R.string.onedrive_sync_status_pending)

@@ -680,6 +680,7 @@
     <string name="onedrive_sync_channel">OneDrive 同步</string>
     <string name="onedrive_sync_cloud_favorites_work">正在更新共享给其他应用的收藏</string>
     <string name="onedrive_sync_cloud_favorites_work_pause">暂停</string>
+    <string name="onedrive_sync_cloud_favorites_work_queued">共享收藏正在后台读取，稍后会接着进行</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">请先登录 E-Hentai</string>
     <string name="onedrive_sync_favorites_index_failed">共享给其他应用的收藏清单同步失败：%s</string>
     <string name="onedrive_sync_devices">设备</string>
