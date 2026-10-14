@@ -237,6 +237,7 @@ object FavoritesIndexMerger {
             slotNames = remote.slotNames.takeIf { it.size == CLOUD_SLOT_COUNT } ?: cloud.slotNames,
             galleries = galleries,
             japaneseTitles = cloud.japaneseTitles + remoteTitles(remote),
+            defaultTitles = cloud.defaultTitles,
         )
     }
 
@@ -289,7 +290,8 @@ object FavoritesIndexMerger {
      */
     fun withDefaultTitle(gallery: IndexedGallery, default: String?): IndexedGallery {
         if (default.isNullOrEmpty() || default == gallery.title) return gallery
-        val jpn = gallery.titleJpn?.takeIf { it.isNotEmpty() } ?: gallery.title
+        // Empty: the API said it has no Japanese title, the one the list showed is not one (renamed since, for one)
+        val jpn = gallery.titleJpn ?: gallery.title
         return gallery.copy(title = default, titleJpn = jpn.orEmpty())
     }
 }

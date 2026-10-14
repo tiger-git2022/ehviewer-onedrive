@@ -164,6 +164,23 @@ class FavoritesIndexMergerTest {
     }
 
     @Test
+    fun aKnownMissingJapaneseTitleStaysEmpty() {
+        // Renamed since the list was read: the API's default title replaces it, there is no Japanese one
+        val gallery = gallery(1, slot = 0, title = "old name", titleJpn = "")
+        assertEquals(gallery(1, slot = 0, title = "new name", titleJpn = ""), FavoritesIndexMerger.withDefaultTitle(gallery, "new name"))
+        assertEquals(gallery(1, slot = 0, title = "new name", titleJpn = "old name"), FavoritesIndexMerger.withDefaultTitle(gallery.copy(titleJpn = null), "new name"))
+    }
+
+    @Test
+    fun adoptingANewerListKeepsTheDefaultTitles() {
+        val mine = CloudFavorites(userKey = "a", updatedAt = 1, galleries = listOf(gallery(1, slot = 0)), defaultTitles = mapOf(1L to "one"))
+        val remote = FavoritesIndex(ehUserKey = "a", cloudUpdatedAt = 5, galleries = listOf(gallery(1, slot = 2)))
+        val adopted = FavoritesIndexMerger.withRemoteTitles(FavoritesIndexMerger.adopt(mine, remote), remote)
+        assertEquals(listOf(2), adopted.galleries.map { it.slot })
+        assertEquals(mapOf(1L to "one"), adopted.defaultTitles)
+    }
+
+    @Test
     fun cloudFavoritesWithoutDefaultTitleAreLookedUpAgain() {
         // Looked up before the default titles were kept: the Japanese title is known, the default one is not
         val index = FavoritesIndex(galleries = listOf(gallery(1, slot = 0, titleJpn = "一"), gallery(2, slot = 0, titleJpn = "二"), gallery(3, titleJpn = "三").copy(local = true)))
