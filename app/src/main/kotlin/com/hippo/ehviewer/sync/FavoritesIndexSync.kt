@@ -326,8 +326,8 @@ object FavoritesIndexSync {
                 lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, progress = mutableWorkProgress, wait = true, onBatch = uploadIfDue)
             } while (hasUnfinishedRefresh(userKey()) && ++rounds < 3)
             OneDriveSync.uploadFavoritesIndex()
-            // The upload failed (no network, OneDrive unreachable): a sync after this one uploads it
-            if (OneDriveSyncState.favoritesIndexDirty.value) OneDriveSync.scheduleFavoritesIndexSync()
+            // The upload failed (no network, OneDrive unreachable): the work tries again, whatever the auto sync options
+            check(!enabled || !OneDriveSyncState.favoritesIndexDirty.value) { appCtx.getString(R.string.onedrive_sync_favorites_index_upload_failed) }
         } finally {
             mutableWorking.value = false
             mutableWorkProgress.value = null

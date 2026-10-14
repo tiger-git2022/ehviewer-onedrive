@@ -707,6 +707,7 @@
     <string name="onedrive_sync_cloud_favorites_status_error">Last stop: %s</string>
     <string name="onedrive_sync_cloud_favorites_status_tap">Tap to go on now</string>
     <string name="onedrive_sync_cloud_favorites_resumed">Going on in the background, the notification shows the progress</string>
+    <string name="onedrive_sync_favorites_index_upload_failed">Uploading the favorites list failed, trying again later</string>
     <string name="onedrive_sync_favorites_index_not_signed_in">Sign in to E-Hentai first</string>
     <string name="onedrive_sync_favorites_index_failed">Favorites list for other apps failed: %s</string>
     <string name="onedrive_sync_devices">Devices</string>

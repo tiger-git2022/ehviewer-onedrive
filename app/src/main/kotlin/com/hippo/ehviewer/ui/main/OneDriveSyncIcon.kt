@@ -34,10 +34,12 @@ import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.SyncTrigger
 import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
+import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
 import com.hippo.ehviewer.ui.settings.stepProgressText
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
+import moe.tarsin.string
 import splitties.init.appCtx
 
 /** The shared favorites changed, the next sync uploads (or deletes) them. */
@@ -110,13 +112,18 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     IconButton(
         onClick = {
             launch {
-                // The cloud favorites work runs for long with many favorites: a sync can run beside it
-                if (syncing) {
-                    snackbar(description)
-                } else {
-                    val result = OneDriveSync.sync(SyncTrigger.MANUAL)
-                    onSynced()
-                    snackbar(OneDriveSync.summaryOf(result))
+                when {
+                    syncing || working -> snackbar(description)
+                    // Waiting to go on: it goes on now, in the foreground
+                    workQueued -> {
+                        resumeCloudFavoritesWork(appCtx)
+                        snackbar(string(R.string.onedrive_sync_cloud_favorites_resumed))
+                    }
+                    else -> {
+                        val result = OneDriveSync.sync(SyncTrigger.MANUAL)
+                        onSynced()
+                        snackbar(OneDriveSync.summaryOf(result))
+                    }
                 }
             }
         },
