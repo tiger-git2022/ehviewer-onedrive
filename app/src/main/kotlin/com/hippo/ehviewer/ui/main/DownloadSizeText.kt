@@ -3,6 +3,7 @@ package com.hippo.ehviewer.ui.main
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -24,6 +25,7 @@ fun DownloadSizeText(info: DownloadInfo, state: Int, modifier: Modifier = Modifi
     val local by produceState<Long?>(null, info.gid, finished) {
         value = if (finished) GallerySizes.localSize(info) else null
     }
+    LaunchedEffect(info.gid, finished) { if (!finished) GallerySizes.request(info) }
     val text = if (finished) {
         local?.takeIf { it > 0 }?.let { FileUtils.humanReadableByteCount(it) }
     } else {

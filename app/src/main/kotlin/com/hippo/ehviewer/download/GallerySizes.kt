@@ -10,7 +10,9 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +33,7 @@ import splitties.init.appCtx
  */
 object GallerySizes {
     private const val TAG = "GallerySizes"
+    private const val REQUEST_DELAY_MILLIS = 300L
     private val file get() = File(appCtx.filesDir, "gallery_sizes.json")
     private val serializer = MapSerializer(Long.serializer(), Long.serializer())
     private val json = Json { ignoreUnknownKeys = true }
@@ -91,8 +94,37 @@ object GallerySizes {
         }.onFailure { logcat(TAG, it) }
     }
 
+    private val pending = HashMap<Long, DownloadInfo>()
+    private var pendingJob: Job? = null
+
+    /**
+     * Asks for the size of [info] if it is not known, with the others shown meanwhile: the items of the download list
+     * ask as they show, so a filter or a restarted download is covered too.
+     */
+    fun request(info: DownloadInfo) {
+        if (info.gid in sizes.value || info.gid in asked) return
+        synchronized(this) {
+            pending[info.gid] = info
+            if (pendingJob != null) return
+            pendingJob = scope.launch {
+                delay(REQUEST_DELAY_MILLIS)
+                while (true) {
+                    // Also those asked while the last batch ran; the job ends only with nothing left
+                    val batch = synchronized(this@GallerySizes) {
+                        pending.values.toList().also { taken ->
+                            taken.forEach { pending.remove(it.gid) }
+                            if (taken.isEmpty()) pendingJob = null
+                        }
+                    }
+                    if (batch.isEmpty()) break
+                    fetchMissing(batch)
+                }
+            }
+        }
+    }
+
     /** Asks the API for the sizes of [infos] not known yet, 25 galleries a request. */
-    suspend fun fetchMissing(infos: List<DownloadInfo>) = fetchMutex.withLock {
+    private suspend fun fetchMissing(infos: List<DownloadInfo>) = fetchMutex.withLock {
         val missing = infos.filter { it.gid !in sizes.value && asked.add(it.gid) }
         if (missing.isEmpty()) return@withLock
         // Copies: the API fills in the title and more, the downloads keep theirs
