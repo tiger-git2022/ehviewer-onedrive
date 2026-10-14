@@ -54,6 +54,11 @@ data class IndexedGallery(
     val local: Boolean = false,
     /** Cloud slot 0..9, [NO_CLOUD_SLOT] if the gallery is not a cloud favorite. */
     val slot: Int = NO_CLOUD_SLOT,
+    /**
+     * [title] and [titleJpn] are the ones the API gave (the default title, the list title when the API has none):
+     * another device takes them instead of looking them up again. Written only when true.
+     */
+    val titlesLookedUp: Boolean = false,
 )
 
 /**
@@ -82,6 +87,12 @@ data class CloudFavorites(
      * The list pages show only one title, and the database is left alone (an empty title would show in the app).
      */
     val japaneseTitles: Map<Long, String> = emptyMap(),
+    /**
+     * Default titles (romanized or English, the ones most other sites list) looked up with [japaneseTitles]: gid ->
+     * title, empty if the API has none (removed galleries). An account showing Japanese titles gets only those on its
+     * list pages, and sites listing the default title would not match them.
+     */
+    val defaultTitles: Map<Long, String> = emptyMap(),
 ) {
     fun countBySlot(): List<Int> {
         val counts = IntArray(CLOUD_SLOT_COUNT)

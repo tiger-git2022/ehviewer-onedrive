@@ -640,7 +640,7 @@
     <string name="onedrive_sync_step_favorites_index">共享给其他应用的收藏</string>
     <string name="onedrive_sync_step_check_cloud_favorites">核对云端收藏</string>
     <string name="onedrive_sync_step_read_cloud_favorites">读取云端收藏</string>
-    <string name="onedrive_sync_step_japanese_titles">查找日文标题</string>
+    <string name="onedrive_sync_step_japanese_titles">查找标题（日文和罗马音）</string>
     <string name="onedrive_sync_step_upload_index">上传收藏清单</string>
     <string name="onedrive_sync_never">尚未同步过</string>
     <string name="onedrive_sync_last_success">上次同步：%1$s\n%2$s</string>
@@ -684,7 +684,7 @@
     <string name="onedrive_sync_cloud_favorites_work_pause">暂停</string>
     <string name="onedrive_sync_cloud_favorites_work_queued">共享收藏正在后台读取，稍后会接着进行</string>
     <string name="onedrive_sync_cloud_favorites_status_read">已读 %1$d/%2$d 本云端收藏</string>
-    <string name="onedrive_sync_cloud_favorites_status_titles">还有 %d 本没查日文标题</string>
+    <string name="onedrive_sync_cloud_favorites_status_titles">还有 %d 本没查标题</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting_at">后台任务等待继续，约 %s</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting">后台任务等待继续</string>
     <string name="onedrive_sync_cloud_favorites_status_stopped">后台任务没有运行</string>

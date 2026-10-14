@@ -6,8 +6,8 @@ object FavoritesIndexMerger {
     fun forUser(cloud: CloudFavorites, userKey: String?): CloudFavorites = if (cloud.userKey == userKey) {
         cloud
     } else {
-        // Japanese titles describe galleries, not the account
-        CloudFavorites(userKey = userKey, japaneseTitles = cloud.japaneseTitles)
+        // Titles describe galleries, not the account
+        CloudFavorites(userKey = userKey, japaneseTitles = cloud.japaneseTitles, defaultTitles = cloud.defaultTitles)
     }
 
     /**
@@ -156,24 +156,57 @@ object FavoritesIndexMerger {
         return replaceAll(cloud, pages + kept, slotNames, now)
     }
 
-    /** Adds the Japanese titles looked up (gid -> title, empty if the gallery has none). */
-    fun withJapaneseTitles(cloud: CloudFavorites, titles: Map<Long, String>): CloudFavorites {
+    /**
+     * Adds the titles looked up: Japanese ones and [defaults] (gid -> title, empty if the gallery has none), see
+     * [CloudFavorites.defaultTitles].
+     */
+    fun withJapaneseTitles(cloud: CloudFavorites, titles: Map<Long, String>, defaults: Map<Long, String> = emptyMap()): CloudFavorites {
         val added = titles.filter { (gid, title) -> cloud.japaneseTitles[gid] != title }
-        return if (added.isEmpty()) cloud else cloud.copy(japaneseTitles = cloud.japaneseTitles + added)
+        val addedDefaults = defaults.filter { (gid, title) -> cloud.defaultTitles[gid] != title }
+        if (added.isEmpty() && addedDefaults.isEmpty()) return cloud
+        return cloud.copy(japaneseTitles = cloud.japaneseTitles + added, defaultTitles = cloud.defaultTitles + addedDefaults)
     }
 
     /**
-     * Galleries of [index] whose Japanese title is still unknown, at most [limit]: the local favorites, then the
-     * cloud slots in turn, so the newest favorites of every slot come first.
+     * Galleries of [index] whose Japanese title is still unknown, or (with [defaultTitles]) a cloud favorite whose
+     * default title is, at most [limit]: the local favorites, then the cloud slots in turn, so the newest favorites of
+     * every slot come first. A local favorite has its default title from the database.
      */
-    fun missingJapaneseTitles(index: FavoritesIndex, limit: Int): List<IndexedGallery> {
-        val missing = index.galleries.filter { it.titleJpn == null }
+    fun missingJapaneseTitles(
+        index: FavoritesIndex,
+        limit: Int,
+        defaultTitles: Map<Long, String>? = null,
+        fromEnd: Boolean = false,
+    ): List<IndexedGallery> {
+        val missing = index.galleries.filter { it.titleJpn == null || defaultTitles != null && !it.local && it.gid !in defaultTitles }
         val (local, cloud) = missing.partition { it.local || it.slot !in 0 until CLOUD_SLOT_COUNT }
         val bySlot = cloud.groupBy { it.slot }.values.map { it.iterator() }
         val interleaved = sequence {
             while (bySlot.any { it.hasNext() }) bySlot.forEach { if (it.hasNext()) yield(it.next()) }
         }
-        return (local.asSequence() + interleaved).take(limit).toList()
+        // Two devices looking up at once start from both ends, see FavoritesIndexSync.lookUpJapaneseTitles
+        val ordered = if (fromEnd) interleaved.toList().asReversed().asSequence() else interleaved
+        return (local.asSequence() + ordered).take(limit).toList()
+    }
+
+    /** [galleries] whose titles [cloud] still lacks: another device may have looked them up meanwhile. */
+    fun stillMissing(galleries: List<IndexedGallery>, cloud: CloudFavorites): List<IndexedGallery> = galleries.filter {
+        it.titleJpn == null && it.gid !in cloud.japaneseTitles || !it.local && it.gid !in cloud.defaultTitles
+    }
+
+    /**
+     * Takes the titles another device looked up and this one lacks, whichever list is newer and whatever the account:
+     * titles describe galleries. Its Japanese titles, and both titles of the galleries it marks as looked up.
+     */
+    fun withRemoteTitles(cloud: CloudFavorites, remote: FavoritesIndex): CloudFavorites {
+        val titles = HashMap<Long, String>()
+        val defaults = HashMap<Long, String>()
+        remote.galleries.forEach { gallery ->
+            val jpn = gallery.titleJpn
+            if (jpn != null && gallery.gid !in cloud.japaneseTitles) titles[gallery.gid] = jpn
+            if (gallery.titlesLookedUp && gallery.gid !in cloud.defaultTitles) defaults[gallery.gid] = gallery.title.orEmpty()
+        }
+        return withJapaneseTitles(cloud, titles, defaults)
     }
 
     /**
@@ -204,6 +237,7 @@ object FavoritesIndexMerger {
             slotNames = remote.slotNames.takeIf { it.size == CLOUD_SLOT_COUNT } ?: cloud.slotNames,
             galleries = galleries,
             japaneseTitles = cloud.japaneseTitles + remoteTitles(remote),
+            defaultTitles = cloud.defaultTitles,
         )
     }
 
@@ -225,7 +259,10 @@ object FavoritesIndexMerger {
             }
             cloud.galleries.forEach { if (it.gid !in localGids) add(it.copy(local = false)) }
         }.map { gallery ->
-            if (gallery.titleJpn.isNullOrEmpty()) gallery.copy(titleJpn = cloud.japaneseTitles[gallery.gid] ?: gallery.titleJpn) else gallery
+            val withJpn = if (gallery.titleJpn.isNullOrEmpty()) gallery.copy(titleJpn = cloud.japaneseTitles[gallery.gid] ?: gallery.titleJpn) else gallery
+            // None from the API (removed galleries, a few): the title is the list's, other devices look them up themselves
+            val default = cloud.defaultTitles[gallery.gid]?.takeIf { it.isNotEmpty() } ?: return@map withJpn
+            withDefaultTitle(withJpn, default).copy(titlesLookedUp = true)
         }
         return FavoritesIndex(
             updatedAt = now,
@@ -243,6 +280,19 @@ object FavoritesIndexMerger {
     fun pruneTitles(cloud: CloudFavorites, index: FavoritesIndex): CloudFavorites {
         val gids = index.galleries.mapTo(HashSet()) { it.gid }
         val kept = cloud.japaneseTitles.filterKeys { it in gids }
-        return if (kept.size == cloud.japaneseTitles.size) cloud else cloud.copy(japaneseTitles = kept)
+        val keptDefaults = cloud.defaultTitles.filterKeys { it in gids }
+        if (kept.size == cloud.japaneseTitles.size && keptDefaults.size == cloud.defaultTitles.size) return cloud
+        return cloud.copy(japaneseTitles = kept, defaultTitles = keptDefaults)
+    }
+
+    /**
+     * [gallery] listing [default] as its title, the one it had moving to the Japanese title when that is unknown: the
+     * list pages of an account showing Japanese titles give only those, the index then has both.
+     */
+    fun withDefaultTitle(gallery: IndexedGallery, default: String?): IndexedGallery {
+        if (default.isNullOrEmpty() || default == gallery.title) return gallery
+        // Empty: the API said it has no Japanese title, the one the list showed is not one (renamed since, for one)
+        val jpn = gallery.titleJpn ?: gallery.title
+        return gallery.copy(title = default, titleJpn = jpn.orEmpty())
     }
 }
