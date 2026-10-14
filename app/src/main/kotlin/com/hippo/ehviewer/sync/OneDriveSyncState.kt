@@ -29,6 +29,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     val exportFavoritesIndex = boolPref("export_favorites_index", true)
     val favoritesIndexETag = stringOrNullPref("favorites_index_etag")
 
+    /** The cloud favorites changed since the index was last uploaded, see OneDriveSync.notifyFavoritesIndexChanged. */
+    val favoritesIndexDirty = boolPref("favorites_index_dirty", false)
+
     /** The index was deleted after sharing was turned off; cleared by the next upload. */
     val favoritesIndexRemoved = boolPref("favorites_index_removed", false)
 

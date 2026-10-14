@@ -191,6 +191,9 @@ object FavoritesIndexSync {
 
     private fun CloudRefreshCheckpoint.usableFor(user: String?, now: Long) = userKey == user && now - startedAt in 0..CHECKPOINT_MAX_AGE_MILLIS
 
+    /** A refresh of the cloud favorites of the signed in account has not read all pages yet. */
+    suspend fun hasUnfinishedRefresh(): Boolean = hasUnfinishedRefresh(userKey())
+
     private suspend fun hasUnfinishedRefresh(user: String?): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock { loadCheckpointLocked()?.usableFor(user, now()) == true }
     }
@@ -472,7 +475,9 @@ object FavoritesIndexSync {
      */
     suspend fun sync(deviceId: String, deviceName: String) {
         try {
+            val version = OneDriveSync.favoritesIndexVersion()
             syncIndex(deviceId, deviceName)
+            OneDriveSync.favoritesIndexSynced(version)
         } finally {
             mutableProgress.value = null
         }

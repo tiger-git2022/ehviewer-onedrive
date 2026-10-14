@@ -34,12 +34,14 @@ import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
 
-/** The download list of this device changed and is uploaded by the next sync. */
+/** The download list of this device or the cloud favorites changed and are uploaded by the next sync. */
 @Composable
 private fun downloadsChanged(): Boolean {
     val dirty by OneDriveSyncState.downloadsDirty.collectAsState()
     val upload by OneDriveSyncState.uploadDownloads.collectAsState()
-    return dirty && upload
+    val indexDirty by OneDriveSyncState.favoritesIndexDirty.collectAsState()
+    val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
+    return dirty && upload || indexDirty && export
 }
 
 /** What [OneDriveSyncIcon] shows, the first that applies. */

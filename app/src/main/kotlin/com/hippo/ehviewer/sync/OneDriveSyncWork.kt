@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import java.util.concurrent.TimeUnit
@@ -17,12 +18,18 @@ import java.util.concurrent.TimeUnit
 private const val PERIODIC_WORK_NAME = "OneDriveSyncWork"
 private const val CATCH_UP_WORK_NAME = "OneDriveSyncCatchUpWork"
 private const val CONTINUATION_WORK_NAME = "OneDriveSyncContinuationWork"
+private const val KEY_CONTINUATION = "continuation"
+private const val MAX_CONTINUATION_RETRIES = 5
 
 class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
     override suspend fun doWork(): Result = withIOContext {
         if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return@withIOContext Result.success()
         OneDriveSync.sync(SyncTrigger.BACKGROUND).fold(
-            onSuccess = { Result.success() },
+            onSuccess = {
+                // A continuation whose refresh failed on E-Hentai (it does not fail the sync) tries again later
+                val unfinished = inputData.getBoolean(KEY_CONTINUATION, false) && FavoritesIndexSync.hasUnfinishedRefresh()
+                if (unfinished && runAttemptCount < MAX_CONTINUATION_RETRIES) Result.retry() else Result.success()
+            },
             onFailure = {
                 logcat(PERIODIC_WORK_NAME, it)
                 // Signing in again needs the user, retrying cannot help
@@ -67,6 +74,7 @@ fun enqueueOneDriveCatchUpWork(context: Context) {
 fun enqueueOneDriveContinuationWork(context: Context) {
     val request = OneTimeWorkRequestBuilder<OneDriveSyncWork>()
         .setConstraints(syncConstraints())
+        .setInputData(workDataOf(KEY_CONTINUATION to true))
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(CONTINUATION_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
 }

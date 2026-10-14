@@ -157,11 +157,26 @@ object OneDriveSync {
         scheduleChangeSync()
     }
 
+    private val favoritesIndexVersion = AtomicLong()
+
     /** Called when the cloud favorites known to [FavoritesIndexSync] changed. */
-    fun notifyFavoritesIndexChanged() {
-        // Waits for a sync also when none is scheduled for it (sync on change turned off)
-        if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value) mutableChangesPending.value = true
+    suspend fun notifyFavoritesIndexChanged() {
+        favoritesIndexVersion.incrementAndGet()
+        // Waits for a sync also when none is scheduled for it (sync on change off), across restarts too
+        if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value && !OneDriveSyncState.favoritesIndexDirty.value) {
+            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = true }
+        }
         scheduleChangeSync()
+    }
+
+    /** Version of the cloud favorites changes, taken before a sync of the index. */
+    fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
+
+    /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
+    suspend fun favoritesIndexSynced(version: Long) {
+        if (favoritesIndexVersion.get() == version && OneDriveSyncState.favoritesIndexDirty.value) {
+            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.favoritesIndexDirty] = false }
+        }
     }
 
     /** Called by EhDB writes of the download list. */
