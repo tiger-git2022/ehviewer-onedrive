@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -27,6 +28,8 @@ import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.sync.AutoDownload
+import com.hippo.ehviewer.sync.CLOUD_SLOT_COUNT
 import com.hippo.ehviewer.sync.CloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
@@ -244,6 +247,28 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                 }
                             }
                             SyncProgressBar(fraction = workProgress?.fraction?.takeIf { working })
+                            // Fork: new galleries of one slot go to the downloads
+                            val autoDownloadSlot = OneDriveSyncState.autoDownloadSlot.asMutableState()
+                            val off = stringResource(id = R.string.onedrive_sync_auto_download_off)
+                            val slotNames = remember(off) {
+                                mapOf(-1 to off) + (0 until CLOUD_SLOT_COUNT).associateWith { Settings.favCat[it] }
+                            }
+                            LaunchedEffect(autoDownloadSlot.value) { AutoDownload.onOptionChanged() }
+                            DropdownListPreference(
+                                state = autoDownloadSlot,
+                                items = slotNames,
+                                title = { Text(text = stringResource(id = R.string.onedrive_sync_auto_download)) },
+                                summary = {
+                                    val slot = autoDownloadSlot.value
+                                    Text(
+                                        text = if (slot in 0 until CLOUD_SLOT_COUNT) {
+                                            stringResource(id = R.string.onedrive_sync_auto_download_summary, slotNames[slot].orEmpty())
+                                        } else {
+                                            off
+                                        },
+                                    )
+                                },
+                            )
                         }
                     }
 

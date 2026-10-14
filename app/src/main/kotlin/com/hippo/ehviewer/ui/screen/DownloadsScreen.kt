@@ -118,6 +118,7 @@ import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.download.DownloadsFilterMode
+import com.hippo.ehviewer.download.GallerySizes
 import com.hippo.ehviewer.download.SortMode
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
@@ -199,6 +200,10 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         }
     } else {
         remember { mutableStateListOf() }
+    }
+    // Fork: the sizes E-Hentai gives for the galleries not downloaded yet, see DownloadSizeText
+    LaunchedEffect(list.size) {
+        GallerySizes.fetchMissing(list.filter { it.state != DownloadInfo.STATE_FINISH })
     }
 
     val newLabel = stringResource(R.string.new_label_title)
