@@ -676,6 +676,8 @@
     <string name="onedrive_sync_on_change">Sync after changes</string>
     <string name="onedrive_sync_on_change_summary">Sync a minute after the last change, at most 5 minutes after the first one</string>
     <string name="onedrive_sync_wifi_only">Only on Wi-Fi</string>
+    <string name="onedrive_sync_show_progress_bar">Progress below the search bar</string>
+    <string name="onedrive_sync_show_progress_bar_summary">While syncing or reading the cloud favorites, a bar below the search bar of the gallery list and the favorites shows how far it is</string>
     <string name="onedrive_sync_content">Content</string>
     <string name="onedrive_sync_category_settings">Settings</string>
     <string name="onedrive_sync_category_settings_summary">Download location, sign in cookies and archive passwords are never synced</string>

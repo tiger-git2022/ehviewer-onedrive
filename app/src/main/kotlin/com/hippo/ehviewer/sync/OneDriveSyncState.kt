@@ -52,6 +52,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     val syncOnChange = boolPref("sync_on_change", true)
     val wifiOnly = boolPref("wifi_only", false)
 
+    /** A bar below the search bar of the gallery lists shows a running sync, see OneDriveSyncProgressBanner. */
+    val showProgressBar = boolPref("show_progress_bar", true)
+
     // Result of the last sync
     val lastSyncTime = longPref("last_sync_time", 0)
     val lastSyncSummary = stringOrNullPref("last_sync_summary")

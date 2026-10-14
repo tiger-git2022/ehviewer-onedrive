@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +60,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -77,6 +79,7 @@ import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.ui.LocalNavDrawerState
 import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
+import com.hippo.ehviewer.ui.main.OneDriveSyncProgressBanner
 import com.hippo.ehviewer.ui.theme.scrim
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
@@ -119,6 +122,8 @@ fun SearchBarScreen(
     trailingIcon: @Composable () -> Unit = {},
     filter: @Composable (() -> Unit)? = null,
     floatingActionButton: @Composable () -> Unit = {},
+    // Fork: the progress of a OneDrive sync below the search bar
+    showSyncProgress: Boolean = false,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     var mSuggestionList by remember { mutableStateOf(emptyList<Suggestion>()) }
@@ -151,6 +156,8 @@ fun SearchBarScreen(
 
     class KeywordSuggestion(
         override val keyword: String,
+        // Fork: translations of its tags
+        override val hint: String? = null,
     ) : Suggestion() {
         override val canDelete = true
         override fun onClick() {
@@ -162,7 +169,8 @@ fun SearchBarScreen(
         flow {
             val query = searchFieldState.text.toString()
             suggestionProvider?.run { providerSuggestions(query).forEach { emit(it) } }
-            mSearchDatabase.suggestions(query, 128).forEach { emit(KeywordSuggestion(it)) }
+            val translate = Settings.showTagTranslations.value
+            mSearchDatabase.suggestions(query, 128).forEach { emit(KeywordSuggestion(it, if (translate) translateTagQuery(it) else null)) }
             val index = if (localSearch) query.lastIndexOf(' ') else query.lastIndexOfAny(TagTerminators)
             val keyword = query.substring(index + 1).trimStart()
             if (keyword.isNotEmpty()) {
@@ -213,6 +221,8 @@ fun SearchBarScreen(
         }
     }
 
+    // Fork: height of the sync progress below the search bar, the content leaves room for it
+    var syncProgressHeight by remember { mutableIntStateOf(0) }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -222,11 +232,28 @@ fun SearchBarScreen(
 
                     // Placeholder, fill immutable SearchBar padding
                     Spacer(modifier = Modifier.height(SearchBarDefaults.InputFieldHeight + 16.dp))
+                    // Fork
+                    if (showSyncProgress) Spacer(modifier = Modifier.height(with(LocalDensity.current) { syncProgressHeight.toDp() }))
                 }
             },
             floatingActionButton = floatingActionButton,
             content = content,
         )
+        // Fork: below the search bar, it stays below the status bar when the search bar scrolls away
+        if (showSyncProgress && !expanded) {
+            val statusBarTop = WindowInsets.statusBars.getTop(LocalDensity.current)
+            OneDriveSyncProgressBanner(
+                onHeightChanged = { syncProgressHeight = it },
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .offset {
+                        val below = statusBarTop + (SearchBarDefaults.InputFieldHeight + 16.dp).roundToPx()
+                        IntOffset(0, maxOf(statusBarTop, below + searchBarOffsetY()))
+                    }
+                    .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                    .widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth))
+                    .fillMaxWidth(),
+            )
+        }
         // https://issuetracker.google.com/337191298
         // Workaround for can't exit SearchBar due to refocus in non-touch mode
         Box(Modifier.size(1.dp).focusable())

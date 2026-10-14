@@ -124,6 +124,11 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         }
                     }
                     SyncProgressBar(fraction = progress?.fraction?.takeIf { running })
+                    SwitchPreference(
+                        title = stringResource(id = R.string.onedrive_sync_show_progress_bar),
+                        summary = stringResource(id = R.string.onedrive_sync_show_progress_bar_summary),
+                        state = OneDriveSyncState.showProgressBar.asMutableState(),
+                    )
 
                     val autoSync = OneDriveSyncState.autoSync.asMutableState()
                     SwitchPreference(

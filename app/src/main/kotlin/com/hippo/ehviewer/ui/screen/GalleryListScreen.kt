@@ -492,6 +492,8 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         },
         localSearch = false,
         searchBarOffsetY = { searchBarOffsetY },
+        // Fork
+        showSyncProgress = true,
         trailingIcon = {
             val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
             if (OneDriveClient.isSupported && oneDriveAccount != null) {
