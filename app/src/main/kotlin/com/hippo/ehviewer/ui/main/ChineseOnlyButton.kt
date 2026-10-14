@@ -20,11 +20,18 @@ const val CHINESE_LANGUAGE_FILTER = 1
  * filter of the search options, `language:chinese` added to the query); off, to any language.
  */
 @Composable
-fun ChineseOnlyButton(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun ChineseOnlyButton(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    // Off on lists the language filter cannot apply to (what's hot, toplists, image search)
+    enabled: Boolean = true,
+) {
     val description = stringResource(id = R.string.chinese_only)
     IconToggleButton(
-        checked = checked,
+        checked = checked && enabled,
         onCheckedChange = onCheckedChange,
+        enabled = enabled,
         shapes = IconButtonDefaults.toggleableShapes(),
         colors = IconButtonDefaults.iconToggleButtonColors(
             checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,

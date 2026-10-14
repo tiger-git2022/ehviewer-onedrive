@@ -135,7 +135,7 @@ fun AvatarIcon() {
 }
 
 /** Image limits and funds of the account, refreshed when shown. Fork: also opened from Settings → EH. */
-context(_: CoroutineScope, _: DialogState)
+context(_: CoroutineScope, _: DialogState, _: SnackbarHostState)
 fun showImageLimits() {
     launch {
         refreshEvent.emit(Unit)
