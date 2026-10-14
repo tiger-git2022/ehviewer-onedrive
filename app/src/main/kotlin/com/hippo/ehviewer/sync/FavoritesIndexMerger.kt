@@ -260,7 +260,8 @@ object FavoritesIndexMerger {
             cloud.galleries.forEach { if (it.gid !in localGids) add(it.copy(local = false)) }
         }.map { gallery ->
             val withJpn = if (gallery.titleJpn.isNullOrEmpty()) gallery.copy(titleJpn = cloud.japaneseTitles[gallery.gid] ?: gallery.titleJpn) else gallery
-            val default = cloud.defaultTitles[gallery.gid] ?: return@map withJpn
+            // None from the API (removed galleries, a few): the title is the list's, other devices look them up themselves
+            val default = cloud.defaultTitles[gallery.gid]?.takeIf { it.isNotEmpty() } ?: return@map withJpn
             withDefaultTitle(withJpn, default).copy(titlesLookedUp = true)
         }
         return FavoritesIndex(

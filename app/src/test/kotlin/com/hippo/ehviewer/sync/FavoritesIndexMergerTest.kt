@@ -155,8 +155,12 @@ class FavoritesIndexMergerTest {
         val withTitles = FavoritesIndexMerger.withJapaneseTitles(cloud, mapOf(1L to jp, 2L to "日本語", 3L to ""), mapOf(1L to en, 2L to en, 3L to ""))
         val index = FavoritesIndexMerger.buildIndex(emptyList(), withTitles, "dev", "", now = 1)
         assertEquals(
-            listOf(gallery(1, slot = 0, title = en, titleJpn = jp), gallery(2, slot = 0, title = en, titleJpn = "日本語"), gallery(3, slot = 0, title = "removed", titleJpn = ""))
-                .map { it.copy(titlesLookedUp = true) },
+            listOf(
+                gallery(1, slot = 0, title = en, titleJpn = jp).copy(titlesLookedUp = true),
+                gallery(2, slot = 0, title = en, titleJpn = "日本語").copy(titlesLookedUp = true),
+                // The API has nothing: its list title is not shared as a default one
+                gallery(3, slot = 0, title = "removed", titleJpn = ""),
+            ),
             index.galleries,
         )
         assertEquals(emptyList(), FavoritesIndexMerger.missingJapaneseTitles(index, 10, withTitles.defaultTitles))
