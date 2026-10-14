@@ -268,17 +268,20 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                             icon = {},
                             label = openInBrowser,
                         )
-                        // Fork: a global search in Mihon of the title or of the artist
+                        // Fork: a global search in Mihon of the title or of the artist, as written in Japanese and in
+                        // the default (romanized) title: sources list one or the other
                         clickableItem(
                             onClick = {
                                 val info = galleryInfo ?: return@clickableItem
-                                val title = info.titleJpn?.takeIf { it.isNotBlank() } ?: info.title.orEmpty()
-                                val core = MihonSearch.coreTitle(title)
-                                val artist = MihonSearch.artist(title, listOfNotNull((info as? GalleryDetail)?.tagGroups?.artistName()))
+                                val titles = listOfNotNull(info.titleJpn, info.title).filter { it.isNotBlank() }
+                                val tagArtist = (info as? GalleryDetail)?.tagGroups?.artistName()
+                                val queries = (titles.map { MihonSearch.coreTitle(it) } + titles.mapNotNull { MihonSearch.artist(it) } + listOfNotNull(tagArtist))
+                                    .filter { it.isNotBlank() }
+                                    .distinctBy { it.lowercase() }
                                 val activity = contextOf<MainActivity>()
                                 launchIO {
                                     awaitSelectAction(title = R.string.search_in_mihon) {
-                                        listOfNotNull(core, artist).distinct().forEach { query ->
+                                        queries.forEach { query ->
                                             onSelect(query) {
                                                 if (!MihonSearch.search(activity, query)) snackbar(mihonNotInstalled)
                                             }

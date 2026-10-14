@@ -66,6 +66,10 @@ object FavoritesIndexSync {
     /** Japanese titles a sync looks up itself (the favorites just added), the rest is left to [CloudFavoritesWork]. */
     private const val TITLE_LOOKUPS_PER_SYNC = 250
 
+    // panda.chaika.moe is a small site: one search every 3 seconds
+    private const val PANDA_INTERVAL_MILLIS = 3_000L
+    private const val PANDA_MAX_PAGES = 10
+
     /** [CloudFavoritesWork] uploads the index this often, so other apps see the favorites read so far. */
     private const val WORK_UPLOAD_INTERVAL_MILLIS = 10 * 60_000L
 
@@ -325,6 +329,7 @@ object FavoritesIndexSync {
                 widen = false
                 lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, progress = mutableWorkProgress, wait = true, onBatch = uploadIfDue)
             } while (hasUnfinishedRefresh(userKey()) && ++rounds < 3)
+            lookUpPandaTitles(onBatch = uploadIfDue)
             OneDriveSync.uploadFavoritesIndex()
             // The upload failed (no network, OneDrive unreachable): the work tries again, whatever the auto sync options
             check(!enabled || !OneDriveSyncState.favoritesIndexDirty.value) { appCtx.getString(R.string.onedrive_sync_favorites_index_upload_failed) }
@@ -558,6 +563,38 @@ object FavoritesIndexSync {
         }
     }
 
+    /**
+     * Default titles of the galleries the API has none for (removed), from the raw copies panda.chaika.moe archived:
+     * few, one search each. The site unreachable, the rest waits for the next work.
+     */
+    private suspend fun lookUpPandaTitles(onBatch: suspend () -> Unit) {
+        val missing = FavoritesIndexMerger.missingPandaTitles(currentIndex(), current())
+        for ((i, gallery) in missing.withIndex()) {
+            if (i != 0) delay(PANDA_INTERVAL_MILLIS)
+            mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_panda_titles, i, missing.size)
+            val query = FavoritesIndexMerger.pandaQuery(gallery) ?: continue
+            // The match may be on a later page of a common title: a miss is kept only after the last page (or many)
+            var title = ""
+            var page = 1
+            while (true) {
+                val result = try {
+                    PandaChaika.search(query, page)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    logcat(TAG, e)
+                    return
+                }
+                title = FavoritesIndexMerger.pandaDefaultTitle(gallery, result.archives.map { it.title to it.titleJpn })
+                if (title.isNotEmpty() || !result.hasNext || page >= PANDA_MAX_PAGES) break
+                page++
+                delay(PANDA_INTERVAL_MILLIS)
+            }
+            update { cloud -> FavoritesIndexMerger.withPandaTitles(cloud, mapOf(gallery.gid to title)) }
+            onBatch()
+        }
+    }
+
     /** Half of the devices look up from the other end of the list: two at once meet in the middle. */
     private fun lookUpFromEnd() = (OneDriveSyncState.deviceId.value?.hashCode() ?: 0) and 1 == 1
 
@@ -607,7 +644,12 @@ object FavoritesIndexSync {
                 runEhStep { lookUpJapaneseTitles(index, TITLE_LOOKUPS_PER_SYNC, mutableProgress, StepProgress.TITLES) }
                 index = build()
                 // Many favorites without a Japanese title (the first sync of a large list): the work looks them up
-                if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1, current().defaultTitles).isNotEmpty()) enqueueCloudFavoritesWork(appCtx)
+                val cloud = current()
+                if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1, cloud.defaultTitles).isNotEmpty() ||
+                    FavoritesIndexMerger.missingPandaTitles(index, cloud).isNotEmpty()
+                ) {
+                    enqueueCloudFavoritesWork(appCtx)
+                }
             }
             val listed = index
             // Titles of galleries the index no longer lists: nothing to upload

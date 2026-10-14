@@ -641,6 +641,7 @@
     <string name="onedrive_sync_step_check_cloud_favorites">核对云端收藏</string>
     <string name="onedrive_sync_step_read_cloud_favorites">读取云端收藏</string>
     <string name="onedrive_sync_step_japanese_titles">查找标题（日文和罗马音）</string>
+    <string name="onedrive_sync_step_panda_titles">在 PandaChaika 查下架画廊的标题</string>
     <string name="onedrive_sync_step_upload_index">上传收藏清单</string>
     <string name="onedrive_sync_never">尚未同步过</string>
     <string name="onedrive_sync_last_success">上次同步：%1$s\n%2$s</string>

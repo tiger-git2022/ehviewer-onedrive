@@ -93,6 +93,11 @@ data class CloudFavorites(
      * list pages, and sites listing the default title would not match them.
      */
     val defaultTitles: Map<Long, String> = emptyMap(),
+    /**
+     * Default titles of galleries the API has none for (removed), from the raw copy panda.chaika.moe archived: gid ->
+     * title, empty if it has none. Not shared with other devices, which look up the few themselves.
+     */
+    val pandaTitles: Map<Long, String> = emptyMap(),
 ) {
     fun countBySlot(): List<Int> {
         val counts = IntArray(CLOUD_SLOT_COUNT)

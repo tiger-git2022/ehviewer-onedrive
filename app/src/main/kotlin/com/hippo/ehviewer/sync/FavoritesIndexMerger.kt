@@ -1,5 +1,7 @@
 package com.hippo.ehviewer.sync
 
+import java.text.Normalizer
+
 /** Pure functions behind the favorites index, kept apart for unit tests. */
 object FavoritesIndexMerger {
     /** The list of the E-Hentai account [userKey]: an empty one if [cloud] belongs to another account. */
@@ -7,7 +9,7 @@ object FavoritesIndexMerger {
         cloud
     } else {
         // Titles describe galleries, not the account
-        CloudFavorites(userKey = userKey, japaneseTitles = cloud.japaneseTitles, defaultTitles = cloud.defaultTitles)
+        CloudFavorites(userKey = userKey, japaneseTitles = cloud.japaneseTitles, defaultTitles = cloud.defaultTitles, pandaTitles = cloud.pandaTitles)
     }
 
     /**
@@ -238,6 +240,7 @@ object FavoritesIndexMerger {
             galleries = galleries,
             japaneseTitles = cloud.japaneseTitles + remoteTitles(remote),
             defaultTitles = cloud.defaultTitles,
+            pandaTitles = cloud.pandaTitles,
         )
     }
 
@@ -260,9 +263,12 @@ object FavoritesIndexMerger {
             cloud.galleries.forEach { if (it.gid !in localGids) add(it.copy(local = false)) }
         }.map { gallery ->
             val withJpn = if (gallery.titleJpn.isNullOrEmpty()) gallery.copy(titleJpn = cloud.japaneseTitles[gallery.gid] ?: gallery.titleJpn) else gallery
-            // None from the API (removed galleries, a few): the title is the list's, other devices look them up themselves
-            val default = cloud.defaultTitles[gallery.gid]?.takeIf { it.isNotEmpty() } ?: return@map withJpn
-            withDefaultTitle(withJpn, default).copy(titlesLookedUp = true)
+            val default = cloud.defaultTitles[gallery.gid] ?: return@map withJpn
+            if (default.isNotEmpty()) return@map withDefaultTitle(withJpn, default).copy(titlesLookedUp = true)
+            // None from the API (removed galleries, a few): the one of its archived raw copy, if found. The empty
+            // Japanese title only says the API had nothing, the list title stays as the Japanese one
+            val panda = cloud.pandaTitles[gallery.gid]?.takeIf { it.isNotEmpty() } ?: return@map withJpn
+            withDefaultTitle(withJpn.copy(titleJpn = withJpn.titleJpn?.ifEmpty { null }), panda)
         }
         return FavoritesIndex(
             updatedAt = now,
@@ -281,9 +287,60 @@ object FavoritesIndexMerger {
         val gids = index.galleries.mapTo(HashSet()) { it.gid }
         val kept = cloud.japaneseTitles.filterKeys { it in gids }
         val keptDefaults = cloud.defaultTitles.filterKeys { it in gids }
-        if (kept.size == cloud.japaneseTitles.size && keptDefaults.size == cloud.defaultTitles.size) return cloud
-        return cloud.copy(japaneseTitles = kept, defaultTitles = keptDefaults)
+        val keptPanda = cloud.pandaTitles.filterKeys { it in gids }
+        if (kept.size == cloud.japaneseTitles.size && keptDefaults.size == cloud.defaultTitles.size && keptPanda.size == cloud.pandaTitles.size) {
+            return cloud
+        }
+        return cloud.copy(japaneseTitles = kept, defaultTitles = keptDefaults, pandaTitles = keptPanda)
     }
+
+    /** Galleries of [index] the API had no titles for and panda.chaika.moe was not asked about yet. */
+    fun missingPandaTitles(index: FavoritesIndex, cloud: CloudFavorites): List<IndexedGallery> = index.galleries.filter {
+        cloud.defaultTitles[it.gid] == "" && it.gid !in cloud.pandaTitles && !pandaQuery(it).isNullOrEmpty()
+    }
+
+    /** The core of the Japanese title of [gallery] to search panda.chaika.moe with, its bracket groups removed. */
+    fun pandaQuery(gallery: IndexedGallery): String? {
+        val title = gallery.titleJpn?.takeIf { it.isNotEmpty() } ?: gallery.title ?: return null
+        return coreTitle(title).takeIf { compact(it).length >= MIN_PANDA_TITLE }
+    }
+
+    /**
+     * The default title of the archive among [archives] (default title to Japanese title) whose Japanese title is the
+     * one of [gallery], "" if none is. Square bracket groups (circle, translators, language: the raw copy of a
+     * translation has others), a leading event group, spaces and punctuation aside; other round brackets ("(前編)",
+     * "(後編)") must agree.
+     */
+    fun pandaDefaultTitle(gallery: IndexedGallery, archives: List<Pair<String?, String?>>): String {
+        val wanted = matchKey(gallery.titleJpn?.takeIf { it.isNotEmpty() } ?: gallery.title.orEmpty())
+        if (wanted.isEmpty()) return ""
+        return archives.firstOrNull { (title, titleJpn) ->
+            !title.isNullOrBlank() && titleJpn?.let { matchKey(it) } == wanted
+        }?.first.orEmpty()
+    }
+
+    /** Adds the titles found on panda.chaika.moe (gid -> title, empty if none). */
+    fun withPandaTitles(cloud: CloudFavorites, titles: Map<Long, String>): CloudFavorites {
+        val added = titles.filter { (gid, title) -> cloud.pandaTitles[gid] != title }
+        return if (added.isEmpty()) cloud else cloud.copy(pandaTitles = cloud.pandaTitles + added)
+    }
+
+    private const val MIN_PANDA_TITLE = 4
+    private val BRACKET_GROUPS = Regex("""\[[^\]]*\]|\([^)]*\)|【[^】]*】|（[^）]*）|\{[^}]*\}|［[^］]*］""")
+
+    private fun coreTitle(title: String): String {
+        val first = title.substringBefore('|')
+        return first.replace(BRACKET_GROUPS, " ").trim().ifEmpty { first.trim() }
+    }
+
+    private val SQUARE_GROUPS = Regex("""\[[^\]]*\]|【[^】]*】|［[^］]*］""")
+
+    // An event: "(C102)", "(COMIC1☆23)", "(紅楼夢19)" all have a number, "(前編)" has none and stays
+    private val LEADING_ROUND_GROUPS = Regex("""^\s*(?:\([^)]*\d[^)]*\)|（[^）]*\d[^）]*）)\s*""")
+
+    private fun matchKey(title: String) = compact(title.substringBefore('|').replace(LEADING_ROUND_GROUPS, "").replace(SQUARE_GROUPS, " "))
+
+    private fun compact(text: String) = Normalizer.normalize(text, Normalizer.Form.NFKC).lowercase().filter { it.isLetterOrDigit() }
 
     /**
      * [gallery] listing [default] as its title, the one it had moving to the Japanese title when that is unknown: the
