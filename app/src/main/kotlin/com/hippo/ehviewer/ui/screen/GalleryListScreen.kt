@@ -510,7 +510,8 @@ fun AnimatedVisibilityScope.GalleryListScreen(
             // Fork: Chinese only, refreshing the list; the image limits moved to Settings → EH
             val filterable = urlBuilder.mode.let { it == MODE_NORMAL || it == MODE_SUBSCRIPTION || it == MODE_TAG || it == MODE_UPLOADER }
             ChineseOnlyButton(
-                checked = languageFilter == CHINESE_LANGUAGE_FILTER,
+                // The language of this list, which may differ from the setting when another list changed it
+                checked = urlBuilder.language == CHINESE_LANGUAGE_FILTER,
                 onCheckedChange = { on ->
                     languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1
                     // From the first page
