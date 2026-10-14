@@ -55,8 +55,10 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** A bar below the search bar of the gallery lists shows a running sync, see OneDriveSyncProgressBanner. */
     val showProgressBar = boolPref("show_progress_bar", true)
 
-    /** Cloud slot whose new galleries go to the downloads on this device, -1 for none, see [AutoDownload]. */
-    val autoDownloadSlot = intPref("auto_download_slot", -1)
+    /** Cloud slots whose new galleries go to the downloads on this device, comma separated, see [AutoDownload]. */
+    val autoDownloadSlots = stringPref("auto_download_slots", "")
+
+    fun parseSlots(value: String): Set<Int> = value.split(',').mapNotNullTo(sortedSetOf()) { it.trim().toIntOrNull()?.takeIf { slot -> slot in 0 until CLOUD_SLOT_COUNT } }
 
     // Result of the last sync
     val lastSyncTime = longPref("last_sync_time", 0)

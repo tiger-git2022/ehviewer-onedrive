@@ -682,7 +682,9 @@
     <string name="onedrive_sync_show_progress_bar_summary">While syncing or reading the cloud favorites, a bar below the search bar of the gallery list and the favorites shows how far it is</string>
     <string name="onedrive_sync_auto_download">Auto download</string>
     <string name="onedrive_sync_auto_download_off">Off</string>
-    <string name="onedrive_sync_auto_download_summary">Galleries newly added to "%s" go to the downloads on this device, once each. Those there before it was turned on are left out</string>
+    <string name="onedrive_sync_auto_download_summary">Galleries newly added to %s go to the downloads on this device, once each. Those there when a collection was chosen are left out</string>
+    <string name="onedrive_sync_auto_download_separator">", "</string>
+    <string name="onedrive_sync_auto_download_slot">\"%s\"</string>
     <string name="download_size_estimated">About %s</string>
     <string name="onedrive_sync_content">Content</string>
     <string name="onedrive_sync_category_settings">Settings</string>

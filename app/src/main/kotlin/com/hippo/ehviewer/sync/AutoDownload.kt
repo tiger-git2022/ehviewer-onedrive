@@ -22,9 +22,10 @@ import kotlinx.serialization.json.Json
 import splitties.init.appCtx
 
 /**
- * Fork: adds the galleries that newly appear in one cloud favorites slot (chosen per device, see
- * [OneDriveSyncState.autoDownloadSlot]) to the download list, once each. Those in the slot when the option is turned on
- * are left alone. A gallery updated on E-Hentai moves to its new version there, which is added like any new one.
+ * Fork: adds the galleries that newly appear in the cloud favorites slots chosen on this device (see
+ * [OneDriveSyncState.autoDownloadSlots]) to the download list, once each. Those in a slot when it is chosen are left
+ * alone, and so is a gallery moved between chosen slots. A gallery updated on E-Hentai moves to its new version there,
+ * which is added like any new one.
  */
 object AutoDownload {
     private const val TAG = "AutoDownload"
@@ -37,23 +38,25 @@ object AutoDownload {
     private data class State(
         /** [CloudFavorites.userKey] of the account the galleries belong to. */
         val userKey: String,
-        val slot: Int,
-        /** Galleries of [slot] not to add: there when the option was turned on, or added once already. */
+        val slots: Set<Int>,
+        /** Galleries of [slots] not to add: there when their slot was chosen, or added once already. */
         val handled: Set<Long>,
     )
 
     /**
-     * The slot whose new galleries are added, null when off. Its option shows only while signed in to OneDrive with
+     * The slots whose new galleries are added, empty when off. The option shows only while signed in to OneDrive with
      * the favorites index on, so it is off otherwise too: nothing is added that the user cannot stop from there.
      */
-    private val slot: Int?
-        get() = OneDriveSyncState.autoDownloadSlot.value.takeIf {
-            it in 0 until CLOUD_SLOT_COUNT && OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value
+    private val slots: Set<Int>
+        get() = if (OneDriveSyncState.isSignedIn && OneDriveSyncState.exportFavoritesIndex.value) {
+            OneDriveSyncState.parseSlots(OneDriveSyncState.autoDownloadSlots.value)
+        } else {
+            emptySet()
         }
 
     /** After the cloud favorites list changed, see [FavoritesIndexSync]. */
     fun onCloudFavoritesSaved(cloud: CloudFavorites) {
-        if (slot == null) {
+        if (slots.isEmpty()) {
             // Off: on again, it starts from then
             if (file.exists()) scope.launch { mutex.withLock { file.delete() } }
             return
@@ -67,8 +70,8 @@ object AutoDownload {
     }
 
     private suspend fun check(cloud: CloudFavorites) = mutex.withLock {
-        val slot = slot
-        if (slot == null) {
+        val slots = slots
+        if (slots.isEmpty()) {
             // Turned off: turning it on again starts from then
             file.delete()
             return@withLock
@@ -76,17 +79,20 @@ object AutoDownload {
         val user = cloud.userKey ?: return@withLock
         // Until the list was read completely once, galleries favorited long ago would look new
         if (cloud.refreshedAt == 0L) return@withLock
-        val inSlot = cloud.galleries.filter { it.slot == slot }
-        val state = load()?.takeIf { it.userKey == user && it.slot == slot }
-        if (state == null) {
-            save(State(user, slot, inSlot.mapTo(HashSet()) { it.gid }))
-            return@withLock
-        }
-        val new = inSlot.filter { it.gid !in state.handled }
-        // Galleries that left the slot are forgotten: put back in later, they count as new
-        val kept = state.handled.intersect(inSlot.mapTo(HashSet()) { it.gid })
+        val inSlots = cloud.galleries.filter { it.slot in slots }
+        val stored = load()?.takeIf { it.userKey == user }
+        // A slot chosen just now: what it holds already is left alone
+        val chosenNow = slots - stored?.slots.orEmpty()
+        val state = State(
+            userKey = user,
+            slots = slots,
+            handled = stored?.handled.orEmpty() + inSlots.filter { it.slot in chosenNow }.map { it.gid },
+        )
+        val new = inSlots.filter { it.gid !in state.handled }
+        // Galleries that left the chosen slots are forgotten: put back in later, they count as new
+        val kept = state.handled.intersect(inSlots.mapTo(HashSet()) { it.gid })
         if (new.isEmpty()) {
-            if (kept.size != state.handled.size) save(state.copy(handled = kept))
+            if (state.copy(handled = kept) != stored) save(state.copy(handled = kept))
             return@withLock
         }
         val infos = new.map {
@@ -99,7 +105,7 @@ object AutoDownload {
             if (info.pages > 0 && !DownloadManager.containDownloadInfo(info.gid)) add(info)
         }
         save(state.copy(handled = kept + infos.map { it.gid }))
-        logcat(TAG) { "Added ${infos.size} galleries of slot $slot to the downloads" }
+        logcat(TAG) { "Added ${infos.size} galleries of slots $slots to the downloads" }
     }
 
     private suspend fun add(info: BaseGalleryInfo) {

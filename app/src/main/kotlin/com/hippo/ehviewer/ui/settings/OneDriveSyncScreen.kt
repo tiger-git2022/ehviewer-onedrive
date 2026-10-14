@@ -18,12 +18,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
+import com.ehviewer.core.ui.component.LabeledCheckbox
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
@@ -44,6 +46,7 @@ import com.hippo.ehviewer.ui.destinations.OneDriveDevicesScreenDestination
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitInputText
+import com.hippo.ehviewer.ui.tools.awaitResult
 import com.hippo.ehviewer.util.ReadableTime
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -247,28 +250,40 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                 }
                             }
                             SyncProgressBar(fraction = workProgress?.fraction?.takeIf { working })
-                            // Fork: new galleries of one slot go to the downloads
-                            val autoDownloadSlot = OneDriveSyncState.autoDownloadSlot.asMutableState()
-                            val off = stringResource(id = R.string.onedrive_sync_auto_download_off)
-                            val slotNames = remember(off) {
-                                mapOf(-1 to off) + (0 until CLOUD_SLOT_COUNT).associateWith { Settings.favCat[it] }
-                            }
-                            LaunchedEffect(autoDownloadSlot.value) { AutoDownload.onOptionChanged() }
-                            DropdownListPreference(
-                                state = autoDownloadSlot,
-                                items = slotNames,
-                                title = { Text(text = stringResource(id = R.string.onedrive_sync_auto_download)) },
-                                summary = {
-                                    val slot = autoDownloadSlot.value
-                                    Text(
-                                        text = if (slot in 0 until CLOUD_SLOT_COUNT) {
-                                            stringResource(id = R.string.onedrive_sync_auto_download_summary, slotNames[slot].orEmpty())
-                                        } else {
-                                            off
-                                        },
+                            // Fork: new galleries of the chosen slots go to the downloads
+                            var autoDownloadSlots by OneDriveSyncState.autoDownloadSlots.asMutableState()
+                            val chosenSlots = OneDriveSyncState.parseSlots(autoDownloadSlots)
+                            LaunchedEffect(autoDownloadSlots) { AutoDownload.onOptionChanged() }
+                            val slotFormat = stringResource(id = R.string.onedrive_sync_auto_download_slot)
+                            val separator = stringResource(id = R.string.onedrive_sync_auto_download_separator)
+                            Preference(
+                                title = stringResource(id = R.string.onedrive_sync_auto_download),
+                                summary = if (chosenSlots.isEmpty()) {
+                                    stringResource(id = R.string.onedrive_sync_auto_download_off)
+                                } else {
+                                    stringResource(
+                                        id = R.string.onedrive_sync_auto_download_summary,
+                                        chosenSlots.joinToString(separator) { slotFormat.format(Settings.favCat[it]) },
                                     )
                                 },
-                            )
+                            ) {
+                                launch {
+                                    val chosen = awaitResult(chosenSlots, title = R.string.onedrive_sync_auto_download) {
+                                        Column {
+                                            (0 until CLOUD_SLOT_COUNT).forEach { slot ->
+                                                LabeledCheckbox(
+                                                    checked = slot in expectedValue,
+                                                    onCheckedChange = { checked ->
+                                                        expectedValue = if (checked) expectedValue + slot else expectedValue - slot
+                                                    },
+                                                    label = Settings.favCat[slot],
+                                                )
+                                            }
+                                        }
+                                    }
+                                    autoDownloadSlots = chosen.sorted().joinToString(",")
+                                }
+                            }
                         }
                     }
 
