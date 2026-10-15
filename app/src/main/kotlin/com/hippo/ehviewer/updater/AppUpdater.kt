@@ -35,14 +35,27 @@ const val LATEST_RELEASE_URL = "$API_URL/releases/latest"
 const val RELEASES_URL = "https://github.com/${BuildConfig.REPO_NAME}/releases"
 const val LATEST_MANIFEST_URL = "$RELEASES_URL/latest/download/update.json"
 
+// Fork: the update interval that checks once on every app start, the default
+const val UPDATE_ON_LAUNCH = -1
+
 object AppUpdater {
+    // A new activity (a rotation, a return from the background) is not a new start of the app. Set once a check
+    // finished: a rotation cancels a running one, the new activity then checks again.
+    private var checkedThisLaunch = false
+
     suspend fun checkForUpdate(forceCheck: Boolean = false): EhRelease? {
         val now = Clock.System.now()
         val last = Instant.fromEpochSeconds(Settings.lastUpdateTime)
         val interval = Settings.updateIntervalDays.value
-        if (forceCheck || interval != 0 && now > last + interval.days) {
+        val due = when (interval) {
+            0 -> false
+            UPDATE_ON_LAUNCH -> !checkedThisLaunch
+            else -> now > last + interval.days
+        }
+        if (forceCheck || due) {
             Settings.lastUpdateTime = now.epochSeconds
             val release = fetchRelease(LATEST_MANIFEST_URL, LATEST_RELEASE_URL)
+            checkedThisLaunch = true
             val latestVersion = release.version.removePrefix("v")
             if (ForkVersion.isNewer(latestVersion, BuildConfig.RAW_VERSION_NAME)) {
                 // The release notes list the changes since the previous release
@@ -55,7 +68,8 @@ object AppUpdater {
     private suspend fun fetchRelease(manifestUrl: String, apiUrl: String): Release = runSuspendCatching { statement(manifestUrl).executeAndParseAs<Release>() }
         .getOrElse { githubStatement(apiUrl).executeAndParseAs<Release>() }
 
-    suspend fun downloadUpdate(url: String, path: Path) {
+    /** Downloads to [path], telling [onProgress] the bytes done and the total, null while the total is unknown. */
+    suspend fun downloadUpdate(url: String, path: Path, onProgress: (done: Long, total: Long?) -> Unit = { _, _ -> }) {
         val isZip = url.endsWith("zip")
         timeoutBySpeed(
             url,
@@ -66,7 +80,8 @@ object AppUpdater {
                     it()
                 }
             },
-            { _, _, _ -> },
+            // timeoutBySpeed passes Long.MAX_VALUE without a Content-Length
+            { total, done, _ -> onProgress(done, total.takeIf { it in 1..<Long.MAX_VALUE }) },
             { response ->
                 if (isZip) {
                     response.bodyAsChannel().toInputStream().use { stream ->
