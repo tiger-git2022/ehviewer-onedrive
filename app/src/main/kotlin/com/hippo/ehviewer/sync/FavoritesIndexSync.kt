@@ -98,7 +98,7 @@ object FavoritesIndexSync {
     private val legacyCheckpointFile get() = File(appCtx.filesDir, "cloud_favorites_refresh.json.gz")
     private val checkpointStore by lazy { CheckpointStore(File(appCtx.filesDir, "cloud_favorites_refresh"), json) }
 
-    /** The single file of format 1 was deleted from OneDrive in this process. */
+    /** The single file of format 1 was deleted from the OneDrive account of this process, see [onCloudStateReset]. */
     @Volatile
     private var legacyIndexRemoved = false
 
@@ -652,7 +652,6 @@ object FavoritesIndexSync {
         var listing = OneDriveClient.list(SHARDS_FOLDER)
         var remote = listing[FavoritesExportCache.MANIFEST_FILE]
         adoptRemote(remote)
-        removeLegacyIndex()
         val signedIn = Settings.hasSignedIn.value
         if (signedIn && !fromWork) {
             mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, part = StepProgress.CHECK)
@@ -695,6 +694,7 @@ object FavoritesIndexSync {
             val uploaded = listing.keys.mapNotNullTo(HashSet()) { FavoritesExportCache.hashOf(it) }
             if (remote != null && remote.eTag == storedETag && last != null && last.sameContent(manifest) && manifest.shards.all { it.hash in uploaded }) {
                 logcat(TAG) { "Index unchanged" }
+                removeLegacyIndex()
                 return version
             }
             // Shards first: whoever reads the new manifest finds all of its shards. A shard is named by its content, one
@@ -737,16 +737,28 @@ object FavoritesIndexSync {
                 if (hash !in keep) runCatching { OneDriveClient.delete("$SHARDS_FOLDER/$name") }.onFailure { logcat(TAG, it) }
             }
             withContext(Dispatchers.IO) { cache.cleanUp(manifest.shards.mapTo(HashSet()) { it.hash }) }
+            // Only now: until the manifest is up, readers of format 1 keep the single file
+            removeLegacyIndex()
             logcat(TAG) { "Index uploaded: ${manifest.count} galleries, ${missing.size} of ${manifest.shards.size} shards" }
             return version
         }
         throw OneDrivePreconditionException()
     }
 
-    /** The single file of format 1 is replaced by the shards: deleted once per run of the app (gone, it costs nothing). */
+    /**
+     * The single file of format 1 is replaced by the shards: deleted once per account and run of the app (gone, it costs
+     * nothing). A failure leaves it to the next upload, the shards are up already.
+     */
     private suspend fun removeLegacyIndex() {
         if (legacyIndexRemoved) return
-        OneDriveClient.delete(LEGACY_INDEX_PATH)
+        try {
+            OneDriveClient.delete(LEGACY_INDEX_PATH)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+            return
+        }
         withContext(Dispatchers.IO) { legacyIndexFile.delete() }
         legacyIndexRemoved = true
     }
@@ -820,6 +832,8 @@ object FavoritesIndexSync {
     fun onCloudStateReset() {
         lastCheck = 0L
         lastCheckUser = null
+        // The other account may hold a single file of format 1 too
+        legacyIndexRemoved = false
     }
 
     // endregion
