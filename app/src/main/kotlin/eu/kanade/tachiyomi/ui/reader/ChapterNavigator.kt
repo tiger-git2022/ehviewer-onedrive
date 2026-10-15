@@ -18,11 +18,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.IntSliderState
 import com.ehviewer.core.ui.component.RollingNumber
 import com.ehviewer.core.ui.component.RollingNumberPlaceholder
 import com.ehviewer.core.ui.component.Slider
 import com.ehviewer.core.ui.component.defaultMaxTickCount
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.HapticFeedbackType
 import com.ehviewer.core.ui.util.LocalWindowSizeClass
 import com.ehviewer.core.ui.util.isExpanded
@@ -35,11 +37,14 @@ fun ChapterNavigator(
     totalPages: Int,
     onSliderValueChange: (Int) -> Unit,
     containerColor: Color,
+    // Fork: liquid glass from ReaderAppBars, see LiquidGlass.kt
+    glass: FloatingGlass? = null,
+    glassTint: Color = Color.Transparent,
 ) = CompositionLocalProvider(LocalLayoutDirection provides if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
     val windowSizeClass = LocalWindowSizeClass.current
     val horizontalPadding = if (windowSizeClass.isExpanded) 24.dp else 16.dp
     Row(
-        modifier = Modifier.padding(horizontal = horizontalPadding).clip(CircleShape).background(containerColor).padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = horizontalPadding).floatingGlass(glass, CircleShape, glassTint).clip(CircleShape).background(containerColor).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RollingNumber(slider.value, length = "$totalPages".length)

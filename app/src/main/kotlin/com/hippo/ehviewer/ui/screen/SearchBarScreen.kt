@@ -237,7 +237,7 @@ fun SearchBarScreen(
     val glass = rememberLiquidGlass(backdrop)
     val glassShape = SearchBarDefaults.inputFieldShape
     val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)
-    val expandedGlassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
+    val expandedGlassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {

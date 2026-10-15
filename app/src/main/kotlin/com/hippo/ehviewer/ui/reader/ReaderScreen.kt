@@ -75,8 +75,10 @@ import com.hippo.ehviewer.gallery.status
 import com.hippo.ehviewer.gallery.unblock
 import com.hippo.ehviewer.gallery.useArchivePageLoader
 import com.hippo.ehviewer.gallery.useEhPageLoader
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitInputText
@@ -293,7 +295,8 @@ fun ReaderScreen(pageLoader: PageLoader, info: BaseGalleryInfo?) {
                 onNavigationModeChange = { showNavigationOverlay = true },
                 onSelectPage = onSelectPage,
                 onMenuRegionClick = { appbarVisible = !appbarVisible },
-                modifier = Modifier.background(bgColor).pointerInput(sync) {
+                // Fork: recorded for the liquid glass of the menus, see LiquidGlass.kt
+                modifier = Modifier.glassContent(LocalPageBackdrop.current).background(bgColor).pointerInput(sync) {
                     awaitEachGesture {
                         waitForUpOrCancellation()
                         sync.reset()

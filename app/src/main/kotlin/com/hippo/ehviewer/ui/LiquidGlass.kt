@@ -61,15 +61,17 @@ private fun liquidGlass(backdrop: Backdrop) = FloatingGlass { shape, tint, style
         effects = {
             vibrancy()
             when (style) {
+                // Only the rim bends: a deeper lens stretched the text below the search bar
                 GlassStyle.Control -> {
                     blur(1.5f.dp.toPx())
-                    lens(24f.dp.toPx(), 48f.dp.toPx(), depthEffect = true, chromaticAberration = true)
+                    lens(12f.dp.toPx(), 20f.dp.toPx(), chromaticAberration = true)
                 }
                 GlassStyle.Panel -> {
                     blur(4f.dp.toPx())
-                    lens(28f.dp.toPx(), 56f.dp.toPx(), depthEffect = true, chromaticAberration = true)
+                    lens(16f.dp.toPx(), 28f.dp.toPx(), chromaticAberration = true)
                 }
-                GlassStyle.Backdrop -> blur(24f.dp.toPx())
+                // One even blur: a lighter one let the shapes of the list split the screen
+                GlassStyle.Backdrop -> blur(48f.dp.toPx())
             }
         },
         // A screen-wide glass has no edge to light nor a shadow to cast

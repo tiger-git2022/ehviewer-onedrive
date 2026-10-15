@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -20,11 +21,16 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.IntSliderState
+import com.ehviewer.core.ui.component.floatingGlass
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 
 private val animationSpec = tween<IntOffset>(200)
@@ -42,6 +48,10 @@ fun BoxScope.ReaderAppBars(
     onClickSettings: () -> Unit,
 ) {
     val backgroundColor = BottomAppBarDefaults.containerColor.copy(alpha = if (isSystemInDarkTheme()) 0.9f else 0.95f)
+    // Fork: with liquid glass, the menus refract the page, see LiquidGlass.kt
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    val glassTint = BottomAppBarDefaults.containerColor.copy(alpha = READER_GLASS_TINT)
+    val barColor = if (glass != null) Color.Transparent else backgroundColor
 
     AnimatedVisibility(
         visible = visible,
@@ -51,7 +61,8 @@ fun BoxScope.ReaderAppBars(
     ) {
         TopAppBar(
             title = { Text(text = title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor),
+            modifier = Modifier.floatingGlass(glass, TopGlassShape, glassTint, GlassStyle.Panel),
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = barColor),
             navigationIcon = { NavigationIcon() },
         )
     }
@@ -69,10 +80,21 @@ fun BoxScope.ReaderAppBars(
                     slider = slider,
                     totalPages = totalPages,
                     onSliderValueChange = onSliderValueChange,
-                    containerColor = backgroundColor,
+                    containerColor = barColor,
+                    glass = glass,
+                    glassTint = glassTint,
                 )
             }
-            BottomReaderBar(onClickSettings = onClickSettings, containerColor = backgroundColor)
+            BottomReaderBar(
+                onClickSettings = onClickSettings,
+                containerColor = barColor,
+                modifier = Modifier.floatingGlass(glass, BottomGlassShape, glassTint, GlassStyle.Panel),
+            )
         }
     }
 }
+
+// Fork: the glass of the reader menus, rounded toward the page; enough tint to read them over any page
+private val TopGlassShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
+private val BottomGlassShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+const val READER_GLASS_TINT = 0.3f
