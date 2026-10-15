@@ -645,14 +645,25 @@ object FavoritesIndexSync {
     fun refreshInBackground() = enqueueCloudFavoritesWork(appCtx, full = true)
 
     /** How far the cloud favorites are read ([read] of [total] when a refresh is [unfinished]) and looked up. */
-    data class Status(val unfinished: Boolean = false, val read: Int = 0, val total: Int = 0, val missingTitles: Int = 0)
+    data class Status(
+        val unfinished: Boolean = false,
+        val read: Int = 0,
+        val total: Int = 0,
+        val missingTitles: Int = 0,
+        // Fork: the last complete read of the cloud favorites (0: never) and the favorites known
+        val refreshedAt: Long = 0,
+        val count: Int = 0,
+    )
 
     suspend fun status(): Status = withContext(Dispatchers.IO) {
         if (!Settings.hasSignedIn.value) return@withContext Status()
         val user = userKey()
         val pending = mutex.withLock { loadCheckpointLocked()?.takeIf { it.userKey == user } }
         val missing = FavoritesIndexMerger.missingJapaneseTitles(currentIndex(), Int.MAX_VALUE, current().defaultTitles).size
+        val cloud = current()
         Status(
+            refreshedAt = cloud.refreshedAt,
+            count = cloud.galleries.size,
             unfinished = pending != null,
             read = pending?.galleries?.size ?: 0,
             total = pending?.let { checkpoint -> checkpoint.slots.sumOf { checkpoint.counts.getOrElse(it) { 0 } } } ?: 0,
