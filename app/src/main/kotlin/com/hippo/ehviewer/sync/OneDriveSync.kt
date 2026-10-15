@@ -126,6 +126,23 @@ object OneDriveSync {
     /** True while changes wait for a sync scheduled for them: the change countdown, a rerun or background work. */
     val changesPending: StateFlow<Boolean> = mutableChangesPending.asStateFlow()
 
+    /**
+     * Fork: the countdown of a change triggered sync, in [SystemClock.elapsedRealtime] time: the sync comes at [dueAt],
+     * a minute after the last change, and at the latest at [batchEndsAt], five minutes after the first.
+     */
+    data class ChangeSyncCountdown(val dueAt: Long, val batchEndsAt: Long) {
+        /** Left of the minute after the last change, from 1 to 0. */
+        fun minuteLeft(now: Long) = ((dueAt - now).toFloat() / DEBOUNCE_MILLIS).coerceIn(0f, 1f)
+
+        /** Left of the five minutes the changes wait at most, from 1 to 0. */
+        fun batchLeft(now: Long) = ((batchEndsAt - now).toFloat() / MAX_WAIT_MILLIS).coerceIn(0f, 1f)
+    }
+
+    private val mutableChangeSyncCountdown = MutableStateFlow<ChangeSyncCountdown?>(null)
+
+    /** The running countdown, null while none runs (no changes, a sync running, or the app in the background). */
+    val changeSyncCountdown: StateFlow<ChangeSyncCountdown?> = mutableChangeSyncCountdown.asStateFlow()
+
     private val mutableProgress = MutableStateFlow<SyncRunProgress?>(null)
 
     /** Step of the running sync, null when no sync runs. The step of the favorites index shows its own progress. */
@@ -377,12 +394,14 @@ object OneDriveSync {
             val now = SystemClock.elapsedRealtime()
             if (batchStartedAt == 0L) batchStartedAt = now
             val wait = minOf(DEBOUNCE_MILLIS, batchStartedAt + MAX_WAIT_MILLIS - now).coerceAtLeast(0)
+            mutableChangeSyncCountdown.value = ChangeSyncCountdown(now + wait, batchStartedAt + MAX_WAIT_MILLIS)
             debounceJob?.cancel()
             debounceJob = scope.launch {
                 delay(wait)
                 synchronized(debounceLock) {
                     debounceJob = null
                     batchStartedAt = 0L
+                    mutableChangeSyncCountdown.value = null
                 }
                 // Not a child of the countdown, so a later change cannot cancel the running sync
                 scope.launch {
@@ -410,6 +429,7 @@ object OneDriveSync {
             debounceJob = null
             batchStartedAt = 0L
             pendingAfterSync = false
+            mutableChangeSyncCountdown.value = null
             pending
         }
         if (pending && autoSyncAllowed) enqueueOneDriveCatchUpWork(appCtx)

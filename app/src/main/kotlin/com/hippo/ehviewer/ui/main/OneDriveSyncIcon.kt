@@ -91,6 +91,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val workQueued = export && workInfo.active
     val running = syncing || manualQueued || working || workQueued
     val changesPending by OneDriveSync.changesPending.collectAsState()
+    val countdown by OneDriveSync.changeSyncCountdown.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
     val lastSyncFailed by OneDriveSyncState.lastSyncFailed.collectAsState()
     // Local changes not synced yet, also when no sync is scheduled for them (sync on change turned off)
@@ -148,7 +149,8 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     ) {
         when (state) {
             SyncIconState.RUNNING -> SyncRingProgress(fraction = runningFraction, color = LocalContentColor.current, modifier = Modifier.size(22.dp))
-            SyncIconState.PENDING -> Icon(imageVector = Icons.Default.Schedule, contentDescription = null)
+            // Fork: with a countdown, how long the changes still wait
+            SyncIconState.PENDING -> countdown?.let { SyncCountdownIcon(it) } ?: Icon(imageVector = Icons.Default.Schedule, contentDescription = null)
             SyncIconState.FAILED -> Icon(imageVector = Icons.Default.SyncProblem, contentDescription = null, tint = MaterialTheme.colorScheme.error)
             SyncIconState.SUCCEEDED -> Icon(imageVector = Icons.Default.DoneAll, contentDescription = null)
             SyncIconState.NOT_SYNCED -> Icon(imageVector = Icons.Default.Sync, contentDescription = null)
