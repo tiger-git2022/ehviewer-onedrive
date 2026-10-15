@@ -36,6 +36,7 @@ import splitties.init.appCtx
 object GallerySizes {
     private const val TAG = "GallerySizes"
     private const val REQUEST_DELAY_MILLIS = 300L
+    private const val CIFS_DOCUMENTS_AUTHORITY = "com.wa2c.android.cifsdocumentsprovider.documents"
     private val file get() = File(appCtx.filesDir, "gallery_sizes.json")
     private val serializer = MapSerializer(Long.serializer(), Long.serializer())
     private val json = Json { ignoreUnknownKeys = true }
@@ -146,7 +147,10 @@ object GallerySizes {
             // of all its files come from one query of the documents provider
             runCatching {
                 val uri = dir.toUri()
-                val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, DocumentsContract.getDocumentId(uri))
+                var documentId = DocumentsContract.getDocumentId(uri)
+                // As AndroidFileSystem.list(): the CIFS provider lists a folder only with a trailing slash
+                if (uri.authority == CIFS_DOCUMENTS_AUTHORITY) documentId += '/'
+                val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, documentId)
                 appCtx.contentResolver.query(children, arrayOf(Document.COLUMN_SIZE), null, null, null)?.use { c ->
                     var total = 0L
                     while (c.moveToNext()) total += c.getLongOrNull(0) ?: 0L
