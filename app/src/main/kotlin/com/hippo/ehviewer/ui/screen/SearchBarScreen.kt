@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -70,6 +71,7 @@ import com.ehviewer.core.database.dao.SearchDao
 import com.ehviewer.core.database.model.Search
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.TagNamespace
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.hippo.ehviewer.Settings
@@ -78,8 +80,11 @@ import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.ui.LocalNavDrawerState
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
+import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.main.OneDriveSyncProgressBanner
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.theme.scrim
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
@@ -223,6 +228,11 @@ fun SearchBarScreen(
 
     // Fork: height of the sync progress below the search bar, the content leaves room for it
     var syncProgressHeight by remember { mutableIntStateOf(0) }
+    // Fork: liquid glass refracting the list, see LiquidGlass.kt
+    val backdrop = LocalPageBackdrop.current
+    val glass = rememberLiquidGlass(backdrop)
+    val glassShape = SearchBarDefaults.inputFieldShape
+    val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -237,13 +247,14 @@ fun SearchBarScreen(
                 }
             },
             floatingActionButton = floatingActionButton,
-            content = content,
+            content = if (backdrop == null) content else { padding -> Box(Modifier.fillMaxSize().glassContent(backdrop)) { content(padding) } },
         )
         // Fork: below the search bar, it stays below the status bar when the search bar scrolls away
         if (showSyncProgress && !expanded) {
             val statusBarTop = WindowInsets.statusBars.getTop(LocalDensity.current)
             OneDriveSyncProgressBanner(
                 onHeightChanged = { syncProgressHeight = it },
+                glass = glass,
                 modifier = Modifier.align(Alignment.TopCenter)
                     .offset {
                         val below = statusBarTop + (SearchBarDefaults.InputFieldHeight + 16.dp).roundToPx()
@@ -270,7 +281,9 @@ fun SearchBarScreen(
                     },
                     expanded = expanded,
                     onExpandedChange = onExpandedChange,
-                    modifier = Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth(),
+                    modifier = Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
+                        // Fork: the field is the glass while the search bar is collapsed
+                        .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) },
                     placeholder = {
                         val contentActive by activeState.state
                         val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
@@ -311,6 +324,8 @@ fun SearchBarScreen(
             },
             expanded = expanded,
             onExpandedChange = onExpandedChange,
+            // Fork: collapsed, the field draws the glass, the bar nothing; expanded, the suggestions keep their color
+            colors = if (glass != null && !expanded) SearchBarDefaults.colors(containerColor = Color.Transparent) else SearchBarDefaults.colors(),
         ) {
             activeState.Anchor()
             filter?.invoke()
@@ -354,4 +369,7 @@ fun wrapTagKeyword(keyword: String, translate: Boolean = false): String = run {
 private val TagTerminators = charArrayOf('"', '$')
 private val WhitespaceRegex = Regex("\\s+")
 private val SearchBarHorizontalPadding = 16.dp
+// Fork: how much of the bar color lies over the glass of the search bar and the sync progress
+const val GLASS_BAR_TINT = 0.35f
+
 private val M3SearchBarMaxWidth = 720.dp

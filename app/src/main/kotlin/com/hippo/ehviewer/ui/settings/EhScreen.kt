@@ -179,6 +179,12 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                 title = stringResource(id = R.string.harmonize_category_color),
                 state = Settings.harmonizeCategoryColor.asMutableState(),
             )
+            // Fork
+            SwitchPreference(
+                title = stringResource(id = R.string.liquid_glass),
+                summary = stringResource(id = R.string.liquid_glass_summary),
+                state = Settings.liquidGlass.asMutableState(),
+            )
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.settings_eh_launch_page),
                 entry = com.hippo.ehviewer.R.array.launch_page_entries,

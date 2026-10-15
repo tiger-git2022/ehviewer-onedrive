@@ -26,12 +26,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
+import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.sync.CloudFavoritesWorkInfo
@@ -42,6 +45,7 @@ import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
 import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
+import com.hippo.ehviewer.ui.screen.GLASS_BAR_TINT
 import com.hippo.ehviewer.ui.settings.SyncLinearProgress
 import com.hippo.ehviewer.ui.settings.SyncProgressLine
 import com.hippo.ehviewer.ui.settings.SyncProgressLineText
@@ -163,7 +167,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
  * icon; nothing while neither runs, or with the option turned off. [onHeightChanged]: its height in pixels, 0 hidden.
  */
 @Composable
-fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifier = Modifier, glass: FloatingGlass? = null) {
     val account by OneDriveSyncState.accountId.collectAsState()
     val enabled by OneDriveSyncState.showProgressBar.collectAsState()
     val syncing by OneDriveSync.running.collectAsState()
@@ -196,10 +200,13 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
         exit = shrinkVertically() + fadeOut(),
     ) {
         val (shownText, shownFraction) = last[0] ?: return@AnimatedVisibility
+        val shape = MaterialTheme.shapes.large
+        val color = MaterialTheme.colorScheme.surfaceContainerHigh
+        // Fork: liquid glass when the search bar is, see LiquidGlass.kt
         Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            shape = shape,
+            color = if (glass != null) Color.Transparent else color,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp).floatingGlass(glass, shape, color.copy(alpha = GLASS_BAR_TINT)),
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 SyncProgressLineText(

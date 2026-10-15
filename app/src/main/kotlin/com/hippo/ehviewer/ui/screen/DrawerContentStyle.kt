@@ -5,6 +5,8 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import com.ehviewer.core.ui.component.LocalSideSheetGlass
 
 @Composable
 fun selectedListItemColor() = ListItemDefaults.colors(
@@ -18,12 +20,21 @@ fun listItemOnDrawerColor(selected: Boolean) = if (selected) {
     selectedListItemColor()
 } else {
     ListItemDefaults.colors(
-        containerColor = DrawerDefaults.modalContainerColor,
+        // Fork: over liquid glass, the glass shows through
+        containerColor = if (LocalSideSheetGlass.current != null) Color.Transparent else DrawerDefaults.modalContainerColor,
     )
 }
 
 @Composable
-fun topBarOnDrawerColor() = TopAppBarDefaults.topAppBarColors(
-    containerColor = DrawerDefaults.modalContainerColor,
-    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-)
+fun topBarOnDrawerColor() = if (LocalSideSheetGlass.current != null) {
+    // Fork: over liquid glass, the glass shows through; scrolled, a little of the bar color keeps the title apart
+    TopAppBarDefaults.topAppBarColors(
+        containerColor = Color.Transparent,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+    )
+} else {
+    TopAppBarDefaults.topAppBarColors(
+        containerColor = DrawerDefaults.modalContainerColor,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}

@@ -78,6 +78,9 @@ object Settings : DataStorePreferences(null) {
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
     val blackDarkTheme = boolPref("black_dark_theme", false)
     val harmonizeCategoryColor = boolPref("harmonize_category_color", true)
+
+    // Fork: the floating parts as liquid glass, see ui/LiquidGlass.kt
+    val liquidGlass = boolPref("liquid_glass", false)
     val launchPage = intPref("launch_page_2", 0)
     val listMode = intPref("list_mode_2", 0)
     val listThumbSize = intPref("list_tile_size", 40)

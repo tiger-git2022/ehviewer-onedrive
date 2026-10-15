@@ -91,6 +91,8 @@ compose-preference = { module = "me.zhanghai.compose.preference:preference", ver
 
 material-motion-core = "io.github.fornewid:material-motion-compose-core:2.0.1"
 material-kolor = "com.materialkolor:material-kolor:5.0.1"
+# Fork: liquid glass, see app ui/LiquidGlass.kt
+backdrop = "io.github.kyant0:backdrop:2.0.1"
 
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
 

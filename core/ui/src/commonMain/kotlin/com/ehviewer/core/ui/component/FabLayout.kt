@@ -16,8 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -26,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -147,6 +151,12 @@ fun FabLayout(
     }
 
     val animatedProgress by state.expandProgress.asState()
+    // Fork: liquid glass from the app, see FloatingGlass
+    val glass = LocalFabGlass.current
+    val fabColor = FloatingActionButtonDefaults.containerColor
+    val glassColor = if (glass != null) Color.Transparent else fabColor
+    val glassContent = MaterialTheme.colorScheme.contentColorFor(fabColor)
+    val glassElevation = if (glass != null) FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp) else FloatingActionButtonDefaults.elevation()
     PredictiveBackHandler(updatedExpanded) { flow ->
         try {
             state.mutatorMutex.mutate(MutatePriority.UserInput) {
@@ -181,7 +191,10 @@ fun FabLayout(
                             modifier = Modifier.padding(20.dp).offset {
                                 val distance = lerp(0, interval * (size - index) + padding, animatedProgress)
                                 IntOffset(0, -distance)
-                            },
+                            }.floatingGlass(glass, FloatingActionButtonDefaults.smallShape, fabColor.copy(alpha = GLASS_FAB_TINT)),
+                            containerColor = glassColor,
+                            contentColor = glassContent,
+                            elevation = glassElevation,
                         ) {
                             Icon(imageVector = imageVector, contentDescription = null)
                         }
@@ -196,7 +209,10 @@ fun FabLayout(
                 rotationZ = lerp(-90f, 0f, appearState)
                 scaleX = appearState
                 scaleY = appearState
-            },
+            }.floatingGlass(glass, FloatingActionButtonDefaults.shape, fabColor.copy(alpha = GLASS_FAB_TINT)),
+            containerColor = glassColor,
+            contentColor = glassContent,
+            elevation = glassElevation,
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
@@ -208,6 +224,9 @@ fun FabLayout(
         }
     }
 }
+
+// Fork: how much of the button color lies over the glass, enough to keep it a button
+private const val GLASS_FAB_TINT = 0.5f
 
 private fun buildFab(builder: FabBuilder.() -> Unit) = buildList {
     builder { icon, autoClose, action ->

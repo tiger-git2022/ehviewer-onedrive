@@ -463,6 +463,8 @@
     <string name="favorite_name">Favorite</string>
     <string name="dark_theme">Dark theme</string>
     <string name="black_dark_theme">Black dark theme</string>
+    <string name="liquid_glass">Liquid glass</string>
+    <string name="liquid_glass_summary">The search bar, the sync progress, the floating buttons and both drawers refract the content below them. The refraction needs Android 13 or later</string>
     <string name="harmonize_category_color">Harmonize category color for Dynamic Color</string>
     <string name="sort_by">Sort by</string>
     <string name="added_time_desc">Added time (descending)</string>
