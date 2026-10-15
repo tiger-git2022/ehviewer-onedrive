@@ -806,6 +806,11 @@ object FavoritesIndexSync {
             if (!OneDriveClient.download(MANIFEST_PATH, download)) return
             val manifest = json.decodeFromString(FavoritesManifest.serializer(), download.readText())
             if (manifest.version > FAVORITES_EXPORT_VERSION) throw SyncVersionException(manifest.version)
+            // The hashes name files here: a manifest with anything else is not taken
+            if (!manifest.shards.all { FavoritesExportCache.isValidHash(it.hash) }) {
+                logcat(TAG) { "Index with invalid shard names ignored" }
+                return
+            }
             for (shard in manifest.shards) {
                 val file = cache.shardFile(shard.hash)
                 if (file.exists()) continue

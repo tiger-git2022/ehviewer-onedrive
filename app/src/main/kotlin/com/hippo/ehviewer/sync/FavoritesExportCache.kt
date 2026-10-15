@@ -104,9 +104,15 @@ class FavoritesExportCache(private val dir: File, private val json: Json) {
         const val MANIFEST_FILE = "manifest.json"
         const val SHARD_PREFIX = "shard-"
 
+        private val HASH = Regex("[0-9a-f]{32}")
+
+        /** A hash as [GidShards.writeHashed] makes them: nothing else may become part of a file name. */
+        fun isValidHash(hash: String) = HASH.matches(hash)
+
         /** The hash of a shard file name on OneDrive, null for another file. */
         fun hashOf(fileName: String): String? = fileName.takeIf { it.startsWith(SHARD_PREFIX) && it.endsWith(".json.gz") }
             ?.removePrefix(SHARD_PREFIX)
             ?.removeSuffix(".json.gz")
+            ?.takeIf(::isValidHash)
     }
 }
