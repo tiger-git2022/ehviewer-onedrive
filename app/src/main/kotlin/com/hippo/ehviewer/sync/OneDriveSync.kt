@@ -28,18 +28,22 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -472,11 +476,38 @@ object OneDriveSync {
 
     // region Sync
 
+    private val mutableManualSyncQueued = MutableStateFlow(false)
+
+    /** Fork: a manual sync is queued or runs as [OneDriveManualSyncWork]. */
+    val manualSyncQueued: StateFlow<Boolean> = mutableManualSyncQueued.asStateFlow()
+
+    private val manualSyncResults = MutableSharedFlow<Result<SyncReport>>(extraBufferCapacity = 1)
+
     /**
-     * Fork: a sync asked from a screen, run in [scope]: leaving the screen cancels only the wait for the result, the
-     * sync itself goes on.
+     * Fork: a sync asked from a screen, run as [OneDriveManualSyncWork] in a foreground service, so it goes on when the
+     * app is in the background, where the process may be frozen or killed. Leaving the screen cancels only the wait
+     * for the result; with no screen waiting, the work shows the result itself.
      */
-    suspend fun syncManually(): Result<SyncReport> = scope.async { sync(SyncTrigger.MANUAL) }.await()
+    suspend fun syncManually(): Result<SyncReport> = coroutineScope {
+        // Waiting before the work is queued, so the result cannot pass unseen
+        val result = async(start = CoroutineStart.UNDISPATCHED) { manualSyncResults.first() }
+        mutableManualSyncQueued.value = true
+        enqueueOneDriveManualSyncWork(appCtx)
+        result.await()
+    }
+
+    /** Fork: the sync of [OneDriveManualSyncWork], and whether a screen waiting for it took the result. */
+    internal suspend fun runManualSync(): Pair<Result<SyncReport>, Boolean> {
+        mutableManualSyncQueued.value = true
+        try {
+            val result = sync(SyncTrigger.MANUAL)
+            val taken = manualSyncResults.subscriptionCount.value > 0
+            manualSyncResults.emit(result)
+            return result to taken
+        } finally {
+            mutableManualSyncQueued.value = false
+        }
+    }
 
     suspend fun sync(trigger: SyncTrigger): Result<SyncReport> = withContext(Dispatchers.IO) {
         val result: Result<SyncReport> = mutex.withLock {

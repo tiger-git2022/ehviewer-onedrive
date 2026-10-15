@@ -80,6 +80,8 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val account by OneDriveSyncState.accountId.collectAsState()
     if (account == null) return
     val syncing by OneDriveSync.running.collectAsState()
+    // Queued as work, not started yet
+    val manualQueued by OneDriveSync.manualSyncQueued.collectAsState()
     val syncProgress by OneDriveSync.progress.collectAsState()
     val working by FavoritesIndexSync.working.collectAsState()
     val workProgress by FavoritesIndexSync.workProgress.collectAsState()
@@ -87,7 +89,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
     val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
     val workQueued = export && workInfo.active
-    val running = syncing || working || workQueued
+    val running = syncing || manualQueued || working || workQueued
     val changesPending by OneDriveSync.changesPending.collectAsState()
     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
     val lastSyncFailed by OneDriveSyncState.lastSyncFailed.collectAsState()
@@ -108,6 +110,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
     val runningText = when {
         syncing -> syncProgress?.let { syncProgressText(it) }
         working -> workProgress?.let { stepProgressText(it) }
+        manualQueued -> stringResource(id = R.string.onedrive_sync_running)
         else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued)
     }
     val runningFraction = when {
@@ -126,7 +129,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
         onClick = {
             launch {
                 when {
-                    syncing || working -> snackbar(description)
+                    syncing || manualQueued || working -> snackbar(description)
                     // Waiting to go on: it goes on now, in the foreground
                     workQueued -> {
                         resumeCloudFavoritesWork(appCtx)

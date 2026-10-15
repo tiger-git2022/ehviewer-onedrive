@@ -106,7 +106,10 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                             OneDriveSync.signOut()
                         }
                     }
-                    val running by OneDriveSync.running.collectAsState()
+                    val syncing by OneDriveSync.running.collectAsState()
+                    // Fork: also while the manual sync work is queued, not started yet
+                    val manualQueued by OneDriveSync.manualSyncQueued.collectAsState()
+                    val running = syncing || manualQueued
                     val progress by OneDriveSync.progress.collectAsState()
                     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
                     val lastSyncSummary by OneDriveSyncState.lastSyncSummary.collectAsState()
