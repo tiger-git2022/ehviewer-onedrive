@@ -195,6 +195,8 @@ object FavoritesIndexSync {
         intended: Map<Long, Int> = emptyMap(),
         // False for a change the index does not show
         markChanged: Boolean = true,
+        // Fork: false for what the website shows (found by checking segments), which pages read later may correct
+        userEdit: Boolean = true,
         transform: (CloudFavorites) -> CloudFavorites,
     ): Boolean = withContext(Dispatchers.IO) {
         val changed = mutex.withLock {
@@ -203,7 +205,7 @@ object FavoritesIndexSync {
             val after = transform(before)
             // Pages of an unfinished refresh read before this change must not undo it
             val pending = loadCheckpointLocked()
-            if (pending != null && pending.userKey == user) {
+            if (pending != null && pending.userKey == user && userEdit) {
                 val touched = FavoritesIndexMerger.changedGids(before, after)
                 if (!pending.touched.containsAll(touched) || intended.isNotEmpty()) {
                     saveCheckpointLocked(pending.copy(touched = pending.touched + touched, intended = pending.intended + intended))
@@ -534,7 +536,7 @@ object FavoritesIndexSync {
             }
             if (counts.getOrElse(slot) { 0 } == 0) {
                 // Emptied on the website: no page to read
-                update(user) { cloud -> FavoritesIndexMerger.remove(cloud, known, now()) }
+                update(user, userEdit = false) { cloud -> FavoritesIndexMerger.remove(cloud, known, now()) }
                 withContext(NonCancellable + Dispatchers.IO) {
                     runCatching { segmentStore.save(stored.copy(segments = listOf(Segment()))) }.onFailure { logcat(TAG, it) }
                 }
@@ -565,7 +567,7 @@ object FavoritesIndexSync {
                 logcat(TAG) { "Cloud favorites: slot $slot does not fit its segments, read page by page" }
                 continue
             }
-            update(user) { cloud ->
+            update(user, userEdit = false) { cloud ->
                 val gone = cloud.galleries.filter { it.gid in result.removed && it.slot == slot }.map { it.gid }
                 val time = now()
                 FavoritesIndexMerger.upsert(FavoritesIndexMerger.remove(cloud, gone, time), result.added, time)
