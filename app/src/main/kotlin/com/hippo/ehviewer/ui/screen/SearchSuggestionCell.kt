@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 
 /**
  * One search suggestion as a card of the two staggered columns of the search bar (fork, like the search history of
@@ -27,7 +28,8 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
         onClick = { suggestion.onClick() },
         shape = MaterialTheme.shapes.medium,
         // The expanded search bar is surfaceContainerHigh itself: a brighter card stands out from it
-        color = MaterialTheme.colorScheme.surfaceBright,
+        // Fork: over the glass of the expanded search, a translucent card
+        color = if (LocalPageBackdrop.current != null) MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceBright,
         modifier = modifier,
     ) {
         Row(verticalAlignment = Alignment.Top) {

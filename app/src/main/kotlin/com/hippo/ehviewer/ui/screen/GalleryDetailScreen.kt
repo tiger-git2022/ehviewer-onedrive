@@ -5,6 +5,7 @@ import androidx.collection.SieveCache
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NewLabel
@@ -15,6 +16,7 @@ import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarResult
@@ -29,9 +31,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastJoinToString
 import androidx.lifecycle.viewModelScope
 import com.ehviewer.core.data.model.findBaseInfo
@@ -44,6 +48,8 @@ import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.model.GalleryTagGroup
 import com.ehviewer.core.model.TagNamespace
+import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.LocalWindowSizeClass
 import com.ehviewer.core.ui.util.isExpanded
 import com.ehviewer.core.ui.util.launchInVM
@@ -63,12 +69,15 @@ import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.spider.SpiderDen
 import com.hippo.ehviewer.sync.MihonSearch
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
 import com.hippo.ehviewer.ui.tools.awaitSelectTags
@@ -176,9 +185,15 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val exportSuccess = stringResource(id = R.string.export_as_archive_success)
     val exportFailed = stringResource(id = R.string.export_as_archive_failed)
     val windowSizeClass = LocalWindowSizeClass.current
+    // Fork: with liquid glass, the top bar refracts the details below it, see LiquidGlass.kt
+    val backdrop = LocalPageBackdrop.current
+    val glass = rememberLiquidGlass(backdrop)
+    val barColor = MaterialTheme.colorScheme.surfaceContainer
     Scaffold(
         topBar = {
             MediumFlexibleTopAppBar(
+                modifier = Modifier.floatingGlass(glass, TopBarGlassShape, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel),
+                colors = if (glass != null) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent) else TopAppBarDefaults.topAppBarColors(),
                 title = {
                     galleryInfo?.let {
                         Text(
@@ -191,146 +206,153 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 navigationIcon = { NavigationIcon() },
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    AppBarRow(
-                        overflowIndicator = {
-                            IconButton(onClick = { it.show() }, shapes = IconButtonDefaults.shapes()) {
-                                Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
-                            }
-                        },
-                        maxItemCount = if (windowSizeClass.isExpanded) 4 else 2,
+                    // Fork: over liquid glass, a translucent menu (a popup cannot refract the page below it)
+                    val scheme = MaterialTheme.colorScheme
+                    MaterialTheme(
+                        colorScheme = if (glass != null) scheme.copy(surfaceContainer = scheme.surfaceContainer.copy(alpha = 0.8f)) else scheme,
+                        shapes = if (glass != null) MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp)) else MaterialTheme.shapes,
                     ) {
-                        clickableItem(
-                            onClick = {
-                                AppHelper.share(contextOf<MainActivity>(), galleryDetailUrl)
-                                // In case the link is copied to the clipboard
-                                Settings.clipboardTextHashCode = galleryDetailUrl.hashCode()
-                            },
-                            icon = {
-                                Icon(imageVector = Icons.Default.Share, contentDescription = null)
-                            },
-                            label = "",
-                        )
-                        clickableItem(
-                            onClick = {
-                                val detail = galleryInfo as? GalleryDetail ?: return@clickableItem
-                                launchIO {
-                                    if (detail.apiUid < 0) {
-                                        snackbar(signInFirst)
-                                    } else {
-                                        val tags = awaitSelectTags()
-                                        if (tags.isNotEmpty()) {
-                                            val text = tags.fastJoinToString(",")
-                                            detail.voteTag(text, 1)
-                                        }
-                                    }
+                        AppBarRow(
+                            overflowIndicator = {
+                                IconButton(onClick = { it.show() }, shapes = IconButtonDefaults.shapes()) {
+                                    Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
                                 }
                             },
-                            icon = {
-                                Icon(imageVector = Icons.Default.NewLabel, contentDescription = null)
-                            },
-                            label = addTag,
-                        )
-                        clickableItem(
-                            onClick = {
-                                // Invalidate cache
-                                detailCache.remove(gid)
+                            maxItemCount = if (windowSizeClass.isExpanded) 4 else 2,
+                        ) {
+                            clickableItem(
+                                onClick = {
+                                    AppHelper.share(contextOf<MainActivity>(), galleryDetailUrl)
+                                    // In case the link is copied to the clipboard
+                                    Settings.clipboardTextHashCode = galleryDetailUrl.hashCode()
+                                },
+                                icon = {
+                                    Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                                },
+                                label = "",
+                            )
+                            clickableItem(
+                                onClick = {
+                                    val detail = galleryInfo as? GalleryDetail ?: return@clickableItem
+                                    launchIO {
+                                        if (detail.apiUid < 0) {
+                                            snackbar(signInFirst)
+                                        } else {
+                                            val tags = awaitSelectTags()
+                                            if (tags.isNotEmpty()) {
+                                                val text = tags.fastJoinToString(",")
+                                                detail.voteTag(text, 1)
+                                            }
+                                        }
+                                    }
+                                },
+                                icon = {
+                                    Icon(imageVector = Icons.Default.NewLabel, contentDescription = null)
+                                },
+                                label = addTag,
+                            )
+                            clickableItem(
+                                onClick = {
+                                    // Invalidate cache
+                                    detailCache.remove(gid)
 
-                                // Trigger recompose
-                                galleryInfo = galleryInfo?.findBaseInfo()
-                                getDetailError = ""
-                            },
-                            icon = {
-                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-                            },
-                            label = refresh,
-                        )
-                        clickableItem(
-                            onClick = {
-                                val gd = galleryInfo as? GalleryDetail ?: return@clickableItem
-                                launchIO {
-                                    awaitConfirmationOrCancel(
-                                        confirmText = R.string.clear_all,
-                                        title = R.string.clear_image_cache,
-                                    ) {
-                                        Text(text = stringResource(id = R.string.clear_image_cache_confirm))
-                                    }
-                                    SpiderDen(gd).clearCache()
-                                    snackbar(cacheCleared)
-                                }
-                            },
-                            icon = {},
-                            label = clearCache,
-                        )
-                        clickableItem(
-                            onClick = {
-                                openBrowser(galleryDetailUrl)
-                            },
-                            icon = {},
-                            label = openInBrowser,
-                        )
-                        // Fork: a global search in Mihon of the title or of the artist, as written in Japanese and in
-                        // the default (romanized) title: sources list one or the other
-                        clickableItem(
-                            onClick = {
-                                val info = galleryInfo ?: return@clickableItem
-                                val titles = listOfNotNull(info.titleJpn, info.title).filter { it.isNotBlank() }
-                                val tagArtist = (info as? GalleryDetail)?.tagGroups?.artistName()
-                                val queries = (titles.map { MihonSearch.coreTitle(it) } + titles.mapNotNull { MihonSearch.artist(it) } + listOfNotNull(tagArtist))
-                                    .filter { it.isNotBlank() }
-                                    .distinctBy { it.lowercase() }
-                                val activity = contextOf<MainActivity>()
-                                launchIO {
-                                    awaitSelectAction(title = R.string.search_in_mihon) {
-                                        queries.forEach { query ->
-                                            onSelect(query) {
-                                                if (!MihonSearch.search(activity, query)) snackbar(mihonNotInstalled)
-                                            }
-                                        }
-                                    }()
-                                }
-                            },
-                            icon = {},
-                            label = searchInMihon,
-                        )
-                        clickableItem(
-                            onClick = {
-                                launchIO {
-                                    val downloadInfo = DownloadManager.getDownloadInfo(gid)
-                                    val canExport = downloadInfo?.state == DownloadInfo.STATE_FINISH
-                                    if (!canExport) {
+                                    // Trigger recompose
+                                    galleryInfo = galleryInfo?.findBaseInfo()
+                                    getDetailError = ""
+                                },
+                                icon = {
+                                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
+                                },
+                                label = refresh,
+                            )
+                            clickableItem(
+                                onClick = {
+                                    val gd = galleryInfo as? GalleryDetail ?: return@clickableItem
+                                    launchIO {
                                         awaitConfirmationOrCancel(
-                                            showCancelButton = false,
-                                            text = { Text(text = stringResource(id = R.string.download_gallery_first)) },
-                                        )
-                                    } else {
-                                        val info = galleryInfo!!
-                                        val uri = awaitActivityResult(
-                                            CreateDocument("application/vnd.comicbook+zip"),
-                                            EhUtils.getSuitableTitle(info) + ".cbz",
-                                        )
-                                        val dirname = downloadInfo.dirname
-                                        if (uri != null && dirname != null) {
-                                            val file = uri.toOkioPath()
-                                            val msg = runCatching {
-                                                bgWork {
-                                                    withIOContext {
-                                                        SpiderDen(info, dirname).exportAsCbz(file)
-                                                    }
+                                            confirmText = R.string.clear_all,
+                                            title = R.string.clear_image_cache,
+                                        ) {
+                                            Text(text = stringResource(id = R.string.clear_image_cache_confirm))
+                                        }
+                                        SpiderDen(gd).clearCache()
+                                        snackbar(cacheCleared)
+                                    }
+                                },
+                                icon = {},
+                                label = clearCache,
+                            )
+                            clickableItem(
+                                onClick = {
+                                    openBrowser(galleryDetailUrl)
+                                },
+                                icon = {},
+                                label = openInBrowser,
+                            )
+                            // Fork: a global search in Mihon of the title or of the artist, as written in Japanese and in
+                            // the default (romanized) title: sources list one or the other
+                            clickableItem(
+                                onClick = {
+                                    val info = galleryInfo ?: return@clickableItem
+                                    val titles = listOfNotNull(info.titleJpn, info.title).filter { it.isNotBlank() }
+                                    val tagArtist = (info as? GalleryDetail)?.tagGroups?.artistName()
+                                    val queries = (titles.map { MihonSearch.coreTitle(it) } + titles.mapNotNull { MihonSearch.artist(it) } + listOfNotNull(tagArtist))
+                                        .filter { it.isNotBlank() }
+                                        .distinctBy { it.lowercase() }
+                                    val activity = contextOf<MainActivity>()
+                                    launchIO {
+                                        awaitSelectAction(title = R.string.search_in_mihon) {
+                                            queries.forEach { query ->
+                                                onSelect(query) {
+                                                    if (!MihonSearch.search(activity, query)) snackbar(mihonNotInstalled)
                                                 }
-                                                exportSuccess
-                                            }.getOrElse {
-                                                logcat(it)
-                                                file.delete()
-                                                exportFailed
                                             }
-                                            snackbar(message = msg)
+                                        }()
+                                    }
+                                },
+                                icon = {},
+                                label = searchInMihon,
+                            )
+                            clickableItem(
+                                onClick = {
+                                    launchIO {
+                                        val downloadInfo = DownloadManager.getDownloadInfo(gid)
+                                        val canExport = downloadInfo?.state == DownloadInfo.STATE_FINISH
+                                        if (!canExport) {
+                                            awaitConfirmationOrCancel(
+                                                showCancelButton = false,
+                                                text = { Text(text = stringResource(id = R.string.download_gallery_first)) },
+                                            )
+                                        } else {
+                                            val info = galleryInfo!!
+                                            val uri = awaitActivityResult(
+                                                CreateDocument("application/vnd.comicbook+zip"),
+                                                EhUtils.getSuitableTitle(info) + ".cbz",
+                                            )
+                                            val dirname = downloadInfo.dirname
+                                            if (uri != null && dirname != null) {
+                                                val file = uri.toOkioPath()
+                                                val msg = runCatching {
+                                                    bgWork {
+                                                        withIOContext {
+                                                            SpiderDen(info, dirname).exportAsCbz(file)
+                                                        }
+                                                    }
+                                                    exportSuccess
+                                                }.getOrElse {
+                                                    logcat(it)
+                                                    file.delete()
+                                                    exportFailed
+                                                }
+                                                snackbar(message = msg)
+                                            }
                                         }
                                     }
-                                }
-                            },
-                            icon = {},
-                            label = exportArchive,
-                        )
+                                },
+                                icon = {},
+                                label = exportArchive,
+                            )
+                        }
                     }
                 },
             )
@@ -354,7 +376,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 getDetailError = getDetailError,
                 onRetry = { getDetailError = "" },
                 voteTag = voteTag,
-                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                // Fork: recorded for the glass of the top bar
+                modifier = Modifier.glassContent(backdrop).nestedScroll(scrollBehavior.nestedScrollConnection),
             )
         } else if (getDetailError.isNotBlank()) {
             GalleryDetailErrorTip(error = getDetailError, onClick = { getDetailError = "" })
@@ -371,3 +394,6 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
 
 // Fork: the first artist tag, for a search in Mihon
 private fun List<GalleryTagGroup>.artistName() = find { it.namespace == TagNamespace.Artist }?.tags?.firstOrNull()?.text
+
+// Fork: the glass of the top bar, its lower corners rounded
+private val TopBarGlassShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)

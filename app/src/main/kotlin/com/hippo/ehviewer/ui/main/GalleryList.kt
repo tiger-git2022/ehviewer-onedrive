@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicatorDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Surface
@@ -64,6 +65,7 @@ import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.coil.PrefetchAround
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.screen.collectDetailSizeAsState
 import com.hippo.ehviewer.util.displayString
 import kotlinx.coroutines.CoroutineScope
@@ -235,9 +237,13 @@ fun GalleryList(
             }
         }
 
+        // Fork: with liquid glass, a translucent disc (inside the content the glass refracts)
+        val glass = LocalPageBackdrop.current != null
         PullToRefreshDefaults.LoadingIndicator(
             state = refreshState,
             isRefreshing = isRefreshing,
+            containerColor = if (glass) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f) else LoadingIndicatorDefaults.containedContainerColor,
+            elevation = if (glass) 0.dp else PullToRefreshDefaults.LoadingIndicatorElevation,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = contentPadding.calculateTopPadding())
                 .offset { IntOffset(0, searchBarOffsetY()) },
         )

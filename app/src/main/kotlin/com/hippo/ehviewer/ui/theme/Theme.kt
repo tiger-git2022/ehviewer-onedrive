@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.scrollbar.LocalScrollbarStyle
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.scrollbarStyle
 import com.ehviewer.core.util.isAtLeastOMR1
 import com.ehviewer.core.util.isAtLeastS
@@ -66,7 +68,14 @@ fun EhTheme(useDarkTheme: Boolean, content: @Composable () -> Unit) {
     }
 
     MaterialTheme(colorScheme = colors, motionScheme = CustomMotionScheme) {
-        val scrollbarStyle = scrollbarStyle(color = MaterialTheme.colorScheme.primary)
+        // Fork: with liquid glass, a translucent capsule (it lies inside the content the glass refracts, so it
+        // cannot refract it itself)
+        val glass by Settings.liquidGlass.collectAsState()
+        val scrollbarStyle = if (glass) {
+            scrollbarStyle(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)).copy(shape = CircleShape, thickness = 6.dp)
+        } else {
+            scrollbarStyle(color = MaterialTheme.colorScheme.primary)
+        }
         CompositionLocalProvider(
             LocalContentColor provides MaterialTheme.colorScheme.onBackground,
             LocalScrollbarStyle provides scrollbarStyle,

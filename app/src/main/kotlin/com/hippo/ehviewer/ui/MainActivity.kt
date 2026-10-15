@@ -61,6 +61,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -112,6 +113,7 @@ import com.ehviewer.core.files.isDirectory
 import com.ehviewer.core.files.toOkioPath
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
+import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
 import com.ehviewer.core.ui.component.LocalSideSheetGlass
 import com.ehviewer.core.ui.component.LocalSideSheetState
@@ -421,7 +423,7 @@ class MainActivity : AppCompatActivity() {
                                 drawerState = navDrawerState,
                                 modifier = Modifier.widthIn(max = (configuration.screenWidthDp - 56).dp)
                                     .onSizeChanged { minOffset = -it.width.toFloat() }
-                                    .floatingGlass(drawerGlass, DrawerDefaults.shape, drawerColor.copy(alpha = GLASS_SHEET_TINT), panel = true),
+                                    .floatingGlass(drawerGlass, DrawerDefaults.shape, drawerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Panel),
                                 drawerContainerColor = if (drawerGlass != null) Color.Transparent else drawerColor,
                                 drawerContentColor = MaterialTheme.colorScheme.contentColorFor(drawerColor),
                                 drawerTonalElevation = if (drawerGlass != null) 0.dp else DrawerDefaults.ModalDrawerElevation,
@@ -452,6 +454,8 @@ class MainActivity : AppCompatActivity() {
                                             icon = {
                                                 Icon(imageVector = icon, contentDescription = null)
                                             },
+                                            // Fork: over liquid glass, the selected item is a light in the glass
+                                            colors = if (drawerGlass != null) glassDrawerItemColors() else NavigationDrawerItemDefaults.colors(),
                                         )
                                     }
                                 }

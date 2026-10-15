@@ -1,12 +1,16 @@
 package com.hippo.ehviewer.ui
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.GlassStyle
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
 import com.kyant.backdrop.Backdrop
@@ -17,15 +21,20 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.highlight.HighlightStyle
+import com.kyant.backdrop.shadow.Shadow
 
 /*
- * Fork: liquid glass for the floating parts (the search bar, the sync progress, the floating buttons and both drawers),
- * behind the "Liquid glass" switch. A part refracts the content below it, recorded with [glassContent]: a page records
- * its list (see Screen and SearchBarScreen), MainActivity the pages below the drawers. The refraction needs Android 13,
- * the blur Android 12; before, the glass is only its tint.
+ * Fork: liquid glass for the floating parts (the search bar and the expanded search, the sync progress, the floating
+ * buttons, both drawers, the top bar of the gallery details), behind the "Liquid glass" switch. A part refracts the
+ * content below it, recorded with [glassContent]: a page records its list (see Screen, SearchBarScreen and
+ * GalleryDetailScreen), MainActivity the pages below the drawers. A part inside the recorded content cannot refract it
+ * (it would draw itself): the scrollbar and the refresh indicator are only translucent. The refraction needs Android 13,
+ * the blur Android 12; before, the glass is only its tint and its edge.
  */
 
-/** The content the floating parts of a page refract, recorded by SearchBarScreen; null with liquid glass off. */
+/** The content the floating parts of a page refract; null with liquid glass off. */
 val LocalPageBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
 /** A backdrop to record content in while liquid glass is on, else null. */
@@ -42,20 +51,45 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? = remember(backdrop) { backdrop?.let(::liquidGlass) }
 
-private fun liquidGlass(backdrop: Backdrop) = FloatingGlass { shape, tint, panel ->
+// The lit edge of the glass: wider and brighter than the library default (0.5 dp), so the glass reads as glass
+private val GlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
+
+private fun liquidGlass(backdrop: Backdrop) = FloatingGlass { shape, tint, style ->
     Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = {
             vibrancy()
-            // A panel with text: a little more blur, so the text over busy covers stays readable
-            blur((if (panel) 6f else 2f).dp.toPx())
-            if (panel) {
-                lens(20f.dp.toPx(), 40f.dp.toPx(), chromaticAberration = true)
-            } else {
-                lens(12f.dp.toPx(), 24f.dp.toPx(), chromaticAberration = true)
+            when (style) {
+                GlassStyle.Control -> {
+                    blur(1.5f.dp.toPx())
+                    lens(24f.dp.toPx(), 48f.dp.toPx(), depthEffect = true, chromaticAberration = true)
+                }
+                GlassStyle.Panel -> {
+                    blur(4f.dp.toPx())
+                    lens(28f.dp.toPx(), 56f.dp.toPx(), depthEffect = true, chromaticAberration = true)
+                }
+                GlassStyle.Backdrop -> blur(24f.dp.toPx())
             }
         },
+        // A screen-wide glass has no edge to light nor a shadow to cast
+        highlight = if (style == GlassStyle.Backdrop) null else ({ GlassEdge }),
+        shadow = if (style == GlassStyle.Backdrop) null else ({ Shadow.Default }),
         onDrawSurface = { drawRect(tint) },
     )
 }
+
+/** A selected item, toggle or chip over liquid glass: a light in the glass instead of a solid block. */
+@Composable
+fun glassSelectedColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+
+/** The text and icon of [glassSelectedColor]. */
+@Composable
+fun glassOnSelectedColor() = MaterialTheme.colorScheme.primary
+
+@Composable
+fun glassDrawerItemColors() = NavigationDrawerItemDefaults.colors(
+    selectedContainerColor = glassSelectedColor(),
+    selectedIconColor = glassOnSelectedColor(),
+    selectedTextColor = glassOnSelectedColor(),
+)

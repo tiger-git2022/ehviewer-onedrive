@@ -1,7 +1,9 @@
 package com.hippo.ehviewer.ui.main
 
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.IconToggleButtonShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -11,6 +13,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import com.ehviewer.core.i18n.R
+import com.hippo.ehviewer.ui.LocalPageBackdrop
+import com.hippo.ehviewer.ui.glassOnSelectedColor
+import com.hippo.ehviewer.ui.glassSelectedColor
 
 /** Index of Chinese in GalleryInfo.S_LANG_TAGS, the language filter the button sets. */
 const val CHINESE_LANGUAGE_FILTER = 1
@@ -28,14 +33,16 @@ fun ChineseOnlyButton(
     enabled: Boolean = true,
 ) {
     val description = stringResource(id = R.string.chinese_only)
+    // Fork: on the liquid glass of the search bar, a round light in the glass instead of a solid square
+    val glass = LocalPageBackdrop.current != null
     IconToggleButton(
         checked = checked && enabled,
         onCheckedChange = onCheckedChange,
         enabled = enabled,
-        shapes = IconButtonDefaults.toggleableShapes(),
+        shapes = if (glass) IconToggleButtonShapes(CircleShape, CircleShape, CircleShape) else IconButtonDefaults.toggleableShapes(),
         colors = IconButtonDefaults.iconToggleButtonColors(
-            checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            checkedContainerColor = if (glass) glassSelectedColor() else MaterialTheme.colorScheme.primaryContainer,
+            checkedContentColor = if (glass) glassOnSelectedColor() else MaterialTheme.colorScheme.onPrimaryContainer,
         ),
         modifier = modifier.semantics { contentDescription = description },
     ) {

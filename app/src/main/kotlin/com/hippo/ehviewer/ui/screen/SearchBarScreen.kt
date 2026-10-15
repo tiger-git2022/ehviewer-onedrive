@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -71,6 +72,7 @@ import com.ehviewer.core.database.dao.SearchDao
 import com.ehviewer.core.database.model.Search
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.TagNamespace
+import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
@@ -83,6 +85,8 @@ import com.hippo.ehviewer.ui.LocalNavDrawerState
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
 import com.hippo.ehviewer.ui.glassContent
+import com.hippo.ehviewer.ui.glassOnSelectedColor
+import com.hippo.ehviewer.ui.glassSelectedColor
 import com.hippo.ehviewer.ui.main.OneDriveSyncProgressBanner
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.theme.scrim
@@ -233,12 +237,14 @@ fun SearchBarScreen(
     val glass = rememberLiquidGlass(backdrop)
     val glassShape = SearchBarDefaults.inputFieldShape
     val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)
+    val expandedGlassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
                 Column {
                     val scrim = MaterialTheme.colorScheme.background.scrim()
-                    Box(Modifier.windowInsetsTopHeight(WindowInsets.statusBars).fillMaxWidth().background(scrim))
+                    // Fork: with liquid glass, the list goes on below the status bar
+                    Box(Modifier.windowInsetsTopHeight(WindowInsets.statusBars).fillMaxWidth().thenIf(glass == null) { background(scrim) })
 
                     // Placeholder, fill immutable SearchBar padding
                     Spacer(modifier = Modifier.height(SearchBarDefaults.InputFieldHeight + 16.dp))
@@ -271,6 +277,8 @@ fun SearchBarScreen(
         val activeState = rememberCompositionActiveState()
         SearchBar(
             modifier = Modifier.align(Alignment.TopCenter).thenIf(!expanded) { offset { IntOffset(0, searchBarOffsetY()) } }
+                // Fork: expanded, the whole search is a heavily blurred glass over the list
+                .thenIf(expanded) { floatingGlass(glass, ExpandedSearchShape, expandedGlassTint, GlassStyle.Backdrop) }
                 .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)),
             inputField = {
                 InputField(
@@ -325,10 +333,22 @@ fun SearchBarScreen(
             expanded = expanded,
             onExpandedChange = onExpandedChange,
             // Fork: collapsed, the field draws the glass, the bar nothing; expanded, the suggestions keep their color
-            colors = if (glass != null && !expanded) SearchBarDefaults.colors(containerColor = Color.Transparent) else SearchBarDefaults.colors(),
+            colors = if (glass != null) {
+                SearchBarDefaults.colors(containerColor = Color.Transparent, dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            } else {
+                SearchBarDefaults.colors()
+            },
         ) {
             activeState.Anchor()
-            filter?.invoke()
+            if (glass != null && filter != null) {
+                // Fork: over the glass, a selected chip is a light in the glass
+                val colors = MaterialTheme.colorScheme
+                MaterialTheme(colorScheme = colors.copy(secondaryContainer = glassSelectedColor(), onSecondaryContainer = glassOnSelectedColor())) {
+                    filter()
+                }
+            } else {
+                filter?.invoke()
+            }
             // Fork: two staggered columns, each suggestion goes to the shorter one (like the Mihon fork's history)
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
@@ -369,7 +389,10 @@ fun wrapTagKeyword(keyword: String, translate: Boolean = false): String = run {
 private val TagTerminators = charArrayOf('"', '$')
 private val WhitespaceRegex = Regex("\\s+")
 private val SearchBarHorizontalPadding = 16.dp
+// Fork: the expanded search as a glass: a rectangle the lens accepts
+private val ExpandedSearchShape = RoundedCornerShape(0.dp)
+
 // Fork: how much of the bar color lies over the glass of the search bar and the sync progress
-const val GLASS_BAR_TINT = 0.35f
+const val GLASS_BAR_TINT = 0.2f
 
 private val M3SearchBarMaxWidth = 720.dp
