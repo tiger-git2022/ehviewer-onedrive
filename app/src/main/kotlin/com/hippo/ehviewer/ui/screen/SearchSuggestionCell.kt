@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -24,12 +25,14 @@ import com.hippo.ehviewer.ui.LocalPageBackdrop
  */
 @Composable
 fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+    val glass = LocalPageBackdrop.current != null
     Surface(
         onClick = { suggestion.onClick() },
         shape = MaterialTheme.shapes.medium,
         // The expanded search bar is surfaceContainerHigh itself: a brighter card stands out from it
-        // Fork: over the glass of the expanded search, a translucent card
-        color = if (LocalPageBackdrop.current != null) MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceBright,
+        // Fork: over the glass of the expanded search, a nearly solid card with a fine edge, so each stands apart
+        color = if (glass) MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.85f) else MaterialTheme.colorScheme.surfaceBright,
+        border = if (glass) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)) else null,
         modifier = modifier,
     ) {
         Row(verticalAlignment = Alignment.Top) {

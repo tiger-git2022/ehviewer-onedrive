@@ -39,7 +39,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.PreferenceType
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingModeType
 
 @Composable
-fun BottomReaderBar(onClickSettings: () -> Unit, containerColor: Color) = FlexibleBottomAppBar(
+fun BottomReaderBar(onClickSettings: () -> Unit, containerColor: Color, modifier: Modifier = Modifier) = FlexibleBottomAppBar(
+    modifier = modifier,
     containerColor = containerColor,
     contentPadding = PaddingValues.Zero,
     horizontalArrangement = Arrangement.SpaceEvenly,

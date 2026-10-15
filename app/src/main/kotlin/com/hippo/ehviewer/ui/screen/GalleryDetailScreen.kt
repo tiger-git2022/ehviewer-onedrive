@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -187,13 +188,15 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val windowSizeClass = LocalWindowSizeClass.current
     // Fork: with liquid glass, the top bar refracts the details below it, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
-    val glass = rememberLiquidGlass(backdrop)
+    // Only once the details scroll below it: at the top, a glass over nothing stood out
+    val scrolled by remember { derivedStateOf { scrollBehavior.state.collapsedFraction > 0f || scrollBehavior.state.overlappedFraction > 0f } }
+    val glass = rememberLiquidGlass(backdrop).takeIf { scrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     Scaffold(
         topBar = {
             MediumFlexibleTopAppBar(
                 modifier = Modifier.floatingGlass(glass, TopBarGlassShape, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel),
-                colors = if (glass != null) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent) else TopAppBarDefaults.topAppBarColors(),
+                colors = if (backdrop != null) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent) else TopAppBarDefaults.topAppBarColors(),
                 title = {
                     galleryInfo?.let {
                         Text(
@@ -209,8 +212,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     // Fork: over liquid glass, a translucent menu (a popup cannot refract the page below it)
                     val scheme = MaterialTheme.colorScheme
                     MaterialTheme(
-                        colorScheme = if (glass != null) scheme.copy(surfaceContainer = scheme.surfaceContainer.copy(alpha = 0.8f)) else scheme,
-                        shapes = if (glass != null) MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp)) else MaterialTheme.shapes,
+                        colorScheme = if (backdrop != null) scheme.copy(surfaceContainer = scheme.surfaceContainer.copy(alpha = 0.8f)) else scheme,
+                        shapes = if (backdrop != null) MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp)) else MaterialTheme.shapes,
                     ) {
                         AppBarRow(
                             overflowIndicator = {
