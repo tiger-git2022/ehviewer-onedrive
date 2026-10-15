@@ -112,6 +112,8 @@ object FavoritesIndexMerger {
             next = null,
             galleries = checkpoint.galleries.filter { it.slot < changed },
             counts = counts,
+            // Fork: the pages of those galleries
+            marks = checkpoint.marks.filter { it.slot < changed },
         )
     }
 

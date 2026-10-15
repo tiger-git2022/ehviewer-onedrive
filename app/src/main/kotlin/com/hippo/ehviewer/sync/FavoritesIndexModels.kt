@@ -137,7 +137,34 @@ data class CloudRefreshCheckpoint(
      * are corrected with it, also for galleries the known list did not have yet.
      */
     val intended: Map<Long, Int> = emptyMap(),
+    /** Fork: a refresh asked for by the user reads every page; others first try [SlotSegments] to find the changes. */
+    val full: Boolean = false,
+    /** Fork: the pages of [galleries], in order: from which cursor each was read, see [SlotSegments]. */
+    val marks: List<PageMark> = emptyList(),
 )
+
+/** Fork: a page of a refresh: [count] galleries of [slot] read from the cursor [after] (null: the first page). */
+@Serializable
+data class PageMark(val slot: Int, val after: String? = null, val count: Int = 0)
+
+/**
+ * Fork: the pages of a cloud slot as last read, in `files/cloud_favorites_segments/slot-<n>.json.gz`. The favorites
+ * pages are sorted by favorited time and their cursors (`<gid>-<favorited time>`) stay valid, so reading from the
+ * cursor of a segment shows what became of it: the galleries removed from it are missing, new ones are added. A
+ * changed count is explained by checking a few segments from both ends instead of reading every page again.
+ */
+@Serializable
+data class SlotSegments(
+    @EncodeDefault
+    val version: Int = FAVORITES_INDEX_VERSION,
+    val userKey: String? = null,
+    val slot: Int = 0,
+    val segments: List<Segment> = emptyList(),
+)
+
+/** Galleries of a slot after the cursor [after] (null: from the start) up to the next segment, newest first. */
+@Serializable
+data class Segment(val after: String? = null, val gids: List<Long> = emptyList())
 
 /** Fork: format version of the sharded export in `ehviewer/export/favorites/`, see [FavoritesManifest]. */
 const val FAVORITES_EXPORT_VERSION = 2
