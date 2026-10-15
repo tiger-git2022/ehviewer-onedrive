@@ -110,6 +110,25 @@ class SlotVerifierTest {
     }
 
     @Test
+    fun manyNewFavoritesBecomeSegmentsOfTheirPages() {
+        val site = site()
+        val segments = site.read()
+        val known = site.items.map { it.first }.toSet()
+        site.items = site.items + (100L..106L).map { it to it }
+        val result = assertNotNull(verify(site, segments, known))
+        assertEquals((106L downTo 100L).toList(), result.added.map { it.gid })
+        // The first segment, read over 4 pages, is kept as those pages: the next check reads one page of it
+        assertEquals(
+            listOf(Segment(null, listOf(106L, 105L, 104L)), Segment("104-104", listOf(103L, 102L, 101L)), Segment("101-101", listOf(100L, 30L, 29L)), Segment("29-29", listOf(28L))),
+            result.segments.take(4),
+        )
+        assertEquals(segments.size + 3, result.segments.size)
+        val again = assertNotNull(verify(site.apply { items = items.filterNot { it.first == 105L } }, result.segments, known + (100L..106L)))
+        assertEquals(setOf(105L), again.removed)
+        assertEquals(1, site.requests)
+    }
+
+    @Test
     fun aFavoriteAddedAgainIsNotRemoved() {
         val site = site()
         val segments = site.read()

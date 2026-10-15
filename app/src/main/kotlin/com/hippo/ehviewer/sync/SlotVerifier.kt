@@ -70,21 +70,24 @@ object SlotVerifier {
         if (segments.isEmpty()) return null
         val segmentOf = HashMap<Long, Int>()
         segments.forEachIndexed { i, segment -> segment.gids.forEach { segmentOf.putIfAbsent(it, i) } }
-        val updated = segments.toMutableList()
+        // Each segment checked becomes the pages read for it, so a segment grown by new favorites is not read whole
+        // next time: the pages are the segments
+        val updated = segments.map { listOf(it) }.toMutableList()
         val checkedSegments = HashSet<Int>()
         val seen = HashSet<Long>()
         val added = LinkedHashMap<Long, IndexedGallery>()
         val removed = HashSet<Long>()
         fun net() = added.size - removed.size
         for (i in order(segments.size)) {
-            val read = ArrayList<IndexedGallery>()
+            // The galleries read for this segment, by the cursor of the page they came from
+            val pages = ArrayList<Pair<String?, MutableList<IndexedGallery>>>()
             var cursor = segments[i].after
             if (i == 0) {
                 // The newest favorites: new ones and favorites added again come first, read up to the next segment
                 val boundary = segments.getOrNull(1)?.after
                 while (true) {
                     val page = fetch(cursor)
-                    read += page.galleries
+                    pages += cursor to page.galleries.toMutableList()
                     if (boundary == null && page.next == null || reached(page.next, boundary)) break
                     // The same page again: nothing more to read
                     if (page.next == cursor) break
@@ -92,17 +95,24 @@ object SlotVerifier {
                 }
                 // The galleries of later segments after the last one of this segment are past its end; those before
                 // it were added again, they belong here now
-                val lastHere = read.indexOfLast { (segmentOf[it.gid] ?: 0) == 0 }
-                read.subList(lastHere + 1, read.size).forEach { seen += it.gid }
-                read.subList(lastHere + 1, read.size).clear()
+                var past = true
+                for ((_, galleries) in pages.asReversed()) {
+                    val kept = galleries.indexOfLast { (segmentOf[it.gid] ?: 0) == 0 }
+                    if (!past) continue
+                    galleries.subList(kept + 1, galleries.size).forEach { seen += it.gid }
+                    galleries.subList(kept + 1, galleries.size).clear()
+                    if (kept >= 0) past = false
+                }
             } else {
                 val boundary = segments.getOrNull(i + 1)?.after
                 pages@ while (true) {
                     val page = fetch(cursor)
+                    val galleries = ArrayList<IndexedGallery>()
+                    pages += cursor to galleries
                     for (gallery in page.galleries) {
                         // Under the favorited time order, a gallery of a later segment is past the end of this one
                         if ((segmentOf[gallery.gid] ?: -1) > i) break@pages
-                        read += gallery
+                        galleries += gallery
                     }
                     // Ends at the next segment (unchanged, it ends right there) or past it
                     if (boundary != null && reached(page.next, boundary)) break
@@ -110,11 +120,17 @@ object SlotVerifier {
                     cursor = page.next ?: break
                 }
             }
-            read.forEach { gallery ->
-                seen += gallery.gid
-                if (gallery.gid !in known && gallery.gid !in added) added[gallery.gid] = gallery
+            pages.forEach { (_, galleries) ->
+                galleries.forEach { gallery ->
+                    seen += gallery.gid
+                    if (gallery.gid !in known && gallery.gid !in added) added[gallery.gid] = gallery
+                }
             }
-            updated[i] = Segment(segments[i].after, read.map { it.gid }.distinct())
+            val read = pages.filter { it.second.isNotEmpty() }.map { (after, galleries) -> Segment(after, galleries.map { it.gid }.distinct()) }
+            // A segment emptied keeps its cursor, so the segments still cover the slot from its start
+            updated[i] = read.ifEmpty { listOf(Segment(segments[i].after)) }.let { list ->
+                if (list.first().after == segments[i].after) list else listOf(Segment(segments[i].after)) + list
+            }
             checkedSegments += i
             // Gone from where it was and not seen anywhere else: removed
             segments[i].gids.filter { it in known && it !in seen }.forEach { removed += it }
@@ -129,9 +145,9 @@ object SlotVerifier {
         }
         if (net() != difference) return null
         // A gallery listed by a segment checked now is dropped from the others
-        val inChecked = checkedSegments.flatMapTo(HashSet()) { updated[it].gids }
-        val result = updated.mapIndexed { i, segment ->
-            if (i in checkedSegments) segment else segment.copy(gids = segment.gids.filter { it !in inChecked && it !in removed })
+        val inChecked = checkedSegments.flatMapTo(HashSet()) { i -> updated[i].flatMap { it.gids } }
+        val result = updated.flatMapIndexed { i, list ->
+            if (i in checkedSegments) list else list.map { segment -> segment.copy(gids = segment.gids.filter { it !in inChecked && it !in removed }) }
         }
         return Result(removed = removed, added = added.values.toList(), segments = result, checked = checkedSegments.size)
     }
