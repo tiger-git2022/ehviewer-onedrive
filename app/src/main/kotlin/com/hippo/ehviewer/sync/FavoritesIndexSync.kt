@@ -15,6 +15,8 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +54,9 @@ object FavoritesIndexSync {
     private const val SHARDS_FOLDER = "$EXPORT_FOLDER/favorites"
     private const val MANIFEST_PATH = "$SHARDS_FOLDER/${FavoritesExportCache.MANIFEST_FILE}"
     private const val MAX_ATTEMPTS = 3
+
+    /** A shard no manifest lists is deleted once it is this old, see [syncIndex]. */
+    private val SHARD_GRACE = 1.hours
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
     private const val PAGE_INTERVAL_MILLIS = 1_000L
 
@@ -729,12 +734,18 @@ object FavoritesIndexSync {
                 it[OneDriveSyncState.favoritesIndexRemoved] = false
             }
             // Shards neither this manifest nor the one it replaced lists: a reader of that one may still be downloading
-            // its shards, they go with the next upload
+            // its shards, they go with the next upload. Only shards unchanged for a while: another device syncing at
+            // the same time may have just uploaded one for its manifest to come. A shard a manifest lists that is gone
+            // all the same is uploaded again by the next sync (the check above sees it missing)
             val keep = manifest.shards.mapTo(HashSet()) { it.hash }
             last?.shards?.mapTo(keep) { it.hash }
-            listing.keys.forEach { name ->
-                val hash = FavoritesExportCache.hashOf(name) ?: return@forEach
-                if (hash !in keep) runCatching { OneDriveClient.delete("$SHARDS_FOLDER/$name") }.onFailure { logcat(TAG, it) }
+            val oldBefore = Clock.System.now() - SHARD_GRACE
+            listing.values.forEach { item ->
+                val hash = FavoritesExportCache.hashOf(item.name) ?: return@forEach
+                val modified = item.lastModified?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return@forEach
+                if (hash !in keep && modified < oldBefore) {
+                    runCatching { OneDriveClient.delete("$SHARDS_FOLDER/${item.name}") }.onFailure { logcat(TAG, it) }
+                }
             }
             withContext(Dispatchers.IO) { cache.cleanUp(manifest.shards.mapTo(HashSet()) { it.hash }) }
             // Only now: until the manifest is up, readers of format 1 keep the single file
