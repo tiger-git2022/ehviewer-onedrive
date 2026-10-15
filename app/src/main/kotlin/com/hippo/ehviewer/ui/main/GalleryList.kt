@@ -102,14 +102,15 @@ fun GalleryList(
         val shift = topPadding - lastTopPadding[0]
         lastTopPadding[0] = topPadding
         if (shift == 0) return@SideEffect
-        // Taken by the next measure, which may be the one running now (the padding comes from the Scaffold's)
+        // Taken by the next measure, which may be the one running now (the padding comes from the Scaffold's). Not
+        // while the list scrolls: the request would stop the drag or fling, and a moving list hides the shift anyway
         if (listMode == 0) {
             with(detailListState) {
-                if (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0) requestScrollToItem(firstVisibleItemIndex, firstVisibleItemScrollOffset + shift)
+                if (!isScrollInProgress && (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0)) requestScrollToItem(firstVisibleItemIndex, firstVisibleItemScrollOffset + shift)
             }
         } else {
             with(thumbListState) {
-                if (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0) requestScrollToItem(firstVisibleItemIndex, firstVisibleItemScrollOffset + shift)
+                if (!isScrollInProgress && (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0)) requestScrollToItem(firstVisibleItemIndex, firstVisibleItemScrollOffset + shift)
             }
         }
     }
