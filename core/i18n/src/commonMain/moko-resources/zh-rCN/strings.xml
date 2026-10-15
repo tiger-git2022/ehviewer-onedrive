@@ -736,4 +736,8 @@
     <string name="onedrive_sync_clear_cloud_confirm">要从 OneDrive 删除所有同步数据和所有设备的下载记录吗？本机数据会保留，并在下次同步时重新上传。</string>
     <string name="onedrive_sync_cloud_cleared">云端数据已清除</string>
     <string name="onedrive_sync_note">数据保存在 OneDrive 的 应用/&lt;应用名&gt;/ehviewer/ 文件夹中。漫画图片本身不会同步。</string>
+    <string name="update_frequency_launch">每次打开应用</string>
+    <string name="update_downloading">正在下载更新</string>
+    <string name="update_download_progress">%1$s / %2$s（%3$d%%）</string>
+    <string name="update_download_speed">%s/秒</string>
 </resources>

@@ -754,4 +754,8 @@
     <string name="onedrive_sync_clear_cloud_confirm">Delete all synced data and download lists of all devices from OneDrive? Local data is kept and is uploaded again on the next sync.</string>
     <string name="onedrive_sync_cloud_cleared">Cloud data cleared</string>
     <string name="onedrive_sync_note">Data is stored in Apps/&lt;app name&gt;/ehviewer/ of your OneDrive. Downloaded galleries themselves are not synced.</string>
+    <string name="update_frequency_launch">Every app start</string>
+    <string name="update_downloading">Downloading update</string>
+    <string name="update_download_progress">%1$s / %2$s (%3$d%%)</string>
+    <string name="update_download_speed">%s/s</string>
 </resources>

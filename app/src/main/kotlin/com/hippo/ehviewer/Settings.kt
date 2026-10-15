@@ -16,6 +16,7 @@ import com.ehviewer.core.preferences.edit
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.download.DownloadsFilterMode
 import com.hippo.ehviewer.download.SortMode
+import com.hippo.ehviewer.updater.UPDATE_ON_LAUNCH
 import eu.kanade.tachiyomi.ui.reader.setting.OrientationType
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingModeType
 import java.util.Locale
@@ -121,7 +122,8 @@ object Settings : DataStorePreferences(null) {
 
     // About
     val backupBeforeUpdate = boolPref("backup_before_update", false)
-    val updateIntervalDays = intPref("update_interval_days", 7)
+    // Fork: -1 checks on every app start, see AppUpdater.checkForUpdate
+    val updateIntervalDays = intPref("update_interval_days", UPDATE_ON_LAUNCH)
 
     // Misc
     val languageFilter = intPref("language_filter", -1)
