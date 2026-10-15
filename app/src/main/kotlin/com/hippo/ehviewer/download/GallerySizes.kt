@@ -1,8 +1,10 @@
 package com.hippo.ehviewer.download
 
+import android.provider.DocumentsContract
+import android.provider.DocumentsContract.Document
+import androidx.core.database.getLongOrNull
 import com.ehviewer.core.database.model.DownloadInfo
-import com.ehviewer.core.files.list
-import com.ehviewer.core.files.metadataOrNull
+import com.ehviewer.core.files.toUri
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.client.EhEngine
@@ -34,6 +36,7 @@ import splitties.init.appCtx
 object GallerySizes {
     private const val TAG = "GallerySizes"
     private const val REQUEST_DELAY_MILLIS = 300L
+    private const val CIFS_DOCUMENTS_AUTHORITY = "com.wa2c.android.cifsdocumentsprovider.documents"
     private val file get() = File(appCtx.filesDir, "gallery_sizes.json")
     private val serializer = MapSerializer(Long.serializer(), Long.serializer())
     private val json = Json { ignoreUnknownKeys = true }
@@ -48,9 +51,6 @@ object GallerySizes {
 
     // Galleries asked once this run: one the API has no size for (removed) is not asked again and again
     private val asked = ConcurrentHashMap.newKeySet<Long>()
-
-    // Downloaded galleries: gid -> (files counted for, size)
-    private val localSizes = ConcurrentHashMap<Long, Pair<Int, Long>>()
 
     private val loadJob = scope.launch {
         val stored = fileMutex.withLock {
@@ -137,12 +137,26 @@ object GallerySizes {
             }
     }
 
-    /** Size of the files of a downloaded gallery, null if it has no folder. */
+    /** Size of the files of a downloaded gallery, null if its folder cannot be read. */
     suspend fun localSize(info: DownloadInfo): Long? = withContext(Dispatchers.IO) {
-        val files = info.downloadDir?.list() ?: return@withContext null
-        localSizes[info.gid]?.takeIf { it.first == files.size }?.let { return@withContext it.second }
-        val size = files.sumOf { it.metadataOrNull()?.size ?: 0L }
-        localSizes[info.gid] = files.size to size
-        size
+        val dir = info.downloadDir ?: return@withContext null
+        if (dir.toString().startsWith('/')) {
+            dir.toFile().listFiles()?.sumOf { it.length() }
+        } else {
+            // A folder picked in the system file picker: the metadata of the file system has no size, so the sizes
+            // of all its files come from one query of the documents provider
+            runCatching {
+                val uri = dir.toUri()
+                var documentId = DocumentsContract.getDocumentId(uri)
+                // As AndroidFileSystem.list(): the CIFS provider lists a folder only with a trailing slash
+                if (uri.authority == CIFS_DOCUMENTS_AUTHORITY) documentId += '/'
+                val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, documentId)
+                appCtx.contentResolver.query(children, arrayOf(Document.COLUMN_SIZE), null, null, null)?.use { c ->
+                    var total = 0L
+                    while (c.moveToNext()) total += c.getLongOrNull(0) ?: 0L
+                    total
+                }
+            }.onFailure { logcat(TAG, it) }.getOrNull()
+        }
     }
 }
