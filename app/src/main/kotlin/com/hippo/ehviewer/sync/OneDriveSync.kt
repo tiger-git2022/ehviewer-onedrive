@@ -168,8 +168,11 @@ object OneDriveSync {
         markDirty(category)
         // The local favorites are in the favorites index too, also when their own category is not synced
         if (category == SyncCategory.FAVORITES) markFavoritesIndexChanged()
-        // Opening a gallery writes the history: no sync for it while the history is not synced
-        if (category.automatic && OneDriveSyncState.isEnabled(category)) scheduleChangeSync()
+        // Opening a gallery writes the history: no sync for it while the history is not synced. Fork: the local
+        // favorites also go out with the favorites index an automatic sync uploads, synced as a category or not
+        if (category.automatic && OneDriveSyncState.isEnabled(category) || category == SyncCategory.FAVORITES && OneDriveSyncState.exportFavoritesIndex.value) {
+            scheduleChangeSync()
+        }
     }
 
     private val favoritesIndexVersion = AtomicLong()
@@ -327,6 +330,8 @@ object OneDriveSync {
                         if (!launchSyncDone) {
                             launchSyncDone = true
                             scope.launch { syncOnLaunch() }
+                        } else {
+                            resumePendingChanges()
                         }
                     }
                     Lifecycle.Event.ON_STOP -> {
@@ -385,6 +390,16 @@ object OneDriveSync {
                 }
             }
         }
+    }
+
+    /**
+     * Fork: back in the foreground, changes handed to WorkManager ([handOffPendingChanges]) count down here again:
+     * Android may hold that work back for long, while the sync icon shows them as waiting.
+     */
+    private fun resumePendingChanges() {
+        val dirty = SyncCategory.entries.any { it.automatic && OneDriveSyncState.isEnabled(it) && OneDriveSyncState.dirty(it).value }
+        val indexDirty = OneDriveSyncState.exportFavoritesIndex.value && OneDriveSyncState.favoritesIndexDirty.value
+        if (changesPending.value || dirty || indexDirty) scheduleChangeSync()
     }
 
     /** The app went to the background: let WorkManager sync the changes the countdown has not synced yet. */
