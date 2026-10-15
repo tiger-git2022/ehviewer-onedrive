@@ -2,6 +2,7 @@ package com.hippo.ehviewer.ui.settings
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,11 +12,13 @@ import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
@@ -65,8 +68,11 @@ private fun stepText(@StringRes title: Int, done: Int, total: Int): String {
     return stringResource(id = R.string.onedrive_sync_progress_count, name, done, total, percent)
 }
 
-/** Fork: a progress line in two parts, [label] cut short when the line is too long, [numbers] always shown in full. */
-data class SyncProgressLine(val label: String, val numbers: String = "")
+/**
+ * Fork: a progress line, [full] where it fits (a tablet), else in two parts: [label] cut short, [numbers] always shown
+ * in full.
+ */
+data class SyncProgressLine(val label: String, val numbers: String = "", val full: String = label)
 
 /** "5/5 Upload the favorites list · uploading" and "0.8/1.0 MB  98%". */
 @Composable
@@ -80,24 +86,43 @@ fun syncProgressLine(progress: SyncRunProgress): SyncProgressLine {
         !progress.bytes && total > 0 -> "$done/$total"
         else -> null
     }
-    return SyncProgressLine("${progress.step}/${progress.steps} $name", listOfNotNull(count, "${progress.percent}%").joinToString("  "))
+    return SyncProgressLine(
+        label = "${progress.step}/${progress.steps} $name",
+        numbers = listOfNotNull(count, "${progress.percent}%").joinToString("  "),
+        full = syncProgressText(progress),
+    )
 }
 
 /** "Reading the cloud favorites" and "1200/3400  35%". */
 @Composable
 fun stepProgressLine(progress: StepProgress): SyncProgressLine = SyncProgressLine(
-    stringResource(id = progress.title),
-    if (progress.total > 0) "${progress.done}/${progress.total}  ${progress.percent}%" else "",
+    label = stringResource(id = progress.title),
+    numbers = if (progress.total > 0) "${progress.done}/${progress.total}  ${progress.percent}%" else "",
+    full = stepProgressText(progress),
 )
 
-/** One line of [SyncProgressLine]: the label on the left ends in "…" when it does not fit, the numbers stay on the right. */
+/**
+ * One line of [SyncProgressLine]: the whole text where it fits, else the label on the left ending in "…" and the
+ * numbers on the right.
+ */
 @Composable
 fun SyncProgressLineText(line: SyncProgressLine, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(text = line.label, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (line.numbers.isNotEmpty()) {
-            // Digits of one width: the numbers do not jump while they count
-            Text(text = line.numbers, style = style.copy(fontFeatureSettings = "tnum"), color = color, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 12.dp))
+    BoxWithConstraints(modifier = modifier) {
+        val measurer = rememberTextMeasurer()
+        val maxWidth = constraints.maxWidth
+        val fits = remember(line.full, style, maxWidth) {
+            measurer.measure(text = line.full, style = style, maxLines = 1, softWrap = false).size.width <= maxWidth
+        }
+        if (fits) {
+            Text(text = line.full, style = style, color = color, maxLines = 1)
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = line.label, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (line.numbers.isNotEmpty()) {
+                    // Digits of one width: the numbers do not jump while they count
+                    Text(text = line.numbers, style = style.copy(fontFeatureSettings = "tnum"), color = color, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 12.dp))
+                }
+            }
         }
     }
 }
