@@ -67,6 +67,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberDrawerState2
 import androidx.compose.runtime.Composable
@@ -88,6 +89,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
@@ -109,9 +111,12 @@ import androidx.navigation.compose.rememberNavController
 import com.ehviewer.core.files.isDirectory
 import com.ehviewer.core.files.toOkioPath
 import com.ehviewer.core.i18n.R
+import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
 import com.ehviewer.core.ui.component.LabeledCheckbox
+import com.ehviewer.core.ui.component.LocalSideSheetGlass
 import com.ehviewer.core.ui.component.LocalSideSheetState
 import com.ehviewer.core.ui.component.MutableSideSheet
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.icons.EhIcons
 import com.ehviewer.core.ui.icons.filled.Subscriptions
 import com.ehviewer.core.ui.util.LocalSnackBarFabPadding
@@ -406,12 +411,20 @@ class MainActivity : AppCompatActivity() {
                     var minOffset by remember {
                         mutableFloatStateOf(-with(density) { DrawerDefaults.MaximumDrawerWidth.toPx() })
                     }
+                    // Fork: both drawers as liquid glass refracting the pages, see LiquidGlass.kt
+                    val pagesBackdrop = rememberGlassBackdrop()
+                    val drawerGlass = rememberLiquidGlass(pagesBackdrop)
+                    val drawerColor = DrawerDefaults.modalContainerColor
                     ModalNavigationDrawer(
                         drawerContent = {
                             ModalDrawerSheet(
                                 drawerState = navDrawerState,
                                 modifier = Modifier.widthIn(max = (configuration.screenWidthDp - 56).dp)
-                                    .onSizeChanged { minOffset = -it.width.toFloat() },
+                                    .onSizeChanged { minOffset = -it.width.toFloat() }
+                                    .floatingGlass(drawerGlass, DrawerDefaults.shape, drawerColor.copy(alpha = GLASS_SHEET_TINT), panel = true),
+                                drawerContainerColor = if (drawerGlass != null) Color.Transparent else drawerColor,
+                                drawerContentColor = MaterialTheme.colorScheme.contentColorFor(drawerColor),
+                                drawerTonalElevation = if (drawerGlass != null) 0.dp else DrawerDefaults.ModalDrawerElevation,
                                 windowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Start),
                             ) {
                                 val scrollState = rememberScrollState()
@@ -453,30 +466,32 @@ class MainActivity : AppCompatActivity() {
                                 with(density) { lerp(0, 10, step).dp.toPx() }
                             }
                         }.collectAsState(0f)
-                        MutableSideSheet(
-                            drawerState = sideSheetState,
-                            modifier = Modifier.graphicsLayer {
-                                if (radius != 0f) {
-                                    renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
-                                    shape = RectangleShape
-                                    clip = true
-                                }
-                            },
-                            enabled = drawerEnabled,
-                        ) {
-                            SharedTransitionLayout {
-                                CompositionLocalProvider(LocalSharedTransitionScope provides this) {
-                                    val start = when {
-                                        needSignIn -> SignInScreenDestination
-                                        hasNetwork -> navItems[launchPage].first
-                                        else -> DownloadsScreenDestination
+                        CompositionLocalProvider(LocalSideSheetGlass provides drawerGlass) {
+                            MutableSideSheet(
+                                drawerState = sideSheetState,
+                                modifier = Modifier.graphicsLayer {
+                                    if (radius != 0f) {
+                                        renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
+                                        shape = RectangleShape
+                                        clip = true
                                     }
-                                    DestinationsNavHost(
-                                        navGraph = NavGraphs.root,
-                                        start = start,
-                                        defaultTransitions = rememberEhNavAnim(),
-                                        navController = navController,
-                                    )
+                                },
+                                enabled = drawerEnabled,
+                            ) {
+                                SharedTransitionLayout(modifier = Modifier.glassContent(pagesBackdrop)) {
+                                    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+                                        val start = when {
+                                            needSignIn -> SignInScreenDestination
+                                            hasNetwork -> navItems[launchPage].first
+                                            else -> DownloadsScreenDestination
+                                        }
+                                        DestinationsNavHost(
+                                            navGraph = NavGraphs.root,
+                                            start = start,
+                                            defaultTransitions = rememberEhNavAnim(),
+                                            navController = navController,
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -220,6 +220,7 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(libs.material.motion.core)
     implementation(libs.material.kolor)
+    implementation(libs.backdrop) // Fork: liquid glass
 
     implementation(libs.bundles.splitties)
 
