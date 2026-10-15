@@ -491,7 +491,13 @@ object FavoritesIndexSync {
             // Signed in to another account meanwhile: these pages belong to the previous one
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
-            val done = FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended, pending.slots)
+            val refreshed = FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended, pending.slots)
+            // Fork: all slots read: shown as the last complete read, with what it found
+            val done = if (pending.slots.containsAll(ALL_CLOUD_SLOTS)) {
+                refreshed.copy(fullReadAt = refreshed.refreshedAt, fullReadCount = refreshed.galleries.size)
+            } else {
+                refreshed
+            }
             if (saveLocked(done)) markChangedLocked()
             // Fork: the pages of the slots read, for the next change of their counts; an empty slot is one empty segment
             val read = SlotVerifier.segmentsOf(pending.marks, pending.galleries)
@@ -650,9 +656,11 @@ object FavoritesIndexSync {
         val read: Int = 0,
         val total: Int = 0,
         val missingTitles: Int = 0,
-        // Fork: the last complete read of the cloud favorites (0: never) and the favorites known
-        val refreshedAt: Long = 0,
-        val count: Int = 0,
+        // Fork: the cloud favorites were read before (completely or not), and the last read of all slots (0: none
+        // since it is recorded) with the favorites it found
+        val readBefore: Boolean = false,
+        val fullReadAt: Long = 0,
+        val fullReadCount: Int = 0,
     )
 
     suspend fun status(): Status = withContext(Dispatchers.IO) {
@@ -662,8 +670,9 @@ object FavoritesIndexSync {
         val missing = FavoritesIndexMerger.missingJapaneseTitles(currentIndex(), Int.MAX_VALUE, current().defaultTitles).size
         val cloud = current()
         Status(
-            refreshedAt = cloud.refreshedAt,
-            count = cloud.galleries.size,
+            readBefore = cloud.refreshedAt > 0L,
+            fullReadAt = cloud.fullReadAt,
+            fullReadCount = cloud.fullReadCount,
             unfinished = pending != null,
             read = pending?.galleries?.size ?: 0,
             total = pending?.let { checkpoint -> checkpoint.slots.sumOf { checkpoint.counts.getOrElse(it) { 0 } } } ?: 0,

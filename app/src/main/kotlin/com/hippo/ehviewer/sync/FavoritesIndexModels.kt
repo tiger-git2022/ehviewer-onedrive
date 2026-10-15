@@ -79,6 +79,10 @@ data class CloudFavorites(
     val updatedAt: Long = 0,
     /** Last full refresh, 0 before the first one. */
     val refreshedAt: Long = 0,
+    /** Fork: last refresh of all 10 slots on this device (not of some slots, not taken from another device), 0: none. */
+    val fullReadAt: Long = 0,
+    /** Fork: the galleries that read found. */
+    val fullReadCount: Int = 0,
     val slotNames: List<String> = emptyList(),
     /** Galleries with [IndexedGallery.slot] in 0..9, [IndexedGallery.local] unused. */
     val galleries: List<IndexedGallery> = emptyList(),
@@ -223,6 +227,8 @@ data class CloudFavoritesMeta(
     val userKey: String? = null,
     val updatedAt: Long = 0,
     val refreshedAt: Long = 0,
+    val fullReadAt: Long = 0,
+    val fullReadCount: Int = 0,
     val slotNames: List<String> = emptyList(),
     val parts: List<StorePart> = emptyList(),
 )

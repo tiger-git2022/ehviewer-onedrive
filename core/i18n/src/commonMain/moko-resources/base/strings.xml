@@ -758,10 +758,9 @@
     <string name="update_downloading">Downloading update</string>
     <string name="update_download_progress">%1$s / %2$s (%3$d%%)</string>
     <string name="update_download_speed">%s/s</string>
-    <string name="onedrive_sync_cloud_favorites_last_full">Last read completely: %1$s, %2$d favorites
-Tap to read all slots again</string>
+    <string name="onedrive_sync_cloud_favorites_last_full">Last read completely: %1$s, %2$d favorites then\nTap to read all slots again</string>
     <string name="onedrive_sync_cloud_favorites_reread">Read again</string>
-    <string name="onedrive_sync_cloud_favorites_reread_confirm">The cloud favorites were last read completely on %1$s, %2$d favorites. Since then every sync checks the counts of the slots and finds what changed by itself.
-
-Reading again goes through every page of all slots and takes about %3$d to %4$d minutes. It is only needed for changes that keep a count, such as removing one favorite and adding another in the same slot.</string>
+    <string name="onedrive_sync_cloud_favorites_reread_last">The cloud favorites were last read completely on %1$s, %2$d favorites then.</string>
+    <string name="onedrive_sync_cloud_favorites_reread_confirm">Every sync checks the counts of the slots and finds what changed by itself. Reading again goes through every page of all slots: it is only needed for changes that keep a count, such as removing one favorite and adding another in the same slot.</string>
+    <string name="onedrive_sync_cloud_favorites_reread_minutes">It takes about %1$d to %2$d minutes.</string>
 </resources>

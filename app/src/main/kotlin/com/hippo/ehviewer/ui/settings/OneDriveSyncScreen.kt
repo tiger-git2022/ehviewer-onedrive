@@ -228,10 +228,10 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                     working -> workText
                                     statusText != null -> statusText
                                     // Fork: read completely, and when
-                                    (status?.refreshedAt ?: 0L) > 0L -> stringResource(
+                                    (status?.fullReadAt ?: 0L) > 0L -> stringResource(
                                         id = R.string.onedrive_sync_cloud_favorites_last_full,
-                                        dateTime(status!!.refreshedAt),
-                                        status!!.count,
+                                        dateTime(status!!.fullReadAt),
+                                        status!!.fullReadCount,
                                     )
                                     else -> stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary)
                                 },
@@ -249,23 +249,28 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                             snackbar(string(R.string.onedrive_sync_cloud_favorites_resumed))
                                         }
                                         else -> {
-                                            // Fork: read completely before: reading every page again takes long, asked first
-                                            val done = status?.takeIf { it.refreshedAt > 0L }
+                                            // Fork: read before: reading every page again takes long, asked first. Asked now,
+                                            // the status shown may not be loaded yet
+                                            val done = FavoritesIndexSync.status().takeIf { it.readBefore }
                                             if (done != null) {
                                                 awaitConfirmationOrCancel(
                                                     confirmText = R.string.onedrive_sync_cloud_favorites_reread,
                                                     title = R.string.onedrive_sync_favorites_index_refresh,
                                                 ) {
+                                                    val count = done.fullReadCount
+                                                    val last = if (done.fullReadAt > 0L) {
+                                                        stringResource(id = R.string.onedrive_sync_cloud_favorites_reread_last, dateTime(done.fullReadAt), count)
+                                                    } else {
+                                                        null
+                                                    }
                                                     // About a second a page, 25 to 50 favorites a page as the account shows them
-                                                    Text(
-                                                        text = stringResource(
-                                                            id = R.string.onedrive_sync_cloud_favorites_reread_confirm,
-                                                            dateTime(done.refreshedAt),
-                                                            done.count,
-                                                            (done.count / 50 + 59) / 60 + 1,
-                                                            (done.count / 25 + 59) / 60 + 1,
-                                                        ),
-                                                    )
+                                                    val minutes = if (count > 0) {
+                                                        stringResource(id = R.string.onedrive_sync_cloud_favorites_reread_minutes, (count / 50 + 59) / 60 + 1, (count / 25 + 59) / 60 + 1)
+                                                    } else {
+                                                        null
+                                                    }
+                                                    val about = stringResource(id = R.string.onedrive_sync_cloud_favorites_reread_confirm)
+                                                    Text(text = listOfNotNull(last, about, minutes).joinToString(PARAGRAPH))
                                                 }
                                             }
                                             FavoritesIndexSync.refreshInBackground()
@@ -348,6 +353,8 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
         }
     }
 }
+
+private const val PARAGRAPH = "\n\n"
 
 /** Fork: a date and time in the format of the system settings. */
 @Composable
