@@ -25,7 +25,7 @@ import kotlinx.coroutines.CoroutineScope
 context(scope: AnimatedVisibilityScope)
 inline fun <R> Screen(
     navigator: DestinationsNavigator,
-    block: @Composable context(MainActivity, SnackbarHostState, DialogState, SharedTransitionScope, TransitionsVisibilityScope, DestinationsNavigator, CoroutineScope)
+    crossinline block: @Composable context(MainActivity, SnackbarHostState, DialogState, SharedTransitionScope, TransitionsVisibilityScope, DestinationsNavigator, CoroutineScope)
     () -> R,
 ) = Box(modifier = Modifier.fillMaxSize()) {
     val dialogState = with(LocalGlobalDialogState.current) { rememberLocal() }

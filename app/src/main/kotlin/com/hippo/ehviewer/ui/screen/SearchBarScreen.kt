@@ -231,6 +231,8 @@ fun SearchBarScreen(
     // Fork: liquid glass refracting the list, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
     val glass = rememberLiquidGlass(backdrop)
+    val glassShape = SearchBarDefaults.inputFieldShape
+    val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -281,7 +283,7 @@ fun SearchBarScreen(
                     onExpandedChange = onExpandedChange,
                     modifier = Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
                         // Fork: the field is the glass while the search bar is collapsed
-                        .thenIf(!expanded) { floatingGlass(glass, SearchBarDefaults.inputFieldShape, MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)) },
+                        .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) },
                     placeholder = {
                         val contentActive by activeState.state
                         val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
