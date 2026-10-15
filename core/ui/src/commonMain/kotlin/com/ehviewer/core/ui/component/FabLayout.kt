@@ -226,7 +226,7 @@ fun FabLayout(
 }
 
 // Fork: how much of the button color lies over the glass, enough to keep it a button
-private const val GLASS_FAB_TINT = 0.5f
+private const val GLASS_FAB_TINT = 0.35f
 
 private fun buildFab(builder: FabBuilder.() -> Unit) = buildList {
     builder { icon, autoClose, action ->

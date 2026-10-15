@@ -55,7 +55,7 @@ fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boo
             drawerContent = {
                 if (f != null) {
                     ModalDrawerSheet(
-                        modifier = Modifier.widthIn(max = width - 112.dp).floatingGlass(glass, shape, sheetColor.copy(alpha = GLASS_SHEET_TINT), panel = true),
+                        modifier = Modifier.widthIn(max = width - 112.dp).floatingGlass(glass, shape, sheetColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Panel),
                         drawerShape = shape,
                         drawerContainerColor = if (glass != null) Color.Transparent else sheetColor,
                         drawerContentColor = MaterialTheme.colorScheme.contentColorFor(sheetColor),
@@ -75,4 +75,4 @@ fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boo
 }
 
 /** Fork: how much of the drawer color lies over the glass of a drawer, enough to read its lists. */
-const val GLASS_SHEET_TINT = 0.6f
+const val GLASS_SHEET_TINT = 0.45f
