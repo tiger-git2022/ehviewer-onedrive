@@ -140,6 +140,20 @@ data class SyncSuggestion(
     val date: Long,
 )
 
+/**
+ * Fork: `ehviewer/settings/<deviceId>.json.gz`, the settings of one device, written only by that device. Settings
+ * differ between devices: another device's are only applied when the user restores them.
+ */
+@Serializable
+data class DeviceSettings(
+    @EncodeDefault
+    val version: Int = SYNC_FORMAT_VERSION,
+    val deviceId: String,
+    val deviceName: String = "",
+    val updatedAt: Long = 0,
+    val settings: Map<String, SyncSetting> = emptyMap(),
+)
+
 /** `ehviewer/devices/<deviceId>.json.gz`: the download list of one device, written only by that device. */
 @Serializable
 data class DeviceDownloads(
