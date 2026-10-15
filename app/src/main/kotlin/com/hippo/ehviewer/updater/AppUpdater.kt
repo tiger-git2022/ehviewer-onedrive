@@ -39,7 +39,8 @@ const val LATEST_MANIFEST_URL = "$RELEASES_URL/latest/download/update.json"
 const val UPDATE_ON_LAUNCH = -1
 
 object AppUpdater {
-    // A new activity (a rotation, a return from the background) is not a new start of the app
+    // A new activity (a rotation, a return from the background) is not a new start of the app. Set once a check
+    // finished: a rotation cancels a running one, the new activity then checks again.
     private var checkedThisLaunch = false
 
     suspend fun checkForUpdate(forceCheck: Boolean = false): EhRelease? {
@@ -51,10 +52,10 @@ object AppUpdater {
             UPDATE_ON_LAUNCH -> !checkedThisLaunch
             else -> now > last + interval.days
         }
-        checkedThisLaunch = true
         if (forceCheck || due) {
             Settings.lastUpdateTime = now.epochSeconds
             val release = fetchRelease(LATEST_MANIFEST_URL, LATEST_RELEASE_URL)
+            checkedThisLaunch = true
             val latestVersion = release.version.removePrefix("v")
             if (ForkVersion.isNewer(latestVersion, BuildConfig.RAW_VERSION_NAME)) {
                 // The release notes list the changes since the previous release
