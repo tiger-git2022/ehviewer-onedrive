@@ -166,8 +166,8 @@ fun SyncRingProgress(fraction: Float?, color: Color, modifier: Modifier = Modifi
     if (fraction != null && fraction > 0f) {
         val animated by animateFloatAsState(targetValue = fraction, animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec, label = "syncRing")
         // Fork: the done arc is redrawn faintly now and then, see SoftRedrawRingProgress
-        SoftRedrawRingProgress(progress = { animated }, color = color, modifier = modifier, strokeWidth = 2.5.dp)
+        SoftRedrawRingProgress(progress = { animated }, color = color, modifier = modifier)
     } else {
-        CircularProgressIndicator(modifier = modifier, color = color, strokeWidth = 2.5.dp)
+        CircularProgressIndicator(modifier = modifier, color = color, strokeWidth = syncAnimationStyle().ringStroke)
     }
 }
