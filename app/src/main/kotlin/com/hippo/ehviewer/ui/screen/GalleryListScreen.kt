@@ -513,9 +513,12 @@ fun AnimatedVisibilityScope.GalleryListScreen(
                 // The language of this list, which may differ from the setting when another list changed it
                 checked = urlBuilder.language == CHINESE_LANGUAGE_FILTER,
                 onCheckedChange = { on ->
-                    languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1
+                    // The setting reads back its old value until the next recomposition, so the list takes the new
+                    // value itself; reading the setting here left the list unchanged until a second tap
+                    val language = if (on) CHINESE_LANGUAGE_FILTER else -1
+                    languageFilter = language
                     // From the first page
-                    urlBuilder = urlBuilder.copy(language = languageFilter).apply { setRange(0) }
+                    urlBuilder = urlBuilder.copy(language = language).apply { setRange(0) }
                     data.refresh()
                 },
                 // What's hot, toplists and image search have no language
