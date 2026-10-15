@@ -83,6 +83,8 @@ class OneDriveSyncWork(context: Context, workerParams: WorkerParameters) : Corou
 class OneDriveManualSyncWork(context: Context, workerParams: WorkerParameters) : CoroutineWorker(context, workerParams) {
     @OptIn(FlowPreview::class)
     override suspend fun doWork(): Result = withIOContext {
+        // The result of an earlier sync no longer applies
+        NotificationManagerCompat.from(applicationContext).cancel(MANUAL_RESULT_NOTIFICATION_ID)
         runCatching { setForeground(manualSyncForegroundInfo(applicationContext, null)) }.onFailure { logcat(MANUAL_WORK_NAME, it) }
         val (result, taken) = coroutineScope {
             val notification = launch {
@@ -264,6 +266,12 @@ fun enqueueOneDriveManualSyncWork(context: Context) {
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(MANUAL_WORK_NAME, ExistingWorkPolicy.KEEP, request)
 }
+
+/** Fork: [OneDriveManualSyncWork] is queued or runs, also one kept from a process that ended. */
+fun manualSyncWorkQueued(context: Context): Flow<Boolean> = WorkManager.getInstance(context)
+    .getWorkInfosForUniqueWorkFlow(MANUAL_WORK_NAME)
+    .map { infos -> infos.any { !it.state.isFinished } }
+    .distinctUntilChanged()
 
 /** Syncs pending local changes once the network allows it, also after the app went to the background. */
 fun enqueueOneDriveCatchUpWork(context: Context) {

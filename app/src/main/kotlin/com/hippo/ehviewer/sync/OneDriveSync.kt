@@ -481,8 +481,14 @@ object OneDriveSync {
 
     private val mutableManualSyncQueued = MutableStateFlow(false)
 
-    /** Fork: a manual sync is queued or runs as [OneDriveManualSyncWork]. */
-    val manualSyncQueued: StateFlow<Boolean> = mutableManualSyncQueued.asStateFlow()
+    /**
+     * Fork: a manual sync is queued or runs as [OneDriveManualSyncWork]. Also read from WorkManager, which keeps the
+     * work when the process ends: the screens then still know it is queued.
+     */
+    val manualSyncQueued: StateFlow<Boolean> by lazy {
+        combine(mutableManualSyncQueued, manualSyncWorkQueued(appCtx)) { started, queued -> started || queued }
+            .stateIn(scope, SharingStarted.WhileSubscribed(), false)
+    }
 
     /** A manual sync result, and the screen waiting for it saying that it got it. */
     private class ManualSyncResult(val result: Result<SyncReport>, val taken: CompletableDeferred<Unit> = CompletableDeferred())
