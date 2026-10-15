@@ -2,16 +2,21 @@ package com.hippo.ehviewer.ui.settings
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ProgressIndicatorDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.sync.StepProgress
@@ -58,6 +63,43 @@ private fun stepText(@StringRes title: Int, done: Int, total: Int): String {
     if (total <= 0) return name
     val percent = (done.toLong() * 100 / total).toInt().coerceIn(0, 100)
     return stringResource(id = R.string.onedrive_sync_progress_count, name, done, total, percent)
+}
+
+/** Fork: a progress line in two parts, [label] cut short when the line is too long, [numbers] always shown in full. */
+data class SyncProgressLine(val label: String, val numbers: String = "")
+
+/** "5/5 Upload the favorites list · uploading" and "0.8/1.0 MB  98%". */
+@Composable
+fun syncProgressLine(progress: SyncRunProgress): SyncProgressLine {
+    val title = stringResource(id = progress.title)
+    val name = progress.phase?.let { stringResource(id = R.string.onedrive_sync_step_phase, title, stringResource(id = it)) } ?: title
+    val (done, total) = progress.done to progress.total
+    val count = when {
+        progress.bytes && total > 0 -> "${megabytes(done)}/${megabytes(total)} MB"
+        progress.bytes && done > 0 -> "${megabytes(done)} MB"
+        !progress.bytes && total > 0 -> "$done/$total"
+        else -> null
+    }
+    return SyncProgressLine("${progress.step}/${progress.steps} $name", listOfNotNull(count, "${progress.percent}%").joinToString("  "))
+}
+
+/** "Reading the cloud favorites" and "1200/3400  35%". */
+@Composable
+fun stepProgressLine(progress: StepProgress): SyncProgressLine = SyncProgressLine(
+    stringResource(id = progress.title),
+    if (progress.total > 0) "${progress.done}/${progress.total}  ${progress.percent}%" else "",
+)
+
+/** One line of [SyncProgressLine]: the label on the left ends in "…" when it does not fit, the numbers stay on the right. */
+@Composable
+fun SyncProgressLineText(line: SyncProgressLine, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(text = line.label, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (line.numbers.isNotEmpty()) {
+            // Digits of one width: the numbers do not jump while they count
+            Text(text = line.numbers, style = style.copy(fontFeatureSettings = "tnum"), color = color, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 12.dp))
+        }
+    }
 }
 
 /** A bar below a preference, shown while [fraction] is not null. */

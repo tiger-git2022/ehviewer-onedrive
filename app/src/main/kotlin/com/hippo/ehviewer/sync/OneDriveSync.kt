@@ -32,6 +32,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -470,6 +471,12 @@ object OneDriveSync {
     // endregion
 
     // region Sync
+
+    /**
+     * Fork: a sync asked from a screen, run in [scope]: leaving the screen cancels only the wait for the result, the
+     * sync itself goes on.
+     */
+    suspend fun syncManually(): Result<SyncReport> = scope.async { sync(SyncTrigger.MANUAL) }.await()
 
     suspend fun sync(trigger: SyncTrigger): Result<SyncReport> = withContext(Dispatchers.IO) {
         val result: Result<SyncReport> = mutex.withLock {

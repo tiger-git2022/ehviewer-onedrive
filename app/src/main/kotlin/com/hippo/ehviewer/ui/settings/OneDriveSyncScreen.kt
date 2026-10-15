@@ -37,7 +37,6 @@ import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
-import com.hippo.ehviewer.sync.SyncTrigger
 import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
 import com.hippo.ehviewer.ui.MainActivity
@@ -124,7 +123,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                     Preference(title = stringResource(id = R.string.onedrive_sync_now), summary = syncSummary) {
                         if (!running) {
                             launch {
-                                val result = OneDriveSync.sync(SyncTrigger.MANUAL)
+                                val result = OneDriveSync.syncManually()
                                 snackbar(OneDriveSync.summaryOf(result))
                             }
                         }

@@ -21,7 +21,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,7 +30,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
@@ -42,12 +40,15 @@ import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.SyncCategory
-import com.hippo.ehviewer.sync.SyncTrigger
 import com.hippo.ehviewer.sync.cloudFavoritesWorkInfo
 import com.hippo.ehviewer.sync.resumeCloudFavoritesWork
 import com.hippo.ehviewer.ui.settings.SyncLinearProgress
+import com.hippo.ehviewer.ui.settings.SyncProgressLine
+import com.hippo.ehviewer.ui.settings.SyncProgressLineText
 import com.hippo.ehviewer.ui.settings.SyncRingProgress
+import com.hippo.ehviewer.ui.settings.stepProgressLine
 import com.hippo.ehviewer.ui.settings.stepProgressText
+import com.hippo.ehviewer.ui.settings.syncProgressLine
 import com.hippo.ehviewer.ui.settings.syncProgressText
 import kotlinx.coroutines.CoroutineScope
 import moe.tarsin.snackbar
@@ -132,7 +133,7 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
                         snackbar(appCtx.getString(R.string.onedrive_sync_cloud_favorites_resumed))
                     }
                     else -> {
-                        val result = OneDriveSync.sync(SyncTrigger.MANUAL)
+                        val result = OneDriveSync.syncManually()
                         onSynced()
                         snackbar(OneDriveSync.summaryOf(result))
                     }
@@ -169,10 +170,11 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
     val queued = export && workInfo.active
     val shown = OneDriveClient.isSupported && account != null && enabled && (syncing || working || queued)
     // A sync and the work at once: the sync is short, it shows first
+    // Fork: the numbers on the right stay whole on a narrow screen, see SyncProgressLineText
     val text = when {
-        syncing -> syncProgress?.let { syncProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_running)
-        working -> workProgress?.let { stepProgressText(it) } ?: stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
-        else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued)
+        syncing -> syncProgress?.let { syncProgressLine(it) } ?: SyncProgressLine(stringResource(id = R.string.onedrive_sync_running))
+        working -> workProgress?.let { stepProgressLine(it) } ?: SyncProgressLine(stringResource(id = R.string.onedrive_sync_favorites_index_refreshing))
+        else -> SyncProgressLine(stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued))
     }
     val fraction = when {
         syncing -> syncProgress?.fraction
@@ -180,7 +182,7 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
         else -> null
     }
     // Keeps the last text while it hides
-    val last = remember { arrayOfNulls<Pair<String, Float?>>(1) }
+    val last = remember { arrayOfNulls<Pair<SyncProgressLine, Float?>>(1) }
     if (shown) last[0] = text to fraction
     AnimatedVisibility(
         visible = shown,
@@ -195,12 +197,11 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
             modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(
-                    text = shownText,
+                SyncProgressLineText(
+                    line = shownText,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 // Waiting to go on: no bar, nothing moves
                 if (syncing || working) {
