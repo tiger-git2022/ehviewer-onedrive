@@ -28,6 +28,7 @@ import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
@@ -110,6 +112,7 @@ object OneDriveSync {
     private const val MAX_ATTEMPTS = 4 // First try and 3 retries after a precondition failure
     private const val DEBOUNCE_MILLIS = 60_000L
     private const val MAX_WAIT_MILLIS = 5 * 60_000L
+    private const val RESULT_TAKEN_TIMEOUT_MILLIS = 1_000L
     private const val CHANGED_AT_PERSIST_INTERVAL = 60_000L
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -481,7 +484,10 @@ object OneDriveSync {
     /** Fork: a manual sync is queued or runs as [OneDriveManualSyncWork]. */
     val manualSyncQueued: StateFlow<Boolean> = mutableManualSyncQueued.asStateFlow()
 
-    private val manualSyncResults = MutableSharedFlow<Result<SyncReport>>(extraBufferCapacity = 1)
+    /** A manual sync result, and the screen waiting for it saying that it got it. */
+    private class ManualSyncResult(val result: Result<SyncReport>, val taken: CompletableDeferred<Unit> = CompletableDeferred())
+
+    private val manualSyncResults = MutableSharedFlow<ManualSyncResult>(extraBufferCapacity = 1)
 
     /**
      * Fork: a sync asked from a screen, run as [OneDriveManualSyncWork] in a foreground service, so it goes on when the
@@ -490,7 +496,9 @@ object OneDriveSync {
      */
     suspend fun syncManually(): Result<SyncReport> = coroutineScope {
         // Waiting before the work is queued, so the result cannot pass unseen
-        val result = async(start = CoroutineStart.UNDISPATCHED) { manualSyncResults.first() }
+        val result = async(start = CoroutineStart.UNDISPATCHED) {
+            manualSyncResults.first().also { it.taken.complete(Unit) }.result
+        }
         mutableManualSyncQueued.value = true
         enqueueOneDriveManualSyncWork(appCtx)
         result.await()
@@ -501,8 +509,10 @@ object OneDriveSync {
         mutableManualSyncQueued.value = true
         try {
             val result = sync(SyncTrigger.MANUAL)
-            val taken = manualSyncResults.subscriptionCount.value > 0
-            manualSyncResults.emit(result)
+            val delivery = ManualSyncResult(result)
+            manualSyncResults.emit(delivery)
+            // Taken only once a screen confirms it: one leaving meanwhile drops the result
+            val taken = withTimeoutOrNull(RESULT_TAKEN_TIMEOUT_MILLIS) { delivery.taken.await() } != null
             return result to taken
         } finally {
             mutableManualSyncQueued.value = false
