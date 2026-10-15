@@ -33,6 +33,7 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -90,6 +92,27 @@ fun GalleryList(
 
     var isRefreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState()
+
+    // Fork: the OneDrive sync progress below the search bar changes the top padding as it shows, grows and hides. A
+    // list scrolled down scrolls by as much, so the items stay where they are; at the top it moves with the padding.
+    // Applied after composition, before the layout using the new padding
+    val topPadding = with(LocalDensity.current) { contentPadding.calculateTopPadding().roundToPx() }
+    val lastTopPadding = remember { intArrayOf(topPadding) }
+    SideEffect {
+        val shift = topPadding - lastTopPadding[0]
+        lastTopPadding[0] = topPadding
+        if (shift == 0) return@SideEffect
+        // Taken by the next measure, which may be the one running now (the padding comes from the Scaffold's)
+        if (listMode == 0) {
+            with(detailListState) {
+                if (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0) requestScrollToItem(firstVisibleItemIndex, firstVisibleItemScrollOffset + shift)
+            }
+        } else {
+            with(thumbListState) {
+                if (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0) requestScrollToItem(firstVisibleItemIndex, firstVisibleItemScrollOffset + shift)
+            }
+        }
+    }
     Box(
         modifier = modifier.pullToRefresh(
             isRefreshing = isRefreshing,

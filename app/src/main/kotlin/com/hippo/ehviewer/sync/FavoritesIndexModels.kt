@@ -3,7 +3,7 @@ package com.hippo.ehviewer.sync
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 
-/** Format version of `ehviewer/export/favorites-index.json.gz`. Readers skip a file with a higher version. */
+/** Format version of the files of the cloud favorites kept on this device. */
 const val FAVORITES_INDEX_VERSION = 1
 
 /** Number of E-Hentai cloud favorite slots. */
@@ -16,9 +16,9 @@ val ALL_CLOUD_SLOTS = (0 until CLOUD_SLOT_COUNT).toList()
 const val NO_CLOUD_SLOT = -1
 
 /**
- * `ehviewer/export/favorites-index.json.gz` in the OneDrive app folder: every local favorite and every E-Hentai cloud
- * favorite of this account, for other apps signed in to the same app folder (the Mihon fork shows which manga are
- * favorited here). Read only by other apps; EhViewer itself only reads the cloud part back, see [CloudFavorites].
+ * The favorites index, uploaded in shards (see [FavoritesManifest]) to the OneDrive app folder: every local favorite
+ * and every E-Hentai cloud favorite of this account, for other apps signed in to the same app folder (the Mihon fork
+ * shows which manga are favorited here). Read only by other apps; EhViewer itself only reads the cloud part back, see [CloudFavorites].
  *
  * A gallery that is both a local and a cloud favorite is listed once. [slotNames] are the names of the 10 cloud slots.
  */
@@ -62,7 +62,7 @@ data class IndexedGallery(
 )
 
 /**
- * The cloud favorites known on this device, kept in `files/onedrive_sync/cloud_favorites.json.gz`. E-Hentai has no
+ * The cloud favorites known on this device, kept in `files/cloud_favorites/` (see [CloudFavoritesStore]). E-Hentai has no
  * cheap way to list them, so the list is built from the favorites pages the user opens, the favorite changes made in
  * the app and a page by page refresh when the counts of E-Hentai no longer match.
  */
@@ -107,7 +107,7 @@ data class CloudFavorites(
 }
 
 /**
- * A refresh of the cloud favorites that has not finished, kept in `files/cloud_favorites_refresh.json.gz`: a refresh
+ * A refresh of the cloud favorites that has not finished, kept in `files/cloud_favorites_refresh/` (see [CheckpointStore]): a refresh
  * cut short (the app closed, no network) goes on from [slot] and [next] instead of reading every page again.
  */
 @Serializable
@@ -138,3 +138,98 @@ data class CloudRefreshCheckpoint(
      */
     val intended: Map<Long, Int> = emptyMap(),
 )
+
+/** Fork: format version of the sharded export in `ehviewer/export/favorites/`, see [FavoritesManifest]. */
+const val FAVORITES_EXPORT_VERSION = 2
+
+/**
+ * `ehviewer/export/favorites/manifest.json`: the [FavoritesIndex] of this account without its galleries, which are in
+ * the content addressed [shards] (`shard-<hash>.json.gz`, see [GidShards]). A reader downloads only the shards it does
+ * not have yet: a change of a few favorites changes a few shards.
+ */
+@Serializable
+data class FavoritesManifest(
+    @EncodeDefault
+    val version: Int = FAVORITES_EXPORT_VERSION,
+    val updatedAt: Long = 0,
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val ehUserKey: String? = null,
+    val cloudUpdatedAt: Long = 0,
+    val cloudRefreshedAt: Long = 0,
+    val slotNames: List<String> = emptyList(),
+    /** Galleries of all shards. */
+    val count: Int = 0,
+    /** By [ManifestShard.minGid]: a shard holds the gids from its min gid up to the next shard's. */
+    val shards: List<ManifestShard> = emptyList(),
+) {
+    /** Content without the write time, to tell whether a new manifest must be uploaded. */
+    fun sameContent(other: FavoritesManifest) = copy(updatedAt = 0) == other.copy(updatedAt = 0)
+}
+
+@Serializable
+data class ManifestShard(
+    /** First 16 bytes of the SHA-256 of the shard JSON before compression, in hex; names the file. */
+    val hash: String,
+    val minGid: Long,
+    val count: Int,
+    /** Size of the gzipped file. */
+    val size: Long,
+)
+
+/** A shard of the export: galleries of a gid range, sorted by gid. */
+@Serializable
+data class FavoritesShard(
+    @EncodeDefault
+    val version: Int = FAVORITES_EXPORT_VERSION,
+    val galleries: List<IndexedGallery> = emptyList(),
+)
+
+/**
+ * Fork: `files/cloud_favorites/meta.json`, the [CloudFavorites] without its galleries and titles, which are kept in
+ * shards by gid range ([CloudFavoritesPart], see [GidShards]): a change rewrites only the shards it touches.
+ */
+@Serializable
+data class CloudFavoritesMeta(
+    @EncodeDefault
+    val version: Int = FAVORITES_INDEX_VERSION,
+    val userKey: String? = null,
+    val updatedAt: Long = 0,
+    val refreshedAt: Long = 0,
+    val slotNames: List<String> = emptyList(),
+    val parts: List<StorePart> = emptyList(),
+)
+
+@Serializable
+data class StorePart(
+    val minGid: Long,
+    /** Content hash naming the file `part-<hash>.json.gz`. */
+    val hash: String,
+    /** [GidShards.Fingerprint] of the content, to skip writing a part that did not change. */
+    val fingerprint: Long,
+)
+
+/** Galleries and looked up titles of a gid range of [CloudFavorites]. */
+@Serializable
+data class CloudFavoritesPart(
+    val galleries: List<IndexedGallery> = emptyList(),
+    /** Position numbers of [galleries] in the whole list, which keeps its order, see [GidShards.orders]. */
+    val orders: List<Long> = emptyList(),
+    val japaneseTitles: Map<Long, String> = emptyMap(),
+    val defaultTitles: Map<Long, String> = emptyMap(),
+    val pandaTitles: Map<Long, String> = emptyMap(),
+)
+
+/**
+ * Fork: `files/cloud_favorites_refresh/meta.json`, a [CloudRefreshCheckpoint] without its galleries, which are appended
+ * to page files as the refresh goes on instead of rewriting all galleries read so far every few pages.
+ */
+@Serializable
+data class CheckpointMeta(
+    val checkpoint: CloudRefreshCheckpoint,
+    /** Files `pages-<n>.json.gz` holding the galleries in order. */
+    val pages: List<String> = emptyList(),
+)
+
+@Serializable
+data class CheckpointPage(val galleries: List<IndexedGallery> = emptyList())
