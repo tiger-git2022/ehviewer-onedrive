@@ -12,6 +12,7 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.client.parser.FavParserResult
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import kotlin.time.Clock
@@ -654,9 +655,8 @@ object FavoritesIndexSync {
             return version
         }
         // Fork: the manifest and the shards are listed at once, shards already there are not uploaded again
-        var listing = OneDriveClient.list(SHARDS_FOLDER)
+        var listing = adoptLatest(OneDriveClient.list(SHARDS_FOLDER))
         var remote = listing[FavoritesExportCache.MANIFEST_FILE]
-        adoptRemote(remote)
         val signedIn = Settings.hasSignedIn.value
         if (signedIn && !fromWork) {
             mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, part = StepProgress.CHECK)
@@ -720,9 +720,8 @@ object FavoritesIndexSync {
             } catch (e: OneDrivePreconditionException) {
                 if (attempt == MAX_ATTEMPTS - 1) throw e
                 // Another device wrote its index meanwhile: take its newer cloud part, then write again
-                listing = OneDriveClient.list(SHARDS_FOLDER)
+                listing = adoptLatest(OneDriveClient.list(SHARDS_FOLDER))
                 remote = listing[FavoritesExportCache.MANIFEST_FILE]
-                adoptRemote(remote)
                 index = build()
                 continue
             } finally {
@@ -794,22 +793,41 @@ object FavoritesIndexSync {
     }
 
     /**
+     * [adoptRemote] with the manifest of [listing]. Fork: when it cannot be read whole, the folder is listed again: a
+     * newer manifest is read (its upload replaced shards of the one listed), the same one is missing shards for good
+     * (deleted by hand) and nobody can read it, it is written over. Returns the listing the upload goes on with.
+     */
+    private suspend fun adoptLatest(listing: Map<String, RemoteItem>): Map<String, RemoteItem> {
+        val listed = listing[FavoritesExportCache.MANIFEST_FILE]
+        if (adoptRemote(listed)) return listing
+        val again = OneDriveClient.list(SHARDS_FOLDER)
+        val now = again[FavoritesExportCache.MANIFEST_FILE]
+        if (now != null && now.eTag == listed?.eTag) {
+            logcat(TAG) { "Index on OneDrive incomplete, written again" }
+            return again
+        }
+        // Never written over with what this device knows while another device is writing
+        if (!adoptRemote(now)) throw IOException("The favorites index on OneDrive changed while it was read")
+        return again
+    }
+
+    /**
      * Takes the cloud part of the index another device uploaded when it is newer than ours, and the titles it looked
      * up in any case: a device that already looked them up spares this one the work. Fork: only the shards not in the
-     * cache are downloaded; a shard gone meanwhile (the index was written again) leaves it to the next sync.
+     * cache are downloaded. False when it could not be read whole: gone meanwhile, a shard missing, invalid.
      */
-    private suspend fun adoptRemote(remote: RemoteItem?) {
-        if (remote == null || remote.eTag == OneDriveSyncState.favoritesIndexETag.value) return
+    private suspend fun adoptRemote(remote: RemoteItem?): Boolean {
+        if (remote == null || remote.eTag == OneDriveSyncState.favoritesIndexETag.value) return true
         val cache = exportCache
         val download = File(syncDir, "favorites_manifest.download")
         try {
-            if (!OneDriveClient.download(MANIFEST_PATH, download)) return
+            if (!OneDriveClient.download(MANIFEST_PATH, download)) return false
             val manifest = json.decodeFromString(FavoritesManifest.serializer(), download.readText())
             if (manifest.version > FAVORITES_EXPORT_VERSION) throw SyncVersionException(manifest.version)
             // The hashes name files here: a manifest with anything else is not taken
             if (!manifest.shards.all { FavoritesExportCache.isValidHash(it.hash) }) {
-                logcat(TAG) { "Index with invalid shard names ignored" }
-                return
+                logcat(TAG) { "Index with invalid shard names" }
+                return false
             }
             for (shard in manifest.shards) {
                 val file = cache.shardFile(shard.hash)
@@ -817,7 +835,8 @@ object FavoritesIndexSync {
                 val temp = File(file.parentFile, "${file.name}.download")
                 if (!OneDriveClient.download("$SHARDS_FOLDER/${file.name}", temp)) {
                     temp.delete()
-                    return
+                    logcat(TAG) { "Index shard ${shard.hash} missing" }
+                    return false
                 }
                 if (!temp.renameTo(file)) {
                     temp.copyTo(file, overwrite = true)
@@ -828,6 +847,7 @@ object FavoritesIndexSync {
             update { cloud -> FavoritesIndexMerger.withRemoteTitles(FavoritesIndexMerger.adopt(cloud, index), index) }
             // Its shard ranges are kept by the next write
             withContext(Dispatchers.IO) { cache.saveManifest(manifest) }
+            return true
         } finally {
             download.delete()
         }

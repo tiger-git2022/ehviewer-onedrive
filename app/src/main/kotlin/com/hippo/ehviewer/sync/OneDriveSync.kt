@@ -436,6 +436,8 @@ object OneDriveSync {
             it[OneDriveSyncState.favoritesIndexETag] = null
             it[OneDriveSyncState.favoritesIndexRemoved] = false
         }
+        // Fork: the next account is unknown, its export of format 1 too
+        FavoritesIndexSync.onCloudStateReset()
     }
 
     /** A different account has different cloud data: forget the baseline, keep the device id. */
