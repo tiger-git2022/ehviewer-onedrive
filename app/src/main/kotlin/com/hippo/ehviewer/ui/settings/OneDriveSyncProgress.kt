@@ -113,14 +113,20 @@ fun SyncProgressLineText(line: SyncProgressLine, style: TextStyle, color: Color,
         val fits = remember(line.full, style, maxWidth) {
             measurer.measure(text = line.full, style = style, maxLines = 1, softWrap = false).size.width <= maxWidth
         }
+        // Digits of one width: the numbers do not jump while they count
+        val numberStyle = style.copy(fontFeatureSettings = "tnum")
+        // At a large font scale the count may not fit beside the step: the percent alone then
+        val numbers = remember(line.numbers, numberStyle, maxWidth) {
+            val width = measurer.measure(text = line.numbers, style = numberStyle, maxLines = 1, softWrap = false).size.width
+            if (width > maxWidth * 0.6f) line.numbers.substringAfterLast("  ") else line.numbers
+        }
         if (fits) {
             Text(text = line.full, style = style, color = color, maxLines = 1)
         } else {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = line.label, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (line.numbers.isNotEmpty()) {
-                    // Digits of one width: the numbers do not jump while they count
-                    Text(text = line.numbers, style = style.copy(fontFeatureSettings = "tnum"), color = color, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 12.dp))
+                if (numbers.isNotEmpty()) {
+                    Text(text = numbers, style = numberStyle, color = color, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 12.dp))
                 }
             }
         }
