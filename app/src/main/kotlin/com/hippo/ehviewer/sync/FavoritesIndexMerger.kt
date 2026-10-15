@@ -241,6 +241,9 @@ object FavoritesIndexMerger {
             userKey = cloud.userKey,
             updatedAt = remote.cloudUpdatedAt,
             refreshedAt = maxOf(cloud.refreshedAt, remote.cloudRefreshedAt),
+            // Fork: what this device read itself
+            fullReadAt = cloud.fullReadAt,
+            fullReadCount = cloud.fullReadCount,
             slotNames = remote.slotNames.takeIf { it.size == CLOUD_SLOT_COUNT } ?: cloud.slotNames,
             galleries = galleries,
             japaneseTitles = cloud.japaneseTitles + remoteTitles(remote),

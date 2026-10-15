@@ -227,6 +227,12 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                 summary = when {
                                     working -> workText
                                     statusText != null -> statusText
+                                    // Fork: read completely, and when
+                                    (status?.fullReadAt ?: 0L) > 0L -> stringResource(
+                                        id = R.string.onedrive_sync_cloud_favorites_last_full,
+                                        dateTime(status!!.fullReadAt),
+                                        status!!.fullReadCount,
+                                    )
                                     else -> stringResource(id = R.string.onedrive_sync_favorites_index_refresh_summary)
                                 },
                             ) {
@@ -243,6 +249,30 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                             snackbar(string(R.string.onedrive_sync_cloud_favorites_resumed))
                                         }
                                         else -> {
+                                            // Fork: read before: reading every page again takes long, asked first. Asked now,
+                                            // the status shown may not be loaded yet
+                                            val done = FavoritesIndexSync.status().takeIf { it.readBefore }
+                                            if (done != null) {
+                                                awaitConfirmationOrCancel(
+                                                    confirmText = R.string.onedrive_sync_cloud_favorites_reread,
+                                                    title = R.string.onedrive_sync_favorites_index_refresh,
+                                                ) {
+                                                    val count = done.fullReadCount
+                                                    val last = if (done.fullReadAt > 0L) {
+                                                        stringResource(id = R.string.onedrive_sync_cloud_favorites_reread_last, dateTime(done.fullReadAt), count)
+                                                    } else {
+                                                        null
+                                                    }
+                                                    // About a second a page, 25 to 50 favorites a page as the account shows them
+                                                    val minutes = if (count > 0) {
+                                                        stringResource(id = R.string.onedrive_sync_cloud_favorites_reread_minutes, (count / 50 + 59) / 60 + 1, (count / 25 + 59) / 60 + 1)
+                                                    } else {
+                                                        null
+                                                    }
+                                                    val about = stringResource(id = R.string.onedrive_sync_cloud_favorites_reread_confirm)
+                                                    Text(text = listOfNotNull(last, about, minutes).joinToString(PARAGRAPH))
+                                                }
+                                            }
                                             FavoritesIndexSync.refreshInBackground()
                                             snackbar(string(R.string.onedrive_sync_favorites_index_refresh_started))
                                         }
@@ -322,6 +352,16 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
             OneDriveSyncNote()
         }
     }
+}
+
+private const val PARAGRAPH = "\n\n"
+
+/** Fork: a date and time in the format of the system settings. */
+@Composable
+private fun dateTime(time: Long): String {
+    val context = LocalContext.current
+    val date = Date(time)
+    return "${DateFormat.getDateFormat(context).format(date)} ${DateFormat.getTimeFormat(context).format(date)}"
 }
 
 /** Where an unfinished read of the cloud favorites stands while the work does not run, and why it stopped. */

@@ -39,6 +39,8 @@ class CloudFavoritesStore(private val dir: File, private val json: Json) {
             userKey = meta.userKey,
             updatedAt = meta.updatedAt,
             refreshedAt = meta.refreshedAt,
+            fullReadAt = meta.fullReadAt,
+            fullReadCount = meta.fullReadCount,
             slotNames = meta.slotNames,
             galleries = ordered.map { it.second },
             japaneseTitles = japaneseTitles,
@@ -82,6 +84,8 @@ class CloudFavoritesStore(private val dir: File, private val json: Json) {
             userKey = cloud.userKey,
             updatedAt = cloud.updatedAt,
             refreshedAt = cloud.refreshedAt,
+            fullReadAt = cloud.fullReadAt,
+            fullReadCount = cloud.fullReadCount,
             slotNames = cloud.slotNames,
             parts = written,
         )
