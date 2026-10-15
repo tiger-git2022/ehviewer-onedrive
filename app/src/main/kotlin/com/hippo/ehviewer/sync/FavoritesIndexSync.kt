@@ -12,10 +12,12 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.client.parser.FavParserResult
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,12 +34,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
-import kotlinx.serialization.json.encodeToStream
 import splitties.init.appCtx
 
 /**
- * Keeps the list of E-Hentai cloud favorites and writes `ehviewer/export/favorites-index.json.gz` (see
- * [FavoritesIndex]) at the end of every OneDrive sync.
+ * Keeps the list of E-Hentai cloud favorites and writes the sharded export `ehviewer/export/favorites/` (see
+ * [FavoritesManifest]) at the end of every OneDrive sync.
  *
  * The cloud list costs few requests: favorite changes made in the app and the favorites pages the user opens update
  * it for free, and a sync checks the counts of the 10 slots with one page request (at most once an hour). When they
@@ -48,9 +49,15 @@ import splitties.init.appCtx
 object FavoritesIndexSync {
     private const val TAG = "FavoritesIndex"
     private const val EXPORT_FOLDER = "ehviewer/export"
-    private const val INDEX_FILE = "favorites-index.json.gz"
-    const val INDEX_PATH = "$EXPORT_FOLDER/$INDEX_FILE"
+
+    // Fork: the single file of format 1, replaced by the shards of SHARDS_FOLDER and deleted
+    private const val LEGACY_INDEX_PATH = "$EXPORT_FOLDER/favorites-index.json.gz"
+    private const val SHARDS_FOLDER = "$EXPORT_FOLDER/favorites"
+    private const val MANIFEST_PATH = "$SHARDS_FOLDER/${FavoritesExportCache.MANIFEST_FILE}"
     private const val MAX_ATTEMPTS = 3
+
+    /** A shard no manifest lists is deleted once it is this old, see [syncIndex]. */
+    private val SHARD_GRACE = 1.hours
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
     private const val PAGE_INTERVAL_MILLIS = 1_000L
 
@@ -87,11 +94,19 @@ object FavoritesIndexSync {
         explicitNulls = false
     }
 
-    // Outside files/onedrive_sync: the cloud favorites belong to the E-Hentai account, not to the OneDrive one
-    private val storeFile get() = File(appCtx.filesDir, "cloud_favorites.json.gz")
+    // Outside files/onedrive_sync: the cloud favorites belong to the E-Hentai account, not to the OneDrive one.
+    // Fork: kept in shards, see CloudFavoritesStore; the single files of before are read once and deleted
+    private val legacyStoreFile get() = File(appCtx.filesDir, "cloud_favorites.json.gz")
+    private val store by lazy { CloudFavoritesStore(File(appCtx.filesDir, "cloud_favorites"), json) }
     private val syncDir get() = File(appCtx.filesDir, "onedrive_sync")
-    private val lastIndexFile get() = File(syncDir, "favorites_index.json.gz")
-    private val checkpointFile get() = File(appCtx.filesDir, "cloud_favorites_refresh.json.gz")
+    private val legacyIndexFile get() = File(syncDir, "favorites_index.json.gz")
+    private val exportCache get() = FavoritesExportCache(File(syncDir, "favorites_export"), json)
+    private val legacyCheckpointFile get() = File(appCtx.filesDir, "cloud_favorites_refresh.json.gz")
+    private val checkpointStore by lazy { CheckpointStore(File(appCtx.filesDir, "cloud_favorites_refresh"), json) }
+
+    /** The single file of format 1 was deleted from the OneDrive account of this process, see [onCloudStateReset]. */
+    @Volatile
+    private var legacyIndexRemoved = false
 
     @Volatile
     private var cache: CloudFavorites? = null
@@ -104,7 +119,7 @@ object FavoritesIndexSync {
     @Volatile
     private var lastCheckUser: String? = null
 
-    /** The unfinished refresh, see [CloudRefreshCheckpoint]. Guarded by [mutex], read once from [checkpointFile]. */
+    /** The unfinished refresh, see [CloudRefreshCheckpoint]. Guarded by [mutex], read once from [checkpointStore]. */
     private var checkpoint: CloudRefreshCheckpoint? = null
     private var checkpointLoaded = false
 
@@ -132,22 +147,24 @@ object FavoritesIndexSync {
 
     private fun <T> readGzip(file: File, serializer: KSerializer<T>): T = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(serializer, it) }
 
-    private fun <T> writeGzip(file: File, serializer: KSerializer<T>, value: T) {
-        file.parentFile?.mkdirs()
-        val temp = File(file.parentFile, "${file.name}.tmp")
-        GZIPOutputStream(temp.outputStream().buffered()).use { json.encodeToStream(serializer, value, it) }
-        if (!temp.renameTo(file)) {
-            temp.copyTo(file, overwrite = true)
-            temp.delete()
-        }
-    }
-
-    private fun loadLocked(): CloudFavorites = cache ?: runCatching { readGzip(storeFile, CloudFavorites.serializer()) }
-        .onFailure { if (storeFile.exists()) logcat(TAG, it) }
-        .getOrNull()
-        ?.takeIf { it.version <= FAVORITES_INDEX_VERSION }
+    private fun loadLocked(): CloudFavorites = cache ?: (runCatching { store.load() }.onFailure { logcat(TAG, it) }.getOrNull() ?: loadLegacyStoreLocked())
         .let { it ?: CloudFavorites() }
         .also { cache = it }
+
+    /** The single file of before the shards: read once, saved in shards and deleted. */
+    private fun loadLegacyStoreLocked(): CloudFavorites? {
+        if (!legacyStoreFile.exists()) return null
+        val cloud = runCatching { readGzip(legacyStoreFile, CloudFavorites.serializer()) }
+            .onFailure { logcat(TAG, it) }
+            .getOrNull()
+            ?.takeIf { it.version <= FAVORITES_INDEX_VERSION }
+            ?: return null
+        runCatching {
+            store.save(cloud)
+            legacyStoreFile.delete()
+        }.onFailure { logcat(TAG, it) }
+        return cloud
+    }
 
     /** Hash of the E-Hentai member id, null when signed out. The id itself is not written anywhere. */
     private fun userKey(): String? = EhCookieStore.getUserId()?.takeIf { it.isNotBlank() }?.let { id ->
@@ -196,18 +213,28 @@ object FavoritesIndexSync {
     private fun loadCheckpointLocked(): CloudRefreshCheckpoint? {
         if (!checkpointLoaded) {
             checkpointLoaded = true
-            checkpoint = runCatching { readGzip(checkpointFile, CloudRefreshCheckpoint.serializer()) }
-                .onFailure { if (checkpointFile.exists()) logcat(TAG, it) }
+            checkpoint = runCatching { checkpointStore.load() ?: loadLegacyCheckpointLocked() }
+                .onFailure { logcat(TAG, it) }
                 .getOrNull()
                 ?.takeIf { it.version <= FAVORITES_INDEX_VERSION }
         }
         return checkpoint
     }
 
+    /** The single file of before the page files: read once, saved again and deleted. */
+    private fun loadLegacyCheckpointLocked(): CloudRefreshCheckpoint? {
+        if (!legacyCheckpointFile.exists()) return null
+        val old = runCatching { readGzip(legacyCheckpointFile, CloudRefreshCheckpoint.serializer()) }.onFailure { logcat(TAG, it) }.getOrNull()
+        checkpointStore.save(old)
+        legacyCheckpointFile.delete()
+        return old
+    }
+
     private fun saveCheckpointLocked(new: CloudRefreshCheckpoint?) {
         checkpoint = new
         checkpointLoaded = true
-        if (new == null) checkpointFile.delete() else writeGzip(checkpointFile, CloudRefreshCheckpoint.serializer(), new)
+        // Fork: only the galleries read since the last save are written, see CheckpointStore
+        checkpointStore.save(new)
     }
 
     private fun CloudRefreshCheckpoint.usableFor(user: String?, now: Long) = userKey == user && now - startedAt in 0..CHECKPOINT_MAX_AGE_MILLIS
@@ -220,7 +247,8 @@ object FavoritesIndexSync {
     private fun saveLocked(new: CloudFavorites): Boolean {
         if (new == loadLocked()) return false
         cache = new
-        writeGzip(storeFile, CloudFavorites.serializer(), new)
+        // Fork: only the shards the change touches are written, see CloudFavoritesStore
+        store.save(new)
         AutoDownload.onCloudFavoritesSaved(new)
         return true
     }
@@ -626,8 +654,9 @@ object FavoritesIndexSync {
             removeExport()
             return version
         }
-        var remote = OneDriveClient.list(EXPORT_FOLDER)[INDEX_FILE]
-        adoptRemote(remote)
+        // Fork: the manifest and the shards are listed at once, shards already there are not uploaded again
+        var listing = adoptLatest(OneDriveClient.list(SHARDS_FOLDER))
+        var remote = listing[FavoritesExportCache.MANIFEST_FILE]
         val signedIn = Settings.hasSignedIn.value
         if (signedIn && !fromWork) {
             mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, part = StepProgress.CHECK)
@@ -661,37 +690,87 @@ object FavoritesIndexSync {
         }
 
         mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.UPLOAD)
+        val cache = exportCache
         for (attempt in 0 until MAX_ATTEMPTS) {
-            val last = runCatching { readGzip(lastIndexFile, FavoritesIndex.serializer()) }.getOrNull()
+            val last = withContext(Dispatchers.IO) { cache.manifest() }
+            val built = index
+            val manifest = withContext(Dispatchers.IO) { cache.build(built) }
             val storedETag = OneDriveSyncState.favoritesIndexETag.value
-            if (remote != null && remote.eTag == storedETag && last != null && last.sameContent(index)) {
+            val uploaded = listing.keys.mapNotNullTo(HashSet()) { FavoritesExportCache.hashOf(it) }
+            if (remote != null && remote.eTag == storedETag && last != null && last.sameContent(manifest) && manifest.shards.all { it.hash in uploaded }) {
                 logcat(TAG) { "Index unchanged" }
+                removeLegacyIndex()
                 return version
             }
-            val output = File(syncDir, "favorites_index.upload")
-            writeGzip(output, FavoritesIndex.serializer(), index)
+            // Shards first: whoever reads the new manifest finds all of its shards. A shard is named by its content, one
+            // already there (written by another device too) is the same file
+            val missing = manifest.shards.filter { it.hash !in uploaded }
+            for ((i, shard) in missing.withIndex()) {
+                mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, i, missing.size, StepProgress.UPLOAD)
+                try {
+                    OneDriveClient.upload("$SHARDS_FOLDER/${GidShards.fileName(FavoritesExportCache.SHARD_PREFIX, shard.hash)}", cache.shardFile(shard.hash), eTag = null)
+                } catch (_: OneDrivePreconditionException) {
+                    // Uploaded meanwhile
+                }
+            }
+            val output = File(syncDir, "favorites_manifest.upload")
+            output.writeText(json.encodeToString(FavoritesManifest.serializer(), manifest))
             val eTag = try {
-                OneDriveClient.upload(INDEX_PATH, output, remote?.eTag)
+                OneDriveClient.upload(MANIFEST_PATH, output, remote?.eTag)
             } catch (e: OneDrivePreconditionException) {
                 if (attempt == MAX_ATTEMPTS - 1) throw e
                 // Another device wrote its index meanwhile: take its newer cloud part, then write again
-                remote = OneDriveClient.list(EXPORT_FOLDER)[INDEX_FILE]
-                adoptRemote(remote)
+                listing = adoptLatest(OneDriveClient.list(SHARDS_FOLDER))
+                remote = listing[FavoritesExportCache.MANIFEST_FILE]
                 index = build()
                 continue
-            }
-            if (!output.renameTo(lastIndexFile)) {
-                output.copyTo(lastIndexFile, overwrite = true)
+            } finally {
                 output.delete()
             }
+            withContext(Dispatchers.IO) { cache.saveManifest(manifest) }
             OneDriveSyncState.withMutableSnapshot {
                 it[OneDriveSyncState.favoritesIndexETag] = eTag
                 it[OneDriveSyncState.favoritesIndexRemoved] = false
             }
-            logcat(TAG) { "Index uploaded: ${index.galleries.size} galleries" }
+            // Shards neither this manifest nor the one it replaced lists: a reader of that one may still be downloading
+            // its shards, they go with the next upload. Only shards unchanged for a while: another device syncing at
+            // the same time may have just uploaded one for its manifest to come. A shard a manifest lists that is gone
+            // all the same is uploaded again by the next sync (the check above sees it missing)
+            val keep = manifest.shards.mapTo(HashSet()) { it.hash }
+            last?.shards?.mapTo(keep) { it.hash }
+            val oldBefore = Clock.System.now() - SHARD_GRACE
+            listing.values.forEach { item ->
+                val hash = FavoritesExportCache.hashOf(item.name) ?: return@forEach
+                val modified = item.lastModified?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return@forEach
+                if (hash !in keep && modified < oldBefore) {
+                    runCatching { OneDriveClient.delete("$SHARDS_FOLDER/${item.name}") }.onFailure { logcat(TAG, it) }
+                }
+            }
+            withContext(Dispatchers.IO) { cache.cleanUp(manifest.shards.mapTo(HashSet()) { it.hash }) }
+            // Only now: until the manifest is up, readers of format 1 keep the single file
+            removeLegacyIndex()
+            logcat(TAG) { "Index uploaded: ${manifest.count} galleries, ${missing.size} of ${manifest.shards.size} shards" }
             return version
         }
         throw OneDrivePreconditionException()
+    }
+
+    /**
+     * The single file of format 1 is replaced by the shards: deleted once per account and run of the app (gone, it costs
+     * nothing). A failure leaves it to the next upload, the shards are up already.
+     */
+    private suspend fun removeLegacyIndex() {
+        if (legacyIndexRemoved) return
+        try {
+            OneDriveClient.delete(LEGACY_INDEX_PATH)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+            return
+        }
+        withContext(Dispatchers.IO) { legacyIndexFile.delete() }
+        legacyIndexRemoved = true
     }
 
     /**
@@ -700,8 +779,12 @@ object FavoritesIndexSync {
      */
     private suspend fun removeExport() {
         if (OneDriveSyncState.favoritesIndexRemoved.value) return
-        OneDriveClient.delete(INDEX_PATH)
-        lastIndexFile.delete()
+        OneDriveClient.delete(SHARDS_FOLDER)
+        OneDriveClient.delete(LEGACY_INDEX_PATH)
+        withContext(Dispatchers.IO) {
+            exportCache.delete()
+            legacyIndexFile.delete()
+        }
         OneDriveSyncState.withMutableSnapshot {
             it[OneDriveSyncState.favoritesIndexETag] = null
             it[OneDriveSyncState.favoritesIndexRemoved] = true
@@ -710,17 +793,61 @@ object FavoritesIndexSync {
     }
 
     /**
-     * Takes the cloud part of the index another device uploaded when it is newer than ours, and the titles it looked
-     * up in any case: a device that already looked them up spares this one the work.
+     * [adoptRemote] with the manifest of [listing]. Fork: when it cannot be read whole, the folder is listed again: a
+     * newer manifest is read (its upload replaced shards of the one listed), the same one is missing shards for good
+     * (deleted by hand) and nobody can read it, it is written over. Returns the listing the upload goes on with.
      */
-    private suspend fun adoptRemote(remote: RemoteItem?) {
-        if (remote == null || remote.eTag == OneDriveSyncState.favoritesIndexETag.value) return
-        val download = File(syncDir, "favorites_index.download")
+    private suspend fun adoptLatest(listing: Map<String, RemoteItem>): Map<String, RemoteItem> {
+        val listed = listing[FavoritesExportCache.MANIFEST_FILE]
+        if (adoptRemote(listed)) return listing
+        val again = OneDriveClient.list(SHARDS_FOLDER)
+        val now = again[FavoritesExportCache.MANIFEST_FILE]
+        if (now != null && now.eTag == listed?.eTag) {
+            logcat(TAG) { "Index on OneDrive incomplete, written again" }
+            return again
+        }
+        // Never written over with what this device knows while another device is writing
+        if (!adoptRemote(now)) throw IOException("The favorites index on OneDrive changed while it was read")
+        return again
+    }
+
+    /**
+     * Takes the cloud part of the index another device uploaded when it is newer than ours, and the titles it looked
+     * up in any case: a device that already looked them up spares this one the work. Fork: only the shards not in the
+     * cache are downloaded. False when it could not be read whole: gone meanwhile, a shard missing, invalid.
+     */
+    private suspend fun adoptRemote(remote: RemoteItem?): Boolean {
+        if (remote == null || remote.eTag == OneDriveSyncState.favoritesIndexETag.value) return true
+        val cache = exportCache
+        val download = File(syncDir, "favorites_manifest.download")
         try {
-            if (!OneDriveClient.download(INDEX_PATH, download)) return
-            val index = readGzip(download, FavoritesIndex.serializer())
-            OneDriveSyncMerger.checkVersion(index.version)
+            if (!OneDriveClient.download(MANIFEST_PATH, download)) return false
+            val manifest = json.decodeFromString(FavoritesManifest.serializer(), download.readText())
+            if (manifest.version > FAVORITES_EXPORT_VERSION) throw SyncVersionException(manifest.version)
+            // The hashes name files here: a manifest with anything else is not taken
+            if (!manifest.shards.all { FavoritesExportCache.isValidHash(it.hash) }) {
+                logcat(TAG) { "Index with invalid shard names" }
+                return false
+            }
+            for (shard in manifest.shards) {
+                val file = cache.shardFile(shard.hash)
+                if (file.exists()) continue
+                val temp = File(file.parentFile, "${file.name}.download")
+                if (!OneDriveClient.download("$SHARDS_FOLDER/${file.name}", temp)) {
+                    temp.delete()
+                    logcat(TAG) { "Index shard ${shard.hash} missing" }
+                    return false
+                }
+                if (!temp.renameTo(file)) {
+                    temp.copyTo(file, overwrite = true)
+                    temp.delete()
+                }
+            }
+            val index = withContext(Dispatchers.IO) { cache.index(manifest) }
             update { cloud -> FavoritesIndexMerger.withRemoteTitles(FavoritesIndexMerger.adopt(cloud, index), index) }
+            // Its shard ranges are kept by the next write
+            withContext(Dispatchers.IO) { cache.saveManifest(manifest) }
+            return true
         } finally {
             download.delete()
         }
@@ -741,6 +868,8 @@ object FavoritesIndexSync {
     fun onCloudStateReset() {
         lastCheck = 0L
         lastCheckUser = null
+        // The other account may hold a single file of format 1 too
+        legacyIndexRemoved = false
     }
 
     // endregion

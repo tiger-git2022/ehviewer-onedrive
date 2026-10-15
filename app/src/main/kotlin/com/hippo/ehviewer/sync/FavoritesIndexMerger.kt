@@ -228,10 +228,13 @@ object FavoritesIndexMerger {
         // Another E-Hentai account, or none
         if (remote.ehUserKey == null || remote.ehUserKey != cloud.userKey) return cloud
         val old = cloud.galleries.associateBy { it.gid }
+        // Fork: the shards list galleries by gid. Known ones keep their place in the list, new ones follow, the
+        // newest galleries first, as new favorites are added at the end
+        val position = cloud.galleries.withIndex().associate { (i, gallery) -> gallery.gid to i }
         val galleries = remote.galleries.filter { it.slot in 0 until CLOUD_SLOT_COUNT }.map { new ->
             val gallery = new.copy(local = false)
             old[gallery.gid]?.updatedWith(gallery) ?: gallery
-        }
+        }.sortedWith(compareBy({ position[it.gid] ?: Int.MAX_VALUE }, { -it.gid }))
         return CloudFavorites(
             userKey = cloud.userKey,
             updatedAt = remote.cloudUpdatedAt,
