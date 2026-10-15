@@ -680,7 +680,15 @@
     <string name="download_size_estimated">约 %s</string>
     <string name="onedrive_sync_content">同步内容</string>
     <string name="onedrive_sync_category_settings">设置</string>
-    <string name="onedrive_sync_category_settings_summary">下载目录、登录 Cookie 和压缩包密码永不同步</string>
+    <string name="onedrive_sync_category_settings_summary">每台设备保存自己的设置，别的设备的设置只有手动恢复时才会套用；下载目录、登录 Cookie 和压缩包密码永不上传</string>
+    <string name="onedrive_sync_restore_settings_failed">恢复设置失败：%1$s</string>
+    <string name="onedrive_sync_settings_restored">已恢复 %1$d 项设置</string>
+    <string name="onedrive_sync_restore_settings_none">还没有其他设备上传过设置，在那台设备上手动同步一次就会上传。</string>
+    <string name="onedrive_sync_restore_settings_button">恢复</string>
+    <string name="onedrive_sync_restore_settings_confirm">用「%1$s」的设置替换这台设备的设置？下载目录、登录和压缩包密码保持不变。</string>
+    <string name="onedrive_sync_restore_settings_item">%1$s（%2$s）</string>
+    <string name="onedrive_sync_restore_settings_summary">把另一台设备上传的设置套用到这台设备</string>
+    <string name="onedrive_sync_restore_settings">从其他设备恢复设置</string>
     <string name="onedrive_sync_category_favorites">本地收藏</string>
     <string name="onedrive_sync_category_history">历史记录</string>
     <string name="onedrive_sync_category_progress">阅读进度</string>

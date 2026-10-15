@@ -108,6 +108,9 @@ object OneDriveSync {
     private const val ROOT_FOLDER = "ehviewer"
     private const val SHARED_FOLDER = "$ROOT_FOLDER/v1"
     private const val DEVICES_FOLDER = "$ROOT_FOLDER/devices"
+
+    // Fork: the settings of every device, see DeviceSettings
+    private const val SETTINGS_FOLDER = "$ROOT_FOLDER/settings"
     private const val DEVICE_FILE_SUFFIX = ".json.gz"
     private const val MAX_ATTEMPTS = 4 // First try and 3 retries after a precondition failure
     private const val DEBOUNCE_MILLIS = 60_000L
@@ -142,6 +145,7 @@ object OneDriveSync {
     private val cacheDir get() = File(syncDir, "cache")
     private val deviceCacheDir get() = File(syncDir, "devices")
     private val ownDeviceCache get() = File(syncDir, "own_device.json.gz")
+    private val ownSettingsCache get() = File(syncDir, "own_settings.json.gz")
 
     /** Marks writes done by the sync itself, they must not count as local changes. */
     private class SyncWrite : AbstractCoroutineContextElement(SyncWrite) {
@@ -591,7 +595,8 @@ object OneDriveSync {
         val listing = OneDriveClient.list(SHARED_FOLDER)
         val results = sections.mapIndexed { index, section ->
             mutableProgress.value = SyncRunProgress(categoryTitle(section.category), index + 2, steps)
-            syncSection(section, listing[section.category.fileName], deviceId)
+            // Fork: settings are per device, uploaded to its own file and never merged
+            if (section === SettingsSection) uploadOwnSettings(deviceId) else syncSection(section, listing[section.category.fileName], deviceId)
         }
         var imported = 0
         val devicesError = if (manual) {
@@ -740,6 +745,86 @@ object OneDriveSync {
     private fun <T> writeSection(file: File, serializer: KSerializer<T>, value: SectionFile<T>) {
         file.parentFile?.mkdirs()
         GZIPOutputStream(file.outputStream().buffered()).use { json.encodeToStream(SectionFile.serializer(serializer), value, it) }
+    }
+
+    /**
+     * Fork: uploads the settings of this device to its own file when they changed since the last upload. Nothing of
+     * other devices is applied: they are restored by the user, see [restoreSettings].
+     */
+    private suspend fun uploadOwnSettings(deviceId: String): CategoryResult {
+        val category = SyncCategory.SETTINGS
+        val version = dirtyVersions.getValue(category).get()
+        phase(R.string.onedrive_sync_phase_read_local, StepProgress.READ_LOCAL)
+        val own = DeviceSettings(deviceId = deviceId, deviceName = deviceName, updatedAt = now(), settings = SettingsSection.collect(null, 0))
+        val cached = runCatching { readDeviceSettings(ownSettingsCache) }.getOrNull()
+        val uploaded = OneDriveSyncState.eTag(category).value != null
+        val action = if (uploaded && cached?.copy(updatedAt = 0) == own.copy(updatedAt = 0)) {
+            SyncAction.SKIPPED
+        } else {
+            phase(R.string.onedrive_sync_phase_upload, StepProgress.UPLOAD_SECTION)
+            val name = "$deviceId$DEVICE_FILE_SUFFIX"
+            val path = "$SETTINGS_FOLDER/$name"
+            val output = File(syncDir, "own_settings.upload")
+            writeDeviceSettings(output, own)
+            // Only this device writes its file: on a conflict take the current ETag and overwrite
+            val eTag = try {
+                OneDriveClient.upload(path, output, OneDriveClient.list(SETTINGS_FOLDER)[name]?.eTag)
+            } catch (_: OneDrivePreconditionException) {
+                OneDriveClient.upload(path, output, OneDriveClient.list(SETTINGS_FOLDER)[name]?.eTag)
+            }
+            if (!output.renameTo(ownSettingsCache)) {
+                output.copyTo(ownSettingsCache, overwrite = true)
+                output.delete()
+            }
+            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.eTag(category)] = eTag ?: "" }
+            SyncAction.UPLOADED
+        }
+        if (dirtyVersions.getValue(category).get() == version) {
+            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.dirty(category)] = false }
+            changedAt.remove(category)
+        }
+        logcat(TAG) { "$category: ${if (action == SyncAction.UPLOADED) "uploaded" else "unchanged"} (${own.settings.size} settings)" }
+        return CategoryResult(category, action, SyncCounts())
+    }
+
+    /** Fork: the settings other devices uploaded, newest first. */
+    suspend fun listSettingsBackups(): List<DeviceSettings> = withContext(Dispatchers.IO) {
+        val ownId = ensureDeviceId()
+        OneDriveClient.list(SETTINGS_FOLDER).values
+            .filter { it.name.endsWith(DEVICE_FILE_SUFFIX) && it.name != "$ownId$DEVICE_FILE_SUFFIX" }
+            .mapNotNull { item ->
+                val download = File(syncDir, "settings_${item.name}")
+                runCatching {
+                    if (!OneDriveClient.download("$SETTINGS_FOLDER/${item.name}", download)) return@runCatching null
+                    readDeviceSettings(download)
+                }.onFailure { logcat(TAG, it) }.getOrNull().also { download.delete() }
+            }
+            .sortedByDescending { it.updatedAt }
+    }
+
+    /**
+     * Fork: applies the settings of another device to this one, except those never synced (download location, account,
+     * secrets). Returns how many changed. The next manual sync uploads them as this device's own.
+     */
+    suspend fun restoreSettings(backup: DeviceSettings): Int = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val local = SettingsSection.collect(null, 0)
+            val restored = backup.settings.filterKeys { OneDriveSyncMerger.isSyncableSetting(it) }
+            val counts = SettingsSection.apply(local, restored)
+            markDirty(SyncCategory.SETTINGS)
+            counts.added + counts.updated + counts.removed
+        }
+    }
+
+    private fun readDeviceSettings(file: File): DeviceSettings {
+        val settings = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(DeviceSettings.serializer(), it) }
+        OneDriveSyncMerger.checkVersion(settings.version)
+        return settings
+    }
+
+    private fun writeDeviceSettings(file: File, settings: DeviceSettings) {
+        file.parentFile?.mkdirs()
+        GZIPOutputStream(file.outputStream().buffered()).use { json.encodeToStream(DeviceSettings.serializer(), settings, it) }
     }
 
     private fun readDevice(file: File): DeviceDownloads {

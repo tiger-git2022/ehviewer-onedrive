@@ -46,6 +46,7 @@ import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitInputText
 import com.hippo.ehviewer.ui.tools.awaitResult
+import com.hippo.ehviewer.ui.tools.awaitSelectItem
 import com.hippo.ehviewer.util.ReadableTime
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -178,6 +179,37 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         summary = stringResource(id = R.string.onedrive_sync_category_settings_summary) + "\n" + stringResource(id = R.string.onedrive_sync_manual_only),
                         state = OneDriveSyncState.syncSettings.asMutableState(),
                     )
+                    // Fork: settings are per device, another device's are applied only from here
+                    Preference(
+                        title = stringResource(id = R.string.onedrive_sync_restore_settings),
+                        summary = stringResource(id = R.string.onedrive_sync_restore_settings_summary),
+                    ) {
+                        launch {
+                            val backups = runCatching { OneDriveSync.listSettingsBackups() }.getOrElse { e ->
+                                snackbar(string(R.string.onedrive_sync_restore_settings_failed, e.message ?: e.toString()))
+                                return@launch
+                            }
+                            if (backups.isEmpty()) {
+                                snackbar(string(R.string.onedrive_sync_restore_settings_none))
+                                return@launch
+                            }
+                            val names = backups.map { it.deviceName.ifBlank { it.deviceId } }
+                            val items = backups.mapIndexed { i, backup ->
+                                val date = Date(backup.updatedAt)
+                                val time = "${DateFormat.getDateFormat(appCtx).format(date)} ${DateFormat.getTimeFormat(appCtx).format(date)}"
+                                string(R.string.onedrive_sync_restore_settings_item, names[i], time)
+                            }
+                            val index = awaitSelectItem(items, title = R.string.onedrive_sync_restore_settings)
+                            awaitConfirmationOrCancel(confirmText = R.string.onedrive_sync_restore_settings_button, title = R.string.onedrive_sync_restore_settings) {
+                                Text(text = stringResource(id = R.string.onedrive_sync_restore_settings_confirm, names[index]))
+                            }
+                            val message = runCatching { OneDriveSync.restoreSettings(backups[index]) }.fold(
+                                onSuccess = { string(R.string.onedrive_sync_settings_restored, it) },
+                                onFailure = { e -> string(R.string.onedrive_sync_restore_settings_failed, e.message ?: e.toString()) },
+                            )
+                            snackbar(message)
+                        }
+                    }
                     SwitchPreference(
                         title = stringResource(id = R.string.onedrive_sync_category_favorites),
                         state = OneDriveSyncState.syncFavorites.asMutableState(),
