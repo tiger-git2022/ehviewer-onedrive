@@ -10,6 +10,7 @@ import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
+import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.FavParserResult
 import java.io.File
 import java.io.IOException
@@ -531,6 +532,15 @@ object FavoritesIndexSync {
                 done += slot
                 continue
             }
+            if (counts.getOrElse(slot) { 0 } == 0) {
+                // Emptied on the website: no page to read
+                update(user) { cloud -> FavoritesIndexMerger.remove(cloud, known, now()) }
+                withContext(NonCancellable + Dispatchers.IO) {
+                    runCatching { segmentStore.save(stored.copy(segments = listOf(Segment()))) }.onFailure { logcat(TAG, it) }
+                }
+                done += slot
+                continue
+            }
             var otherAccount = false
             val result = SlotVerifier.verify(
                 segments = stored.segments,
@@ -541,7 +551,12 @@ object FavoritesIndexSync {
                 if (otherAccount) return@verify SlotVerifier.Page(emptyList(), null)
                 delay(PAGE_INTERVAL_MILLIS)
                 val url = FavListUrlBuilder(favCat = slot).apply { if (after != null) setIndex(after, isNext = true) }.build()
-                val page = EhEngine.getFavoritesPage(url)
+                // Nothing after the cursor (the galleries after it all removed): an empty last page
+                val page = try {
+                    EhEngine.getFavoritesPage(url)
+                } catch (_: NoHitsFoundException) {
+                    return@verify SlotVerifier.Page(emptyList(), null)
+                }
                 otherAccount = userKey() != user
                 SlotVerifier.Page(page.galleryInfoList.map { it.toIndexed(slot) }, page.next)
             }
