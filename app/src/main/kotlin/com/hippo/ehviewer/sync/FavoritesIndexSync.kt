@@ -104,6 +104,9 @@ object FavoritesIndexSync {
     private val legacyCheckpointFile get() = File(appCtx.filesDir, "cloud_favorites_refresh.json.gz")
     private val checkpointStore by lazy { CheckpointStore(File(appCtx.filesDir, "cloud_favorites_refresh"), json) }
 
+    // Fork: the pages of each slot as last read, see SlotVerifier
+    private val segmentStore by lazy { SegmentStore(File(appCtx.filesDir, "cloud_favorites_segments"), json) }
+
     /** The single file of format 1 was deleted from the OneDrive account of this process, see [onCloudStateReset]. */
     @Volatile
     private var legacyIndexRemoved = false
@@ -383,7 +386,7 @@ object FavoritesIndexSync {
         val slotNames = first.catArray
         val counts = first.countArray
         updateSettings(first)
-        val resumed = withContext(Dispatchers.IO) {
+        var resumed = withContext(Dispatchers.IO) {
             mutex.withLock {
                 val now = now()
                 val pending = loadCheckpointLocked()?.takeIf { it.userKey == user }
@@ -399,16 +402,37 @@ object FavoritesIndexSync {
                         counts = counts,
                     )
                     else -> null
-                }
+                }?.let { if (full && !it.full) it.copy(full = true) else it }
                 checkpoint?.also { if (it != going) saveCheckpointLocked(it) }
             }
         } ?: return@withLock false
+        // Fork: slots whose count changed are first checked by segments, from both ends; only those the segments
+        // cannot explain are read page by page
+        if (!resumed.full) {
+            val verified = verifySlots(user, resumed, counts)
+            if (userKey() != user) return@withLock false
+            if (verified.isNotEmpty()) {
+                val left = resumed.slots - verified
+                val saved = withContext(NonCancellable + Dispatchers.IO) {
+                    mutex.withLock {
+                        val pending = loadCheckpointLocked()
+                        if (pending == null || pending.userKey != user) return@withLock false
+                        saveCheckpointLocked(if (left.isEmpty()) null else pending.copy(slots = pending.slots - verified))
+                        true
+                    }
+                }
+                if (!saved) return@withLock false
+                if (left.isEmpty()) return@withLock true
+                resumed = resumed.copy(slots = left)
+            }
+        }
         var slot = resumed.slot
         var next = resumed.next
         var read = resumed.galleries.size
         val slots = resumed.slots.toHashSet()
         val total = resumed.slots.sumOf { counts.getOrElse(it) { 0 } }
         val pages = ArrayList<IndexedGallery>()
+        val marks = ArrayList<PageMark>()
         var pageCount = 0
         logcat(TAG) { "Cloud favorites: reading slots ${resumed.slots} from slot $slot, $read of $total read" }
         mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
@@ -425,14 +449,17 @@ object FavoritesIndexSync {
             val page = EhEngine.getFavoritesPage(url)
             if (userKey() != user) return@withLock false
             page.galleryInfoList.mapTo(pages) { it.toIndexed(readSlot) }
+            // Fork: where the page was read from, see SlotSegments
+            marks += PageMark(readSlot, cursor, page.galleryInfoList.size)
             read += page.galleryInfoList.size
             mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
             next = page.next
             if (next == null) slot++
             pageCount++
             if (pageCount % CHECKPOINT_PAGES == 0 || next == null) {
-                if (!saveRefreshPages(user, slot, next, pages)) return@withLock false
+                if (!saveRefreshPages(user, slot, next, pages, marks)) return@withLock false
                 pages.clear()
+                marks.clear()
                 onSaved()
             }
         }
@@ -443,11 +470,11 @@ object FavoritesIndexSync {
      * Saves the position of the refresh and adds the galleries of its last [pages] to the known list, so the index
      * shows them before the refresh ends. False if the refresh no longer belongs to the signed in account.
      */
-    private suspend fun saveRefreshPages(user: String?, slot: Int, next: String?, pages: List<IndexedGallery>): Boolean = withContext(NonCancellable + Dispatchers.IO) {
+    private suspend fun saveRefreshPages(user: String?, slot: Int, next: String?, pages: List<IndexedGallery>, marks: List<PageMark>): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         mutex.withLock {
             val pending = loadCheckpointLocked()
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
-            saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages))
+            saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages, marks = pending.marks + marks))
             if (saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now(), pending.intended))) {
                 markChangedLocked()
             }
@@ -463,10 +490,81 @@ object FavoritesIndexSync {
             val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
             val done = FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended, pending.slots)
             if (saveLocked(done)) markChangedLocked()
+            // Fork: the pages of the slots read, for the next change of their counts; an empty slot is one empty segment
+            val read = SlotVerifier.segmentsOf(pending.marks, pending.galleries)
+            val readBySlot = pending.galleries.groupingBy { it.slot }.eachCount()
+            pending.slots.forEach { slot ->
+                val segments = read[slot].orEmpty()
+                runCatching {
+                    when {
+                        // A refresh started by an older version has no marks: the next one records them
+                        segments.sumOf { it.gids.size } != (readBySlot[slot] ?: 0) -> segmentStore.delete(slot)
+                        segments.isEmpty() -> segmentStore.save(SlotSegments(userKey = user, slot = slot, segments = listOf(Segment())))
+                        else -> segmentStore.save(SlotSegments(userKey = user, slot = slot, segments = segments))
+                    }
+                }.onFailure { logcat(TAG, it) }
+            }
             saveCheckpointLocked(null)
             logcat(TAG) { "Cloud favorites refreshed: slots ${pending.slots}, ${pending.galleries.size} galleries" }
             true
         }
+    }
+
+    /**
+     * Fork: the slots of the refresh [checkpoint] not started yet whose changes their segments explain, see
+     * [SlotVerifier]: the changes found are saved, these slots need no reading page by page. A slot without segments
+     * (never read completely since they are kept) or whose segments no longer fit is left to the refresh.
+     */
+    private suspend fun verifySlots(user: String?, checkpoint: CloudRefreshCheckpoint, counts: List<Int>): Set<Int> {
+        if (current().refreshedAt == 0L) return emptySet()
+        val done = HashSet<Int>()
+        for (slot in checkpoint.slots) {
+            val started = slot < checkpoint.slot || slot == checkpoint.slot && checkpoint.next != null
+            if (started) continue
+            val stored = withContext(Dispatchers.IO) { runCatching { segmentStore.load(slot) }.onFailure { logcat(TAG, it) }.getOrNull() }
+                ?.takeIf { it.userKey == user }
+                ?: continue
+            val known = current().galleries.filter { it.slot == slot }.mapTo(HashSet()) { it.gid }
+            val difference = counts.getOrElse(slot) { 0 } - known.size
+            if (difference == 0) {
+                // Counts match again (changed back, or by the app meanwhile)
+                done += slot
+                continue
+            }
+            var otherAccount = false
+            val result = SlotVerifier.verify(
+                segments = stored.segments,
+                known = known,
+                difference = difference,
+                onChecked = { checked, total -> mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, checked, total) },
+            ) { after ->
+                if (otherAccount) return@verify SlotVerifier.Page(emptyList(), null)
+                delay(PAGE_INTERVAL_MILLIS)
+                val url = FavListUrlBuilder(favCat = slot).apply { if (after != null) setIndex(after, isNext = true) }.build()
+                val page = EhEngine.getFavoritesPage(url)
+                otherAccount = userKey() != user
+                SlotVerifier.Page(page.galleryInfoList.map { it.toIndexed(slot) }, page.next)
+            }
+            if (otherAccount || userKey() != user) return emptySet()
+            if (result == null) {
+                logcat(TAG) { "Cloud favorites: slot $slot does not fit its segments, read page by page" }
+                continue
+            }
+            update(user) { cloud ->
+                val gone = cloud.galleries.filter { it.gid in result.removed && it.slot == slot }.map { it.gid }
+                val time = now()
+                FavoritesIndexMerger.upsert(FavoritesIndexMerger.remove(cloud, gone, time), result.added, time)
+            }
+            withContext(NonCancellable + Dispatchers.IO) {
+                runCatching { segmentStore.save(stored.copy(segments = result.segments)) }.onFailure { logcat(TAG, it) }
+            }
+            logcat(TAG) {
+                "Cloud favorites: slot $slot checked in ${result.checked} of ${stored.segments.size} segments, " +
+                    "${result.added.size} added, ${result.removed.size} removed"
+            }
+            done += slot
+        }
+        return done
     }
 
     /** Starts a refresh of [slots] unless one is unfinished: the next check finds what that one does not read. */
