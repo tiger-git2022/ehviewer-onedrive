@@ -60,13 +60,12 @@ import com.hippo.ehviewer.gallery.Page
 import com.hippo.ehviewer.gallery.PageLoader
 import com.hippo.ehviewer.gallery.PageStatus
 import com.hippo.ehviewer.gallery.progressObserved
-import com.hippo.ehviewer.gallery.status
 import com.hippo.ehviewer.gallery.statusObserved
-import com.hippo.ehviewer.gallery.unblock
 import com.hippo.ehviewer.image.Image
 import com.hippo.ehviewer.util.AdsPlaceholderFile
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.update
 
 @Composable
 fun PagerItem(
@@ -161,8 +160,8 @@ fun PagerItem(
                     contentScale = if (contentScale == ContentScale.Inside) ContentScale.Fit else contentScale,
                 )
                 FilledTonalButton(
-                    // A second tap may come before the page shows
-                    onClick = { if (page.status is PageStatus.Blocked) page.unblock() },
+                    // In one update: a second tap, or the loader, may change the page meanwhile
+                    onClick = { page.statusFlow.update { if (it is PageStatus.Blocked) PageStatus.Ready(it.ad) else it } },
                     shapes = ButtonDefaults.shapes(),
                     modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
                 ) {
