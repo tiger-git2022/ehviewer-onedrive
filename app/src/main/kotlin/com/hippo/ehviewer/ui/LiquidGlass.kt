@@ -111,7 +111,7 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { sha
                 // A wide gentle bend at the edge, chosen in the drawer glass tuner, and a blur keeping the lists
                 // readable over busy covers
                 GlassStyle.Sheet -> {
-                    blur(3f.dp.toPx())
+                    blur(2.5f.dp.toPx())
                     lens(25f.dp.toPx(), 10f.dp.toPx())
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
@@ -132,8 +132,11 @@ fun glassSelectedColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
 @Composable
 fun glassOnSelectedColor() = MaterialTheme.colorScheme.primary
 
+/** The items of the left drawer: black or white like the right drawer, the tinted gray was hard to read on the glass. */
 @Composable
 fun glassDrawerItemColors() = NavigationDrawerItemDefaults.colors(
+    unselectedIconColor = MaterialTheme.colorScheme.onSurface,
+    unselectedTextColor = MaterialTheme.colorScheme.onSurface,
     selectedContainerColor = glassSelectedColor(),
     selectedIconColor = glassOnSelectedColor(),
     selectedTextColor = glassOnSelectedColor(),
