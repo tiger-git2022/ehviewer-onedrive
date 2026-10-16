@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -173,6 +175,7 @@ fun GalleryDetailContent(
     onRetry: () -> Unit,
     voteTag: VoteTag,
     modifier: Modifier,
+    state: LazyGridState = rememberLazyGridState(),
 ) {
     val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
     val galleryDetail = galleryInfo.asGalleryDetail()
@@ -260,6 +263,7 @@ fun GalleryDetailContent(
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),
+            state = state,
             contentPadding = contentPadding,
             modifier = modifier.padding(horizontal = keylineMargin),
             horizontalArrangement = Arrangement.spacedBy(dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding)),
@@ -322,6 +326,7 @@ fun GalleryDetailContent(
         }
         else -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),
+            state = state,
             contentPadding = contentPadding,
             modifier = modifier.padding(horizontal = keylineMargin),
             horizontalArrangement = Arrangement.spacedBy(dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding)),

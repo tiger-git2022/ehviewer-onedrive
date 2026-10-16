@@ -3,8 +3,11 @@ package com.hippo.ehviewer.ui.screen
 import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.collection.SieveCache
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -22,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -34,6 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,6 +96,8 @@ import com.hippo.ehviewer.util.displayString
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import moe.tarsin.coroutines.runSuspendCatching
 import moe.tarsin.snackbar
@@ -132,6 +141,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
 
     var getDetailError by rememberSaveable { mutableStateOf("") }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val gridState = rememberLazyGridState()
 
     (galleryInfo as? GalleryDetail)?.apply {
         rememberInVM(this) {
@@ -380,7 +390,9 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 onRetry = { getDetailError = "" },
                 voteTag = voteTag,
                 // Fork: recorded for the glass of the top bar
-                modifier = Modifier.glassContent(backdrop).nestedScroll(scrollBehavior.nestedScrollConnection),
+                modifier = Modifier.glassContent(backdrop).nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .expandTopBarOnWheelAtTop(gridState, scrollBehavior),
+                state = gridState,
             )
         } else if (getDetailError.isNotBlank()) {
             GalleryDetailErrorTip(error = getDetailError, onClick = { getDetailError = "" })
@@ -390,6 +402,27 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 contentAlignment = Alignment.Center,
             ) {
                 CircularWavyProgressIndicator()
+            }
+        }
+    }
+}
+
+/**
+ * Fork: a mouse wheel turned up at the top of the details expands the top bar. A drag goes on into the bar once the
+ * details reach the top; the wheel stops there, the details having nothing left to scroll, and the bar stayed collapsed.
+ */
+private fun Modifier.expandTopBarOnWheelAtTop(state: LazyGridState, behavior: TopAppBarScrollBehavior) = pointerInput(state, behavior) {
+    coroutineScope {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val up = event.type == PointerEventType.Scroll && event.changes.any { it.scrollDelta.y < 0f }
+                if (up && !state.canScrollBackward && behavior.state.heightOffset < 0f) {
+                    launch {
+                        behavior.state.contentOffset = 0f
+                        animate(behavior.state.heightOffset, 0f) { value, _ -> behavior.state.heightOffset = value }
+                    }
+                }
             }
         }
     }

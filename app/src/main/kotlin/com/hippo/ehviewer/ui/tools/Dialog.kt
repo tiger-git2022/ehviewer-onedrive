@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -173,7 +174,7 @@ suspend fun <R> awaitResult(
             }
         }
     }
-    AlertDialog(
+    EhAlertDialog(
         onDismissRequest = { cont.cancel() },
         confirmButton = {
             TextButton(
@@ -461,7 +462,7 @@ suspend fun awaitConfirmationOrCancel(
     secure: Boolean = false,
     text: @Composable (() -> Unit)? = null,
 ) = dialog { cont ->
-    AlertDialog(
+    EhAlertDialog(
         onDismissRequest = { cont.cancel() },
         confirmButton = {
             if (showConfirmButton) {
@@ -578,6 +579,56 @@ private fun BoxScope.GlassDialog(glass: FloatingGlass, onDismissRequest: () -> U
                     contentColor = colors.onSurface,
                     content = content,
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Fork: an [AlertDialog] as liquid glass over the page, like [showNoButton], laid out like the Material one. A secure
+ * dialog stays a window, its own flag keeps it from screenshots.
+ */
+@Composable
+private fun BoxScope.EhAlertDialog(
+    onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
+    dismissButton: @Composable (() -> Unit)? = null,
+    title: @Composable (() -> Unit)? = null,
+    text: @Composable (() -> Unit)? = null,
+    properties: DialogProperties = DialogProperties(),
+) {
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    if (glass == null || properties.securePolicy == SecureFlagPolicy.SecureOn) {
+        AlertDialog(
+            onDismissRequest = onDismissRequest,
+            confirmButton = confirmButton,
+            dismissButton = dismissButton,
+            title = title,
+            text = text,
+            properties = properties,
+        )
+        return
+    }
+    GlassDialog(glass, onDismissRequest, modifier = Modifier.padding(horizontal = 24.dp).widthIn(min = 280.dp, max = 560.dp)) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            title?.let {
+                ProvideTextStyle(MaterialTheme.typography.headlineSmall) {
+                    Box(modifier = Modifier.padding(bottom = 16.dp)) { it() }
+                }
+            }
+            // The text in the color of the title: the gray of a dialog is hard to read on the glass
+            text?.let {
+                ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+                    Box(modifier = Modifier.weight(1f, fill = false).padding(bottom = 24.dp)) { it() }
+                }
+            }
+            FlowRow(
+                modifier = Modifier.align(Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                dismissButton?.invoke()
+                confirmButton()
             }
         }
     }
