@@ -1,10 +1,17 @@
 package com.hippo.ehviewer.ui.tools
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.MutatorMutex
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -13,9 +20,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -96,11 +105,17 @@ import arrow.core.raise.either
 import arrow.core.right
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.FastScrollLazyColumn
+import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
+import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.ifNotNullThen
 import com.ehviewer.core.ui.util.ifTrueThen
 import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.EhTagDatabase.suggestion
+import com.hippo.ehviewer.ui.LocalPageBackdrop
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellableContinuation
@@ -524,19 +539,51 @@ suspend fun awaitSelectDate(
 
 context(_: DialogState)
 suspend fun <R> showNoButton(respectDefaultWidth: Boolean = true, block: @Composable Continuation<R>.() -> Unit): R = dialog { cont ->
-    BasicAlertDialog(
-        onDismissRequest = { cont.cancel() },
-        properties = DialogProperties(usePlatformDefaultWidth = respectDefaultWidth),
-        content = {
-            Surface(
-                modifier = with(Modifier) { if (!respectDefaultWidth) defaultMinSize(280.dp) else width(280.dp) },
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                content = { block(cont) },
-            )
-        },
-    )
+    val size = with(Modifier) { if (!respectDefaultWidth) defaultMinSize(280.dp) else width(280.dp) }
+    // Fork: as liquid glass, drawn in the page: a dialog window lies above the page and cannot refract it
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    if (glass != null) {
+        GlassDialog(glass, onDismissRequest = { cont.cancel() }, modifier = size) { block(cont) }
+    } else {
+        BasicAlertDialog(
+            onDismissRequest = { cont.cancel() },
+            properties = DialogProperties(usePlatformDefaultWidth = respectDefaultWidth),
+            content = {
+                Surface(
+                    modifier = size,
+                    shape = AlertDialogDefaults.shape,
+                    color = AlertDialogDefaults.containerColor,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    content = { block(cont) },
+                )
+            },
+        )
+    }
+}
+
+/** Fork: a dialog over the page as liquid glass, like the drawers, see [showNoButton]. */
+@Composable
+private fun BoxScope.GlassDialog(glass: FloatingGlass, onDismissRequest: () -> Unit, modifier: Modifier, content: @Composable () -> Unit) {
+    BackHandler(onBack = onDismissRequest)
+    val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
+    AnimatedVisibility(visibleState = shown, modifier = Modifier.matchParentSize(), enter = fadeIn()) {
+        Box(Modifier.fillMaxSize().background(GlassDialogScrim).clickable(interactionSource = null, indication = null, onClick = onDismissRequest))
+    }
+    Box(Modifier.matchParentSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
+        AnimatedVisibility(visibleState = shown, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
+            // The list items and the note field keep the glass visible instead of covering it
+            val colors = MaterialTheme.colorScheme
+            MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent, surfaceContainerHighest = colors.surfaceContainerHighest.copy(alpha = 0.5f))) {
+                Surface(
+                    modifier = modifier.floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                    shape = AlertDialogDefaults.shape,
+                    color = Color.Transparent,
+                    contentColor = colors.onSurface,
+                    content = content,
+                )
+            }
+        }
+    }
 }
 
 context(_: DialogState)
@@ -772,6 +819,7 @@ private fun CheckableItem(text: String, checked: Boolean, modifier: Modifier = M
 }
 
 private val IconWithTextCorner = RoundedCornerShape(8.dp)
+private val GlassDialogScrim = Color.Black.copy(alpha = 0.32f)
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
 
 val LocalGlobalDialogState = compositionLocalOf<DialogState> { error("CompositionLocal LocalDialogState not present!") }
