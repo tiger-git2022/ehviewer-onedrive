@@ -174,7 +174,9 @@ fun FabLayout(
         modifier = Modifier.fillMaxSize().navigationBarsPadding().snackBarPadding(),
         contentAlignment = Alignment.BottomEnd,
     ) {
-        if (!state.appearProgress.isRunning && !updatedHidden) {
+        // Fork: only while expanding or expanded; collapsed, the transparent buttons lay right below the main one and
+        // a tap on it could reach one of them (it ran "reverse order" instead of expanding)
+        if (!state.appearProgress.isRunning && !updatedHidden && animatedProgress > 0f) {
             Box(
                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = animatedProgress },
                 contentAlignment = Alignment.BottomEnd,
