@@ -30,9 +30,9 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
         onClick = { suggestion.onClick() },
         shape = MaterialTheme.shapes.medium,
         // The expanded search bar is surfaceContainerHigh itself: a brighter card stands out from it
-        // Fork: over the glass of the expanded search, a nearly solid card with a fine edge, so each stands apart
-        color = if (glass) MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.85f) else MaterialTheme.colorScheme.surfaceBright,
-        border = if (glass) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)) else null,
+        // Fork: over the glass of the expanded search, a translucent card set apart by its edge
+        color = if (glass) MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceBright,
+        border = if (glass) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)) else null,
         modifier = modifier,
     ) {
         Row(verticalAlignment = Alignment.Top) {
