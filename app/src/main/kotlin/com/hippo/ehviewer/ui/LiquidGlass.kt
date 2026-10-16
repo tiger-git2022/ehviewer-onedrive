@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
@@ -42,7 +43,17 @@ val LocalPageBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 @Composable
 fun rememberGlassBackdrop(): LayerBackdrop? {
     val enabled by Settings.liquidGlass.collectAsState()
-    return if (enabled) rememberLayerBackdrop() else null
+    if (!enabled) return null
+    // Recorded on the page color: where nothing is drawn (the room left for the search bar at the top of the list),
+    // the edge of the glass refracted a hole, a light ring on a light page
+    val background = MaterialTheme.colorScheme.background
+    val onDraw: ContentDrawScope.() -> Unit = remember(background) {
+        {
+            drawRect(background)
+            drawContent()
+        }
+    }
+    return rememberLayerBackdrop(onDraw = onDraw)
 }
 
 /** Records this content for the glass in front of it. */
