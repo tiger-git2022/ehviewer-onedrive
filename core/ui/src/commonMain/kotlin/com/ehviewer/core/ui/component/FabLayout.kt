@@ -156,6 +156,8 @@ fun FabLayout(
     val fabColor = FloatingActionButtonDefaults.containerColor
     val glassColor = if (glass != null) Color.Transparent else fabColor
     val glassContent = MaterialTheme.colorScheme.contentColorFor(fabColor)
+    // A neutral glass, like the search bar: a tint of the button color made it read as a solid colored button
+    val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_FAB_TINT)
     val glassElevation = if (glass != null) FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp) else FloatingActionButtonDefaults.elevation()
     PredictiveBackHandler(updatedExpanded) { flow ->
         try {
@@ -193,7 +195,7 @@ fun FabLayout(
                             modifier = Modifier.padding(20.dp).offset {
                                 val distance = lerp(0, interval * (size - index) + padding, animatedProgress)
                                 IntOffset(0, -distance)
-                            }.floatingGlass(glass, FloatingActionButtonDefaults.smallShape, fabColor.copy(alpha = GLASS_FAB_TINT), GlassStyle.Button),
+                            }.floatingGlass(glass, FloatingActionButtonDefaults.smallShape, glassTint),
                             containerColor = glassColor,
                             contentColor = glassContent,
                             elevation = glassElevation,
@@ -211,7 +213,7 @@ fun FabLayout(
                 rotationZ = lerp(-90f, 0f, appearState)
                 scaleX = appearState
                 scaleY = appearState
-            }.floatingGlass(glass, FloatingActionButtonDefaults.shape, fabColor.copy(alpha = GLASS_FAB_TINT), GlassStyle.Button),
+            }.floatingGlass(glass, FloatingActionButtonDefaults.shape, glassTint),
             containerColor = glassColor,
             contentColor = glassContent,
             elevation = glassElevation,
@@ -227,8 +229,8 @@ fun FabLayout(
     }
 }
 
-// Fork: how much of the button color lies over the glass, enough to keep it a button
-private const val GLASS_FAB_TINT = 0.35f
+// Fork: how much of the bar color lies over the glass of the buttons
+private const val GLASS_FAB_TINT = 0.25f
 
 private fun buildFab(builder: FabBuilder.() -> Unit) = buildList {
     builder { icon, autoClose, action ->

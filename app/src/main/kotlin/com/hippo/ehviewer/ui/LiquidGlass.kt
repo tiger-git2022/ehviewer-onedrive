@@ -64,19 +64,15 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val ring = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-    return remember(backdrop, dark, ring) { backdrop?.let { liquidGlass(it, if (dark) DarkGlassEdge else LightGlassEdge, buttonRing(ring)) } }
+    return remember(backdrop, dark) { backdrop?.let { liquidGlass(it, if (dark) DarkGlassEdge else LightGlassEdge) } }
 }
 
-// The lit edge of the glass: wider and brighter than the library default (0.5 dp) in dark themes, so the glass reads
-// as glass; faint in light themes, where a white edge lit up as a white ring on the light page
+// The edge of the glass. Dark themes: a lit edge, wider and brighter than the library default (0.5 dp), so the glass
+// reads as glass. Light themes: a dark hairline like iOS, a lit edge read as a white ring on the light page
 private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
-private val LightGlassEdge = Highlight(width = 1.dp, blurRadius = 0.5.dp, alpha = 0.35f)
+private val LightGlassEdge = Highlight(width = 1.dp, blurRadius = 0.dp, style = HighlightStyle.Plain(color = Color.Black.copy(alpha = 0.16f), blendMode = DrawScope.DefaultBlendMode))
 
-// A floating button: a ring of one color all around, drawn over the page instead of lighting it up
-private fun buttonRing(color: Color) = Highlight(width = 1.5.dp, blurRadius = 0.dp, style = HighlightStyle.Plain(color = color, blendMode = DrawScope.DefaultBlendMode))
-
-private fun liquidGlass(backdrop: Backdrop, edge: Highlight, ring: Highlight) = FloatingGlass { shape, tint, style ->
+private fun liquidGlass(backdrop: Backdrop, edge: Highlight) = FloatingGlass { shape, tint, style ->
     Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
@@ -94,15 +90,10 @@ private fun liquidGlass(backdrop: Backdrop, edge: Highlight, ring: Highlight) = 
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
                 GlassStyle.Backdrop -> blur(10f.dp.toPx())
-                GlassStyle.Button -> blur(2f.dp.toPx())
             }
         },
         // A screen-wide glass has no edge to light nor a shadow to cast
-        highlight = when (style) {
-            GlassStyle.Backdrop -> null
-            GlassStyle.Button -> ({ ring })
-            else -> ({ edge })
-        },
+        highlight = if (style == GlassStyle.Backdrop) null else ({ edge }),
         shadow = if (style == GlassStyle.Backdrop) null else ({ Shadow.Default }),
         onDrawSurface = { drawRect(tint) },
     )
