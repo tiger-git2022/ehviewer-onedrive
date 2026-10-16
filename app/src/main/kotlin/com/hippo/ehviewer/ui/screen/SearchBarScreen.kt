@@ -1,6 +1,9 @@
 package com.hippo.ehviewer.ui.screen
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -271,14 +274,17 @@ fun SearchBarScreen(
                     .fillMaxWidth(),
             )
         }
+        // Fork: expanded, the whole screen behind the search is a blurred glass over the list. Its own layer, not the
+        // search bar's: the bar is as wide as the field, it left a strip unblurred at each side
+        AnimatedVisibility(visible = expanded && glass != null, enter = fadeIn(), exit = fadeOut()) {
+            Box(Modifier.fillMaxSize().floatingGlass(glass, ExpandedSearchShape, expandedGlassTint, GlassStyle.Backdrop))
+        }
         // https://issuetracker.google.com/337191298
         // Workaround for can't exit SearchBar due to refocus in non-touch mode
         Box(Modifier.size(1.dp).focusable())
         val activeState = rememberCompositionActiveState()
         SearchBar(
             modifier = Modifier.align(Alignment.TopCenter).thenIf(!expanded) { offset { IntOffset(0, searchBarOffsetY()) } }
-                // Fork: expanded, the whole search is a heavily blurred glass over the list
-                .thenIf(expanded) { floatingGlass(glass, ExpandedSearchShape, expandedGlassTint, GlassStyle.Backdrop) }
                 .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)),
             inputField = {
                 InputField(
