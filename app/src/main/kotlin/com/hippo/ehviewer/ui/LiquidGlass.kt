@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.GlassStyle
@@ -64,15 +65,19 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    return remember(backdrop, dark) { backdrop?.let { liquidGlass(it, if (dark) DarkGlassEdge else LightGlassEdge) } }
+    return remember(backdrop, dark) {
+        backdrop?.let { if (dark) liquidGlass(it, DarkGlassEdge, Shadow.Default) else liquidGlass(it, LightGlassEdge, LightGlassShadow) }
+    }
 }
 
-// The edge of the glass. Dark themes: a lit edge, wider and brighter than the library default (0.5 dp), so the glass
-// reads as glass. Light themes: a dark hairline like iOS, a lit edge read as a white ring on the light page
+// The edge of the glass: a lit edge, wider and brighter than the library default (0.5 dp), so the glass reads as glass.
+// In light themes, like the system apps of vivo: a lit edge as well, it shines over content and vanishes on the light
+// page, where a soft shadow all around outlines the glass instead of a line
 private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
-private val LightGlassEdge = Highlight(width = 1.dp, blurRadius = 0.dp, style = HighlightStyle.Plain(color = Color.Black.copy(alpha = 0.16f), blendMode = DrawScope.DefaultBlendMode))
+private val LightGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.8f)))
+private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.12f))
 
-private fun liquidGlass(backdrop: Backdrop, edge: Highlight) = FloatingGlass { shape, tint, style ->
+private fun liquidGlass(backdrop: Backdrop, edge: Highlight, shadow: Shadow) = FloatingGlass { shape, tint, style ->
     Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
@@ -94,7 +99,7 @@ private fun liquidGlass(backdrop: Backdrop, edge: Highlight) = FloatingGlass { s
         },
         // A screen-wide glass has no edge to light nor a shadow to cast
         highlight = if (style == GlassStyle.Backdrop) null else ({ edge }),
-        shadow = if (style == GlassStyle.Backdrop) null else ({ Shadow.Default }),
+        shadow = if (style == GlassStyle.Backdrop) null else ({ shadow }),
         onDrawSurface = { drawRect(tint) },
     )
 }
