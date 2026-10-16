@@ -6,6 +6,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.LocalSideSheetGlass
 import com.hippo.ehviewer.ui.glassOnSelectedColor
 import com.hippo.ehviewer.ui.glassSelectedColor
@@ -49,3 +51,10 @@ fun topBarOnDrawerColor() = if (LocalSideSheetGlass.current != null) {
         scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
 }
+
+/**
+ * Fork: the shadow of a drawer item; none over liquid glass, where a transparent item showed its shadow as a frame and
+ * a ghost around it.
+ */
+@Composable
+fun drawerItemShadow(elevation: Dp) = if (LocalSideSheetGlass.current != null) 0.dp else elevation
