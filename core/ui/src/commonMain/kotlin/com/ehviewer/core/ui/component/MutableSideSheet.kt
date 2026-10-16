@@ -76,7 +76,7 @@ fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boo
 }
 
 /** Fork: how much of the drawer color lies over the glass of a drawer or a dialog, enough to read its lists. */
-const val GLASS_SHEET_TINT = 0.5f
+const val GLASS_SHEET_TINT = 0.4f
 
 /** Fork: the corners of a glass drawer, chosen in the drawer glass tuner. */
 val GLASS_SHEET_CORNER = 15.dp
