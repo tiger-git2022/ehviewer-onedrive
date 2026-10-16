@@ -15,6 +15,12 @@ enum class GlassStyle {
 
     /** A whole screen in front of the content (the expanded search): a heavy blur, no bending edges. */
     Backdrop,
+
+    /**
+     * A floating action button: no bending edge (it lit up wherever the content beside it was light), a ring of a fixed
+     * color instead.
+     */
+    Button,
 }
 
 /**

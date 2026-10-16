@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
@@ -42,7 +44,17 @@ val LocalPageBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 @Composable
 fun rememberGlassBackdrop(): LayerBackdrop? {
     val enabled by Settings.liquidGlass.collectAsState()
-    return if (enabled) rememberLayerBackdrop() else null
+    if (!enabled) return null
+    // Recorded on the page color: where nothing is drawn (the room left for the search bar at the top of the list),
+    // the edge of the glass refracted a hole, a light ring on a light page
+    val background = MaterialTheme.colorScheme.background
+    val onDraw: ContentDrawScope.() -> Unit = remember(background) {
+        {
+            drawRect(background)
+            drawContent()
+        }
+    }
+    return rememberLayerBackdrop(onDraw = onDraw)
 }
 
 /** Records this content for the glass in front of it. */
@@ -52,7 +64,8 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    return remember(backdrop, dark) { backdrop?.let { liquidGlass(it, if (dark) DarkGlassEdge else LightGlassEdge) } }
+    val ring = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    return remember(backdrop, dark, ring) { backdrop?.let { liquidGlass(it, if (dark) DarkGlassEdge else LightGlassEdge, buttonRing(ring)) } }
 }
 
 // The lit edge of the glass: wider and brighter than the library default (0.5 dp) in dark themes, so the glass reads
@@ -60,7 +73,10 @@ fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
 private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
 private val LightGlassEdge = Highlight(width = 1.dp, blurRadius = 0.5.dp, alpha = 0.35f)
 
-private fun liquidGlass(backdrop: Backdrop, edge: Highlight) = FloatingGlass { shape, tint, style ->
+// A floating button: a ring of one color all around, drawn over the page instead of lighting it up
+private fun buttonRing(color: Color) = Highlight(width = 1.5.dp, blurRadius = 0.dp, style = HighlightStyle.Plain(color = color, blendMode = DrawScope.DefaultBlendMode))
+
+private fun liquidGlass(backdrop: Backdrop, edge: Highlight, ring: Highlight) = FloatingGlass { shape, tint, style ->
     Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
@@ -78,10 +94,15 @@ private fun liquidGlass(backdrop: Backdrop, edge: Highlight) = FloatingGlass { s
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
                 GlassStyle.Backdrop -> blur(10f.dp.toPx())
+                GlassStyle.Button -> blur(2f.dp.toPx())
             }
         },
         // A screen-wide glass has no edge to light nor a shadow to cast
-        highlight = if (style == GlassStyle.Backdrop) null else ({ edge }),
+        highlight = when (style) {
+            GlassStyle.Backdrop -> null
+            GlassStyle.Button -> ({ ring })
+            else -> ({ edge })
+        },
         shadow = if (style == GlassStyle.Backdrop) null else ({ Shadow.Default }),
         onDrawSurface = { drawRect(tint) },
     )
