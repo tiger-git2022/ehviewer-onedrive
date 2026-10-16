@@ -14,9 +14,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.WavyProgressIndicatorDefaults
@@ -54,7 +60,9 @@ import com.hippo.ehviewer.gallery.Page
 import com.hippo.ehviewer.gallery.PageLoader
 import com.hippo.ehviewer.gallery.PageStatus
 import com.hippo.ehviewer.gallery.progressObserved
+import com.hippo.ehviewer.gallery.status
 import com.hippo.ehviewer.gallery.statusObserved
+import com.hippo.ehviewer.gallery.unblock
 import com.hippo.ehviewer.image.Image
 import com.hippo.ehviewer.util.AdsPlaceholderFile
 import kotlinx.coroutines.awaitCancellation
@@ -146,10 +154,23 @@ fun PagerItem(
             } ?: Spacer(modifier = modifier.fillMaxWidth().aspectRatio(DEFAULT_ASPECT))
         }
         is PageStatus.Blocked -> {
-            AdsPlaceholder(
-                modifier = modifier.fillMaxSize(),
-                contentScale = if (contentScale == ContentScale.Inside) ContentScale.Fit else contentScale,
-            )
+            // Fork: a page taken for an ad by mistake shows from here, this time only: loaded again, it is checked again
+            Box(modifier = modifier.fillMaxSize()) {
+                AdsPlaceholder(
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = if (contentScale == ContentScale.Inside) ContentScale.Fit else contentScale,
+                )
+                FilledTonalButton(
+                    // A second tap may come before the page shows
+                    onClick = { if (page.status is PageStatus.Blocked) page.unblock() },
+                    shapes = ButtonDefaults.shapes(),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                ) {
+                    Icon(imageVector = Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(text = stringResource(id = R.string.show_blocked_image))
+                }
+            }
         }
         is PageStatus.Error -> {
             Box(modifier = modifier.fillMaxWidth().aspectRatio(DEFAULT_ASPECT)) {
