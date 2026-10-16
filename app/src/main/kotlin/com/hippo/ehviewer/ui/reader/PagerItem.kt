@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -163,7 +164,8 @@ fun PagerItem(
                     // In one update: a second tap, or the loader, may change the page meanwhile
                     onClick = { page.statusFlow.update { if (it is PageStatus.Blocked) PageStatus.Ready(it.ad) else it } },
                     shapes = ButtonDefaults.shapes(),
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                    // In the middle, below the text of the blocked page
+                    modifier = Modifier.align(Alignment.Center).offset(y = 56.dp),
                 ) {
                     Icon(imageVector = Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
