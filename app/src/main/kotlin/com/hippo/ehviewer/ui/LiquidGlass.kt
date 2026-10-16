@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.GlassStyle
@@ -49,12 +50,17 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 
 /** Liquid glass refracting [backdrop], null without one. */
 @Composable
-fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? = remember(backdrop) { backdrop?.let(::liquidGlass) }
+fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    return remember(backdrop, dark) { backdrop?.let { liquidGlass(it, if (dark) DarkGlassEdge else LightGlassEdge) } }
+}
 
-// The lit edge of the glass: wider and brighter than the library default (0.5 dp), so the glass reads as glass
-private val GlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
+// The lit edge of the glass: wider and brighter than the library default (0.5 dp) in dark themes, so the glass reads
+// as glass; faint in light themes, where a white edge lit up as a white ring on the light page
+private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
+private val LightGlassEdge = Highlight(width = 1.dp, blurRadius = 0.5.dp, alpha = 0.35f)
 
-private fun liquidGlass(backdrop: Backdrop) = FloatingGlass { shape, tint, style ->
+private fun liquidGlass(backdrop: Backdrop, edge: Highlight) = FloatingGlass { shape, tint, style ->
     Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
@@ -75,7 +81,7 @@ private fun liquidGlass(backdrop: Backdrop) = FloatingGlass { shape, tint, style
             }
         },
         // A screen-wide glass has no edge to light nor a shadow to cast
-        highlight = if (style == GlassStyle.Backdrop) null else ({ GlassEdge }),
+        highlight = if (style == GlassStyle.Backdrop) null else ({ edge }),
         shadow = if (style == GlassStyle.Backdrop) null else ({ Shadow.Default }),
         onDrawSurface = { drawRect(tint) },
     )

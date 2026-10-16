@@ -124,6 +124,7 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
 import com.hippo.ehviewer.ui.main.DownloadCard
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
+import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.showMoveDownloadLabelList
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -338,7 +339,7 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                         switchLabel("")
                         closeSheet()
                     },
-                    shadowElevation = 1.dp,
+                    shadowElevation = drawerItemShadow(1.dp),
                     headlineContent = {
                         Text("$allName [$totalCount]")
                     },
@@ -351,7 +352,7 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                         switchLabel(null)
                         closeSheet()
                     },
-                    shadowElevation = 1.dp,
+                    shadowElevation = drawerItemShadow(1.dp),
                     headlineContent = {
                         Text("$emptyLabelName [${downloadsCount.getOrDefault(null, 0)}]")
                     },
@@ -405,7 +406,7 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                                 switchLabel(item)
                                 closeSheet()
                             },
-                            shadowElevation = elevation,
+                            shadowElevation = drawerItemShadow(elevation),
                             headlineContent = {
                                 val name = if (filterMode == DownloadsFilterMode.ARTIST) getTranslation(label) else label
                                 Text("$name [${downloadsCount.getOrDefault(item, 0)}]")
@@ -495,7 +496,11 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
             }
         },
         searchBarOffsetY = { searchBarOffsetY },
+        // Fork
+        showSyncProgress = true,
         trailingIcon = {
+            // Fork: OneDrive sync state, as on the gallery list and the favorites
+            OneDriveSyncIcon()
             var expanded by remember { mutableStateOf(false) }
             val sideSheetState = LocalSideSheetState.current
             IconButton(onClick = { gridView = !gridView }, shapes = IconButtonDefaults.shapes()) {

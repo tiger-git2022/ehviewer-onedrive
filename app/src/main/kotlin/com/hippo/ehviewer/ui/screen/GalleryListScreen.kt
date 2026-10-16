@@ -384,7 +384,7 @@ fun AnimatedVisibilityScope.GalleryListScreen(
                                         }
                                         launch { sheetState.close() }
                                     },
-                                    shadowElevation = elevation,
+                                    shadowElevation = drawerItemShadow(elevation),
                                     headlineContent = {
                                         Text(text = item.name)
                                     },
