@@ -631,7 +631,14 @@ object OneDriveSync {
         devicesError?.let { logcat(TAG, it) }
         mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_favorites_index, steps, steps, favoritesIndex = true)
         // Last: it reads the local favorites the favorites step just merged
-        val indexError = runCatching { FavoritesIndexSync.sync(deviceId, deviceName) }.exceptionOrNull()
+        // Fork: not while CloudFavoritesWork reads the cloud favorites: it uploads the index itself, and both building it
+        // at once ran out of memory with a hundred thousand favorites
+        val indexError = if (FavoritesIndexSync.working.value) {
+            logcat(TAG) { "Favorites index: left to the cloud favorites work" }
+            null
+        } else {
+            runCatching { FavoritesIndexSync.sync(deviceId, deviceName) }.exceptionOrNull()
+        }
         if (indexError is CancellationException) throw indexError
         indexError?.let { logcat(TAG, it) }
         return SyncReport(results, imported, devicesError, indexError)

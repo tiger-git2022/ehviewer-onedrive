@@ -212,7 +212,8 @@ object FavoritesIndexSync {
     ): Boolean = withContext(Dispatchers.IO) {
         val changed = mutex.withLock {
             if (userKey() != user) return@withLock false
-            val before = FavoritesIndexMerger.forUser(loadLocked(), user)
+            val loaded = loadLocked()
+            val before = FavoritesIndexMerger.forUser(loaded, user)
             val after = transform(before)
             // Pages of an unfinished refresh read before this change must not undo it
             val pending = loadCheckpointLocked()
@@ -222,7 +223,7 @@ object FavoritesIndexSync {
                     saveCheckpointLocked(pending.copy(touched = pending.touched + touched, intended = pending.intended + intended))
                 }
             }
-            saveLocked(after).also { if (it && markChanged) markChangedLocked() }
+            saveLocked(after, loaded).also { if (it && markChanged) markChangedLocked() }
         }
         changed
     }
@@ -261,8 +262,12 @@ object FavoritesIndexSync {
         mutex.withLock { loadCheckpointLocked()?.usableFor(user, now()) == true }
     }
 
-    private fun saveLocked(new: CloudFavorites): Boolean {
-        if (new == loadLocked()) return false
+    /**
+     * [loaded]: the cloud favorites [new] was made from. Fork: passed on, not loaded again: the soft cache may be gone
+     * by then, and reading it again held a second whole copy.
+     */
+    private fun saveLocked(new: CloudFavorites, loaded: CloudFavorites): Boolean {
+        if (new == loaded) return false
         cache = new
         // Fork: only the shards the change touches are written, see CloudFavoritesStore
         store.save(new)
@@ -489,7 +494,8 @@ object FavoritesIndexSync {
             val pending = loadCheckpointLocked()
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages, marks = pending.marks + marks))
-            if (saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now(), pending.intended))) {
+            val loaded = loadLocked()
+            if (saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loaded, user), pages, pending.touched, now(), pending.intended), loaded)) {
                 markChangedLocked()
             }
             true
@@ -501,7 +507,8 @@ object FavoritesIndexSync {
             val pending = loadCheckpointLocked()
             // Signed in to another account meanwhile: these pages belong to the previous one
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
-            val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
+            val loaded = loadLocked()
+            val cloud = FavoritesIndexMerger.forUser(loaded, user)
             val refreshed = FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended, pending.slots)
             // Fork: all slots read: shown as the last complete read, with what it found
             val done = if (pending.slots.containsAll(ALL_CLOUD_SLOTS)) {
@@ -509,7 +516,7 @@ object FavoritesIndexSync {
             } else {
                 refreshed
             }
-            if (saveLocked(done)) markChangedLocked()
+            if (saveLocked(done, loaded)) markChangedLocked()
             // Fork: the pages of the slots read, for the next change of their counts; an empty slot is one empty segment
             val read = SlotVerifier.segmentsOf(pending.marks, pending.galleries)
             val readBySlot = pending.galleries.groupingBy { it.slot }.eachCount()
