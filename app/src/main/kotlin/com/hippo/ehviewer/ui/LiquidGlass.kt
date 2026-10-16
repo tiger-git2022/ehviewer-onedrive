@@ -83,13 +83,13 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { sha
     val surface = if (dark) tint else Color.White.copy(alpha = tint.alpha)
     val edge = when {
         !dark || style == GlassStyle.Backdrop -> null
-        style == GlassStyle.Sheet || style == GlassStyle.Dialog -> DarkSheetEdge
+        style == GlassStyle.Sheet -> DarkSheetEdge
         else -> DarkGlassEdge
     }
     val shadow = when {
         // A screen-wide glass has no shadow to cast
         style == GlassStyle.Backdrop -> null
-        style == GlassStyle.Sheet || style == GlassStyle.Dialog -> SheetShadow
+        style == GlassStyle.Sheet -> SheetShadow
         dark -> Shadow.Default
         else -> LightGlassShadow
     }
@@ -108,14 +108,10 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { sha
                     blur(4f.dp.toPx())
                     lens(16f.dp.toPx(), 28f.dp.toPx(), chromaticAberration = true)
                 }
-                // A wide gentle bend at the inner edge, chosen in the drawer glass tuner. With the blur of a panel,
-                // the drawers read as frosted glass; with the blur of a dialog, their lists were hard to read
+                // A wide gentle bend at the edge, chosen in the drawer glass tuner, and a blur keeping the lists
+                // readable over busy covers
                 GlassStyle.Sheet -> {
-                    blur(2f.dp.toPx())
-                    lens(25f.dp.toPx(), 10f.dp.toPx())
-                }
-                GlassStyle.Dialog -> {
-                    blur(1f.dp.toPx())
+                    blur(3f.dp.toPx())
                     lens(25f.dp.toPx(), 10f.dp.toPx())
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
