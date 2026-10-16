@@ -14,9 +14,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.WavyProgressIndicatorDefaults
@@ -59,6 +65,7 @@ import com.hippo.ehviewer.image.Image
 import com.hippo.ehviewer.util.AdsPlaceholderFile
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.update
 
 @Composable
 fun PagerItem(
@@ -146,10 +153,23 @@ fun PagerItem(
             } ?: Spacer(modifier = modifier.fillMaxWidth().aspectRatio(DEFAULT_ASPECT))
         }
         is PageStatus.Blocked -> {
-            AdsPlaceholder(
-                modifier = modifier.fillMaxSize(),
-                contentScale = if (contentScale == ContentScale.Inside) ContentScale.Fit else contentScale,
-            )
+            // Fork: a page taken for an ad by mistake shows from here, this time only: loaded again, it is checked again
+            Box(modifier = modifier.fillMaxSize()) {
+                AdsPlaceholder(
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = if (contentScale == ContentScale.Inside) ContentScale.Fit else contentScale,
+                )
+                FilledTonalButton(
+                    // In one update: a second tap, or the loader, may change the page meanwhile
+                    onClick = { page.statusFlow.update { if (it is PageStatus.Blocked) PageStatus.Ready(it.ad) else it } },
+                    shapes = ButtonDefaults.shapes(),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                ) {
+                    Icon(imageVector = Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(text = stringResource(id = R.string.show_blocked_image))
+                }
+            }
         }
         is PageStatus.Error -> {
             Box(modifier = modifier.fillMaxWidth().aspectRatio(DEFAULT_ASPECT)) {
