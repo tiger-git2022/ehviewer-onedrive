@@ -403,6 +403,7 @@
     <string name="default_favorites_long_press">%s。长按收藏按钮可以选其他收藏夹</string>
     <string name="image_limits_settings_summary">查看图片配额用量和账户余额</string>
     <string name="chinese_only">只看中文</string>
+    <string name="clear_search">清空搜索</string>
     <string name="let_me_select">让我选择</string>
     <string name="favorite_note">收藏备注</string>
     <string name="collections">收藏夹</string>

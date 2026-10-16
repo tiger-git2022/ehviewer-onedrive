@@ -495,6 +495,23 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         searchBarOffsetY = { searchBarOffsetY },
         // Fork
         showSyncProgress = true,
+        // Fork: a keyword search clears from the collapsed bar; tag, uploader and image searches are pages of their own
+        onClearSearch = if ((urlBuilder.mode == MODE_NORMAL || urlBuilder.mode == MODE_SUBSCRIPTION) && !urlBuilder.keyword.isNullOrEmpty()) {
+            {
+                // From the first page
+                urlBuilder = urlBuilder.copy(keyword = null).apply { setRange(0) }
+                data.refresh()
+            }
+        } else {
+            null
+        },
+        // Fork: "汉" while typing too: the search takes the language filter it sets
+        expandedTrailingIcon = {
+            ChineseOnlyButton(
+                checked = languageFilter == CHINESE_LANGUAGE_FILTER,
+                onCheckedChange = { on -> languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1 },
+            )
+        },
         trailingIcon = {
             val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
             if (OneDriveClient.isSupported && oneDriveAccount != null) {

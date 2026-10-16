@@ -103,6 +103,15 @@ fun AnimatedVisibilityScope.HistoryScreen(navigator: DestinationsNavigator) = Sc
         },
         expanded = searchBarExpanded,
         onExpandedChange = { searchBarExpanded = it },
+        // Fork: clears the search from the collapsed bar
+        onClearSearch = if (keyword.isNotEmpty()) {
+            {
+                keyword = ""
+                historyData.refresh()
+            }
+        } else {
+            null
+        },
         title = title,
         searchFieldHint = hint,
         searchBarOffsetY = { searchBarOffsetY },

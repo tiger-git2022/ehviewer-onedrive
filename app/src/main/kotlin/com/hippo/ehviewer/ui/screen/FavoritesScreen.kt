@@ -195,6 +195,11 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         searchBarOffsetY = { searchBarOffsetY },
         // Fork
         showSyncProgress = true,
+        onClearSearch = if (!urlBuilder.keyword.isNullOrEmpty()) {
+            { refresh(FavListUrlBuilder(urlBuilder.favCat)) }
+        } else {
+            null
+        },
         trailingIcon = {
             // Fork: OneDrive sync state; a sync from here reloads the local favorites it merged
             OneDriveSyncIcon(onSynced = { if (urlBuilder.isLocal) refresh() })

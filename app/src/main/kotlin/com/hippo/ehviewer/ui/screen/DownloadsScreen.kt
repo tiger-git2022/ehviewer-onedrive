@@ -498,6 +498,11 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         searchBarOffsetY = { searchBarOffsetY },
         // Fork
         showSyncProgress = true,
+        onClearSearch = if (filterState.keyword.isNotEmpty()) {
+            { filterState = filterState.copy(keyword = "") }
+        } else {
+            null
+        },
         trailingIcon = {
             // Fork: OneDrive sync state, as on the gallery list and the favorites
             OneDriveSyncIcon()
