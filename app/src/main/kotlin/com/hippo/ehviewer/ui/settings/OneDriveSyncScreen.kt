@@ -53,6 +53,7 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import java.util.Date
 import me.zhanghai.compose.preference.DropdownListPreference
+import moe.tarsin.coroutines.runSuspendCatching
 import moe.tarsin.navigate
 import moe.tarsin.snackbar
 import moe.tarsin.string
@@ -256,7 +257,10 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         val workError by OneDriveSyncState.cloudFavoritesWorkError.collectAsState()
                         val fullRequested by OneDriveSyncState.cloudFavoritesFullRequested.collectAsState()
                         // Read again when the work starts or stops
-                        val status by produceState<FavoritesIndexSync.Status?>(null, working, workInfo) { value = FavoritesIndexSync.status() }
+                        val status by produceState<FavoritesIndexSync.Status?>(null, working, workInfo) {
+                            // Fork: the cloud favorites may fail to load (out of memory), the status is then left out
+                            value = runSuspendCatching { FavoritesIndexSync.status() }.getOrNull()
+                        }
                         // Also stopped before its first page was saved: no checkpoint yet, but the reason or the asked read is kept
                         val unfinished = status?.let { it.unfinished || it.missingTitles > 0 } == true || workInfo.waiting || workError != null || fullRequested
                         val statusText = status.takeIf { unfinished }?.let { cloudFavoritesStatusText(it, workInfo, workError) }
@@ -290,7 +294,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                         else -> {
                                             // Fork: read before: reading every page again takes long, asked first. Asked now,
                                             // the status shown may not be loaded yet
-                                            val done = FavoritesIndexSync.status().takeIf { it.readBefore }
+                                            val done = runSuspendCatching { FavoritesIndexSync.status() }.getOrNull()?.takeIf { it.readBefore }
                                             if (done != null) {
                                                 awaitConfirmationOrCancel(
                                                     confirmText = R.string.onedrive_sync_cloud_favorites_reread,

@@ -162,9 +162,24 @@ object FavoritesIndexSync {
 
     private fun <T> readGzip(file: File, serializer: KSerializer<T>): T = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(serializer, it) }
 
-    private fun loadLocked(): CloudFavorites = cache ?: (runCatching { store.load() }.onFailure { logcat(TAG, it) }.getOrNull() ?: loadLegacyStoreLocked())
-        .let { it ?: CloudFavorites() }
-        .also { cache = it }
+    private fun loadLocked(): CloudFavorites {
+        cache?.let { return it }
+        val stored = try {
+            store.load()
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+            // Fork: a full memory, a failed read, or any failure once the list was read in this process (read again
+            // after the soft cache was taken back) is no empty list: saved, it would replace the shards. Only an
+            // unreadable store found at the first read starts over empty, as before
+            if (e is Error || e is IOException || storeRead) throw e
+            null
+        }
+        storeRead = true
+        return (stored ?: loadLegacyStoreLocked() ?: CloudFavorites()).also { cache = it }
+    }
+
+    /** Fork: [store] was read in this process, see [loadLocked]. Guarded by [mutex]. */
+    private var storeRead = false
 
     /** The single file of before the shards: read once, saved in shards and deleted. */
     private fun loadLegacyStoreLocked(): CloudFavorites? {
