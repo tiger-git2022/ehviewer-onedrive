@@ -71,7 +71,7 @@ private fun liquidGlass(backdrop: Backdrop) = FloatingGlass { shape, tint, style
                     lens(16f.dp.toPx(), 28f.dp.toPx(), chromaticAberration = true)
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
-                GlassStyle.Backdrop -> blur(5f.dp.toPx())
+                GlassStyle.Backdrop -> blur(10f.dp.toPx())
             }
         },
         // A screen-wide glass has no edge to light nor a shadow to cast
