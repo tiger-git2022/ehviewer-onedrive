@@ -66,12 +66,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerDialog
 import androidx.compose.material3.rememberDatePickerState
@@ -106,7 +103,6 @@ import arrow.core.right
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.FastScrollLazyColumn
 import com.ehviewer.core.ui.component.FloatingGlass
-import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
 import com.ehviewer.core.ui.component.floatingGlass
@@ -571,11 +567,11 @@ private fun BoxScope.GlassDialog(glass: FloatingGlass, onDismissRequest: () -> U
     }
     Box(Modifier.matchParentSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         AnimatedVisibility(visibleState = shown, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
-            // The list items and the note field keep the glass visible instead of covering it
+            // The list items keep the glass visible instead of covering it
             val colors = MaterialTheme.colorScheme
-            MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent, surfaceContainerHighest = colors.surfaceContainerHighest.copy(alpha = 0.5f))) {
+            MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
                 Surface(
-                    modifier = modifier.floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                    modifier = modifier.floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_DIALOG_TINT), GlassStyle.Dialog),
                     shape = AlertDialogDefaults.shape,
                     color = Color.Transparent,
                     contentColor = colors.onSurface,
@@ -741,48 +737,18 @@ suspend fun awaitSelectItemWithIcon(
     }
 }
 
+/** Fork: the items in a circle you can spin, without the favorite note in the middle. */
 context(_: DialogState)
-suspend fun awaitSelectItemWithIconAndTextField(
+suspend fun awaitSelectItemWithIconInCircle(
     items: List<Pair<ImageVector, String>>,
     @StringRes title: Int,
-    @StringRes hint: Int,
-    initialNote: String,
-    maxChar: Int,
-): Pair<Int, String> = showNoButton(false) {
+): Int = showNoButton(false) {
     Column {
         Text(text = stringResource(id = title), modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
-        CircularLayout(
-            modifier = Modifier.fillMaxWidth().aspectRatio(1F),
-            placeFirstItemInCenter = true,
-        ) {
-            val note = rememberTextFieldState(initialNote)
-            TextField(
-                state = note,
-                modifier = Modifier.fillMaxWidth(0.45F).aspectRatio(1F),
-                label = { Text(text = stringResource(id = hint)) },
-                trailingIcon = {
-                    if (note.text.isNotEmpty()) {
-                        IconButton(onClick = { note.clearText() }, shapes = IconButtonDefaults.shapes()) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = null)
-                        }
-                    }
-                },
-                supportingText = {
-                    Text(
-                        text = "${note.text.toString().toByteArray().size} / $maxChar",
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.End,
-                    )
-                },
-                shape = ShapeDefaults.ExtraSmall,
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
-            )
+        CircularLayout(modifier = Modifier.fillMaxWidth().aspectRatio(1F)) {
             items.forEachIndexed { index, (icon, text) ->
                 Column(
-                    modifier = Modifier.clip(IconWithTextCorner).clickable { resume(index to note.text.toString()) }.fillMaxWidth(0.2F),
+                    modifier = Modifier.clip(IconWithTextCorner).clickable { resume(index) }.fillMaxWidth(0.2F),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Icon(imageVector = icon, contentDescription = null, tint = AlertDialogDefaults.iconContentColor)
@@ -820,6 +786,9 @@ private fun CheckableItem(text: String, checked: Boolean, modifier: Modifier = M
 
 private val IconWithTextCorner = RoundedCornerShape(8.dp)
 private val GlassDialogScrim = Color.Black.copy(alpha = 0.32f)
+
+/** Fork: how much of the dialog color lies over the glass of a dialog. */
+private const val GLASS_DIALOG_TINT = 0.3f
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
 
 val LocalGlobalDialogState = compositionLocalOf<DialogState> { error("CompositionLocal LocalDialogState not present!") }

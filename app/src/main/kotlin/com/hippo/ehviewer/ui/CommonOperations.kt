@@ -70,7 +70,7 @@ import com.hippo.ehviewer.ui.tools.awaitSelectDate
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
 import com.hippo.ehviewer.ui.tools.awaitSelectItemWithCheckBox
 import com.hippo.ehviewer.ui.tools.awaitSelectItemWithIcon
-import com.hippo.ehviewer.ui.tools.awaitSelectItemWithIconAndTextField
+import com.hippo.ehviewer.ui.tools.awaitSelectItemWithIconInCircle
 import com.hippo.ehviewer.util.FavouriteStatusRouter
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.requestPermission
@@ -202,14 +202,9 @@ suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): 
             if (galleryInfo.favoriteSlot >= 0 && galleryInfo.favoriteNote == null) {
                 galleryInfo.favoriteNote = bgWork { EhEngine.getFavoriteNote(galleryInfo.gid, galleryInfo.token) }
             }
-            val (slot, note) = awaitSelectItemWithIconAndTextField(
-                items,
-                title = R.string.add_favorites_dialog_title,
-                hint = R.string.favorite_note,
-                initialNote = galleryInfo.favoriteNote.orEmpty(),
-                maxChar = MAX_FAVNOTE_CHAR,
-            )
-            return doModifyFavorites(galleryInfo, if (isFavorited) slot - 2 else slot - 1, localFavorited, note)
+            // Fork: no favorite note to write, the note already there is kept
+            val slot = awaitSelectItemWithIconInCircle(items, title = R.string.add_favorites_dialog_title)
+            return doModifyFavorites(galleryInfo, if (isFavorited) slot - 2 else slot - 1, localFavorited, galleryInfo.favoriteNote.orEmpty())
         } else {
             return doModifyFavorites(galleryInfo, if (isFavorited) NOT_FAVORITED else defaultFavSlot, localFavorited)
         }
@@ -330,7 +325,6 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     }
 }
 
-private const val MAX_FAVNOTE_CHAR = 200
 
 context(_: DialogState)
 private suspend fun confirmRemoveDownload(text: String): Boolean {
