@@ -193,7 +193,7 @@ fun FabLayout(
                             modifier = Modifier.padding(20.dp).offset {
                                 val distance = lerp(0, interval * (size - index) + padding, animatedProgress)
                                 IntOffset(0, -distance)
-                            }.floatingGlass(glass, FloatingActionButtonDefaults.smallShape, fabColor.copy(alpha = GLASS_FAB_TINT)),
+                            }.floatingGlass(glass, FloatingActionButtonDefaults.smallShape, fabColor.copy(alpha = GLASS_FAB_TINT), GlassStyle.Button),
                             containerColor = glassColor,
                             contentColor = glassContent,
                             elevation = glassElevation,
@@ -211,7 +211,7 @@ fun FabLayout(
                 rotationZ = lerp(-90f, 0f, appearState)
                 scaleX = appearState
                 scaleY = appearState
-            }.floatingGlass(glass, FloatingActionButtonDefaults.shape, fabColor.copy(alpha = GLASS_FAB_TINT)),
+            }.floatingGlass(glass, FloatingActionButtonDefaults.shape, fabColor.copy(alpha = GLASS_FAB_TINT), GlassStyle.Button),
             containerColor = glassColor,
             contentColor = glassContent,
             elevation = glassElevation,
