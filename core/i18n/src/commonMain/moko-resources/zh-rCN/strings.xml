@@ -664,6 +664,7 @@
     <string name="onedrive_sync_category_counts">%1$s：新增 %2$d，更新 %3$d，删除 %4$d</string>
     <string name="onedrive_sync_downloads_imported">已从订阅的设备导入 %d 条下载记录</string>
     <string name="onedrive_sync_devices_failed">下载记录同步失败：%s</string>
+    <string name="onedrive_sync_out_of_memory">内存不足，同步没能完成</string>
     <string name="onedrive_sync_auto">自动同步</string>
     <string name="onedrive_sync_auto_summary">定时、启动应用和数据变化后同步收藏、历史和搜索记录</string>
     <string name="onedrive_sync_interval">同步间隔</string>

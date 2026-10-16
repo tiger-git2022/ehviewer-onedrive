@@ -389,6 +389,9 @@ object EhDB {
 
     suspend fun loadGalleries(gids: Collection<Long>): List<GalleryEntity> = gids.chunked(SQL_CHUNK).flatMap { db.galleryDao().load(it) }
 
+    /** Fork: which of [gids] have a gallery row, without loading the rows. */
+    suspend fun existingGalleryGids(gids: Collection<Long>): Set<Long> = gids.chunked(SQL_CHUNK).flatMapTo(HashSet()) { db.galleryDao().existingGids(it) }
+
     suspend fun applySyncedFavorites(
         insertGalleries: List<GalleryEntity>,
         updateGalleries: List<GalleryEntity>,

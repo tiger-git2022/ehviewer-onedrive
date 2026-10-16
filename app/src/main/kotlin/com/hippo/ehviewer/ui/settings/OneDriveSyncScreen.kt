@@ -111,6 +111,9 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                     // Fork: also while the manual sync work is queued, not started yet
                     val manualQueued by OneDriveSync.manualSyncQueued.collectAsState()
                     val running = syncing || manualQueued
+                    // Fork: like the sync icon, no sync while the cloud favorites are read: both together ran out of memory
+                    val readingCloudFavorites by FavoritesIndexSync.working.collectAsState()
+                    val readingCloudFavoritesText = stringResource(id = R.string.onedrive_sync_favorites_index_refreshing)
                     val progress by OneDriveSync.progress.collectAsState()
                     val lastSyncTime by OneDriveSyncState.lastSyncTime.collectAsState()
                     val lastSyncSummary by OneDriveSyncState.lastSyncSummary.collectAsState()
@@ -125,7 +128,9 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         )
                     }
                     Preference(title = stringResource(id = R.string.onedrive_sync_now), summary = syncSummary) {
-                        if (!running) {
+                        if (readingCloudFavorites) {
+                            launch { snackbar(readingCloudFavoritesText) }
+                        } else if (!running) {
                             launch {
                                 val result = OneDriveSync.syncManually()
                                 snackbar(OneDriveSync.summaryOf(result))

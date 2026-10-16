@@ -14,6 +14,7 @@ import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.FavParserResult
 import java.io.File
 import java.io.IOException
+import java.lang.ref.SoftReference
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import kotlin.time.Clock
@@ -112,8 +113,18 @@ object FavoritesIndexSync {
     @Volatile
     private var legacyIndexRemoved = false
 
+    /**
+     * Fork: soft, so the cloud favorites stay in memory unless it runs short: a sync with a hundred thousand favorites
+     * ran out of it. Saved on every change, they are read again from [store].
+     */
     @Volatile
-    private var cache: CloudFavorites? = null
+    private var cacheRef: SoftReference<CloudFavorites>? = null
+
+    private var cache: CloudFavorites?
+        get() = cacheRef?.get()
+        set(value) {
+            cacheRef = value?.let(::SoftReference)
+        }
 
     /** [SystemClock.elapsedRealtime] of the last count check, 0 before the first one. */
     @Volatile
