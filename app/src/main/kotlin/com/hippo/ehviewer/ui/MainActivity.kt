@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
@@ -112,6 +113,7 @@ import androidx.navigation.compose.rememberNavController
 import com.ehviewer.core.files.isDirectory
 import com.ehviewer.core.files.toOkioPath
 import com.ehviewer.core.i18n.R
+import com.ehviewer.core.ui.component.GLASS_SHEET_CORNER
 import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
@@ -417,13 +419,15 @@ class MainActivity : AppCompatActivity() {
                     val pagesBackdrop = rememberGlassBackdrop()
                     val drawerGlass = rememberLiquidGlass(pagesBackdrop)
                     val drawerColor = DrawerDefaults.modalContainerColor
+                    val drawerShape = if (drawerGlass != null) RoundedCornerShape(topEnd = GLASS_SHEET_CORNER, bottomEnd = GLASS_SHEET_CORNER) else DrawerDefaults.shape
                     ModalNavigationDrawer(
                         drawerContent = {
                             ModalDrawerSheet(
                                 drawerState = navDrawerState,
                                 modifier = Modifier.widthIn(max = (configuration.screenWidthDp - 56).dp)
                                     .onSizeChanged { minOffset = -it.width.toFloat() }
-                                    .floatingGlass(drawerGlass, DrawerDefaults.shape, drawerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Panel),
+                                    .floatingGlass(drawerGlass, drawerShape, drawerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                                drawerShape = drawerShape,
                                 drawerContainerColor = if (drawerGlass != null) Color.Transparent else drawerColor,
                                 drawerContentColor = MaterialTheme.colorScheme.contentColorFor(drawerColor),
                                 drawerTonalElevation = if (drawerGlass != null) 0.dp else DrawerDefaults.ModalDrawerElevation,

@@ -65,15 +65,7 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    return remember(backdrop, dark) {
-        backdrop?.let {
-            if (dark) {
-                liquidGlass(it, DarkGlassEdge, Shadow.Default, whiteTint = false)
-            } else {
-                liquidGlass(it, edge = null, LightGlassShadow, whiteTint = true)
-            }
-        }
-    }
+    return remember(backdrop, dark) { backdrop?.let { liquidGlass(it, dark) } }
 }
 
 // The edge of the glass: a lit edge, wider and brighter than the library default (0.5 dp), so the glass reads as glass.
@@ -83,8 +75,24 @@ fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
 private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
 private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.12f))
 
-private fun liquidGlass(backdrop: Backdrop, edge: Highlight?, shadow: Shadow, whiteTint: Boolean) = FloatingGlass { shape, tint, style ->
-    val surface = if (whiteTint) Color.White.copy(alpha = tint.alpha) else tint
+// The drawers, chosen in the drawer glass tuner: a fainter edge and a deeper shadow, lifting them off the pages
+private val DarkSheetEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.5f)))
+private val SheetShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.3f))
+
+private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { shape, tint, style ->
+    val surface = if (dark) tint else Color.White.copy(alpha = tint.alpha)
+    val edge = when {
+        !dark || style == GlassStyle.Backdrop -> null
+        style == GlassStyle.Sheet -> DarkSheetEdge
+        else -> DarkGlassEdge
+    }
+    val shadow = when {
+        // A screen-wide glass has no shadow to cast
+        style == GlassStyle.Backdrop -> null
+        style == GlassStyle.Sheet -> SheetShadow
+        dark -> Shadow.Default
+        else -> LightGlassShadow
+    }
     Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
@@ -100,13 +108,18 @@ private fun liquidGlass(backdrop: Backdrop, edge: Highlight?, shadow: Shadow, wh
                     blur(4f.dp.toPx())
                     lens(16f.dp.toPx(), 28f.dp.toPx(), chromaticAberration = true)
                 }
+                // Clear like the controls, and a wide gentle bend at the inner edge: with the blur of a panel, the
+                // drawers read as frosted glass
+                GlassStyle.Sheet -> {
+                    blur(1f.dp.toPx())
+                    lens(25f.dp.toPx(), 10f.dp.toPx())
+                }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
                 GlassStyle.Backdrop -> blur(10f.dp.toPx())
             }
         },
-        // A screen-wide glass has no edge to light nor a shadow to cast
-        highlight = if (style == GlassStyle.Backdrop || edge == null) null else ({ edge }),
-        shadow = if (style == GlassStyle.Backdrop) null else ({ shadow }),
+        highlight = edge?.let { { it } },
+        shadow = shadow?.let { { it } },
         onDrawSurface = { drawRect(surface) },
     )
 }

@@ -10,8 +10,11 @@ enum class GlassStyle {
     /** A small control (a button, a search field): a clear glass bending strongly at its edges. */
     Control,
 
-    /** A large part with text (a drawer, a top bar): a little more blur, so the text over busy covers stays readable. */
+    /** A large part with text (a top bar): a little more blur, so the text over busy covers stays readable. */
     Panel,
+
+    /** A drawer: a clear glass, bending gently over a wide band at its inner edge, with a deeper shadow. */
+    Sheet,
 
     /** A whole screen in front of the content (the expanded search): a heavy blur, no bending edges. */
     Backdrop,
