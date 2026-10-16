@@ -70,22 +70,20 @@ fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
             if (dark) {
                 liquidGlass(it, DarkGlassEdge, Shadow.Default, whiteTint = false)
             } else {
-                liquidGlass(it, LightGlassEdge, LightGlassShadow, whiteTint = true)
+                liquidGlass(it, edge = null, LightGlassShadow, whiteTint = true)
             }
         }
     }
 }
 
 // The edge of the glass: a lit edge, wider and brighter than the library default (0.5 dp), so the glass reads as glass.
-// In light themes, like the system apps of vivo: a lit edge as well, it shines over content and vanishes on the light
-// page, where a soft shadow all around outlines the glass instead of a line. The glass is tinted white there: tinted
-// with the gray surface colors, it was darker than the page, and the edge showed as a white line between the gray
-// glass and the shadow
+// None in light themes, like the system apps of vivo: on the light page a lit edge was a white ring around the glass,
+// a soft shadow all around outlines it instead. The glass is tinted white there: tinted with the gray surface colors,
+// it was darker than the page
 private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
-private val LightGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.8f)))
 private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.12f))
 
-private fun liquidGlass(backdrop: Backdrop, edge: Highlight, shadow: Shadow, whiteTint: Boolean) = FloatingGlass { shape, tint, style ->
+private fun liquidGlass(backdrop: Backdrop, edge: Highlight?, shadow: Shadow, whiteTint: Boolean) = FloatingGlass { shape, tint, style ->
     val surface = if (whiteTint) Color.White.copy(alpha = tint.alpha) else tint
     Modifier.drawBackdrop(
         backdrop = backdrop,
@@ -107,7 +105,7 @@ private fun liquidGlass(backdrop: Backdrop, edge: Highlight, shadow: Shadow, whi
             }
         },
         // A screen-wide glass has no edge to light nor a shadow to cast
-        highlight = if (style == GlassStyle.Backdrop) null else ({ edge }),
+        highlight = if (style == GlassStyle.Backdrop || edge == null) null else ({ edge }),
         shadow = if (style == GlassStyle.Backdrop) null else ({ shadow }),
         onDrawSurface = { drawRect(surface) },
     )
