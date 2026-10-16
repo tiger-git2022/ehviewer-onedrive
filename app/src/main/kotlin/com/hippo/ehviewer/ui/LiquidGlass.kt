@@ -75,7 +75,7 @@ fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
 private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
 private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.12f))
 
-// The drawers, chosen in the drawer glass tuner: a fainter edge and a deeper shadow, lifting them off the pages
+// The drawers and the dialogs, chosen in the drawer glass tuner: a fainter edge and a deeper shadow, lifting them off the pages
 private val DarkSheetEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.5f)))
 private val SheetShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.3f))
 
@@ -83,13 +83,13 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { sha
     val surface = if (dark) tint else Color.White.copy(alpha = tint.alpha)
     val edge = when {
         !dark || style == GlassStyle.Backdrop -> null
-        style == GlassStyle.Sheet -> DarkSheetEdge
+        style == GlassStyle.Sheet || style == GlassStyle.Dialog -> DarkSheetEdge
         else -> DarkGlassEdge
     }
     val shadow = when {
         // A screen-wide glass has no shadow to cast
         style == GlassStyle.Backdrop -> null
-        style == GlassStyle.Sheet -> SheetShadow
+        style == GlassStyle.Sheet || style == GlassStyle.Dialog -> SheetShadow
         dark -> Shadow.Default
         else -> LightGlassShadow
     }
@@ -108,9 +108,13 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { sha
                     blur(4f.dp.toPx())
                     lens(16f.dp.toPx(), 28f.dp.toPx(), chromaticAberration = true)
                 }
-                // Clear like the controls, and a wide gentle bend at the inner edge: with the blur of a panel, the
-                // drawers read as frosted glass
+                // A wide gentle bend at the inner edge, chosen in the drawer glass tuner. With the blur of a panel,
+                // the drawers read as frosted glass; with the blur of a dialog, their lists were hard to read
                 GlassStyle.Sheet -> {
+                    blur(2f.dp.toPx())
+                    lens(25f.dp.toPx(), 10f.dp.toPx())
+                }
+                GlassStyle.Dialog -> {
                     blur(1f.dp.toPx())
                     lens(25f.dp.toPx(), 10f.dp.toPx())
                 }
