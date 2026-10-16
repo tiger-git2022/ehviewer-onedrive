@@ -214,4 +214,15 @@ class OneDriveSyncMergerTest {
         assertTrue(none.isEmpty())
         assertTrue(1L in stillKnown)
     }
+
+    @Test
+    fun baselineGalleriesAreNeverTaken() {
+        // Fork: a sync reads only the gid and the time of a baseline, see OneDriveSync.readBaselineOrNull
+        val local = listOf(record(1, 10), record(2, 20), record(4, 41))
+        val cloud = listOf(record(1, 10), record(3, 30), record(4, 40, gallery(4, pages = 9)), record(5, 50))
+        val baseline = listOf(record(1, 10), record(2, 20), record(3, 30), record(4, 40))
+        val stamps = baseline.map { SyncGalleryRecord(it.gid, it.time, SyncGallery(gid = 0, token = "")) }
+        assertEquals(OneDriveSyncMerger.mergeFavorites(local, cloud, baseline), OneDriveSyncMerger.mergeFavorites(local, cloud, stamps))
+        assertEquals(OneDriveSyncMerger.mergeHistory(local, cloud, baseline), OneDriveSyncMerger.mergeHistory(local, cloud, stamps))
+    }
 }

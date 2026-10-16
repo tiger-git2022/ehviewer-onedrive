@@ -79,8 +79,9 @@ object OneDriveSyncMerger {
         changed: (old: V, new: V) -> Boolean,
         resolve: (local: V, cloud: V) -> V,
     ): Map<K, V> {
-        val result = LinkedHashMap<K, V>(cloud.size + local.size)
-        val keys = LinkedHashSet<K>(cloud.size + local.size).apply {
+        // Fork: sized for the larger side, the two sides mostly share their keys; their sum doubled the tables
+        val result = LinkedHashMap<K, V>(maxOf(cloud.size, local.size))
+        val keys = LinkedHashSet<K>(maxOf(cloud.size, local.size)).apply {
             addAll(cloud.keys)
             addAll(local.keys)
             baseline?.let { addAll(it.keys) }

@@ -20,6 +20,10 @@ interface GalleryDao {
     @Query("SELECT * FROM GALLERIES WHERE GID IN (:gids)")
     suspend fun load(gids: List<Long>): List<GalleryEntity>
 
+    // Fork: the gids alone, for the reading progress of a sync
+    @Query("SELECT GID FROM GALLERIES WHERE GID IN (:gids)")
+    suspend fun existingGids(gids: List<Long>): List<Long>
+
     @Query(
         """DELETE FROM GALLERIES WHERE GID IN (:gids) AND GID NOT IN (SELECT GID FROM LOCAL_FAVORITES)
         AND GID NOT IN (SELECT GID FROM HISTORY) AND GID NOT IN (SELECT GID FROM DOWNLOADS)""",

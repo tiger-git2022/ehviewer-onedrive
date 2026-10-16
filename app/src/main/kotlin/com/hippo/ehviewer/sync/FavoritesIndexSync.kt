@@ -14,6 +14,7 @@ import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.FavParserResult
 import java.io.File
 import java.io.IOException
+import java.lang.ref.SoftReference
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import kotlin.time.Clock
@@ -112,8 +113,18 @@ object FavoritesIndexSync {
     @Volatile
     private var legacyIndexRemoved = false
 
+    /**
+     * Fork: soft, so the cloud favorites stay in memory unless it runs short: a sync with a hundred thousand favorites
+     * ran out of it. Saved on every change, they are read again from [store].
+     */
     @Volatile
-    private var cache: CloudFavorites? = null
+    private var cacheRef: SoftReference<CloudFavorites>? = null
+
+    private var cache: CloudFavorites?
+        get() = cacheRef?.get()
+        set(value) {
+            cacheRef = value?.let(::SoftReference)
+        }
 
     /** [SystemClock.elapsedRealtime] of the last count check, 0 before the first one. */
     @Volatile
@@ -151,9 +162,24 @@ object FavoritesIndexSync {
 
     private fun <T> readGzip(file: File, serializer: KSerializer<T>): T = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(serializer, it) }
 
-    private fun loadLocked(): CloudFavorites = cache ?: (runCatching { store.load() }.onFailure { logcat(TAG, it) }.getOrNull() ?: loadLegacyStoreLocked())
-        .let { it ?: CloudFavorites() }
-        .also { cache = it }
+    private fun loadLocked(): CloudFavorites {
+        cache?.let { return it }
+        val stored = try {
+            store.load()
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+            // Fork: a full memory, a failed read, or any failure once the list was read in this process (read again
+            // after the soft cache was taken back) is no empty list: saved, it would replace the shards. Only an
+            // unreadable store found at the first read starts over empty, as before
+            if (e is Error || e is IOException || storeRead) throw e
+            null
+        }
+        storeRead = true
+        return (stored ?: loadLegacyStoreLocked() ?: CloudFavorites()).also { cache = it }
+    }
+
+    /** Fork: [store] was read in this process, see [loadLocked]. Guarded by [mutex]. */
+    private var storeRead = false
 
     /** The single file of before the shards: read once, saved in shards and deleted. */
     private fun loadLegacyStoreLocked(): CloudFavorites? {
@@ -201,7 +227,8 @@ object FavoritesIndexSync {
     ): Boolean = withContext(Dispatchers.IO) {
         val changed = mutex.withLock {
             if (userKey() != user) return@withLock false
-            val before = FavoritesIndexMerger.forUser(loadLocked(), user)
+            val loaded = loadLocked()
+            val before = FavoritesIndexMerger.forUser(loaded, user)
             val after = transform(before)
             // Pages of an unfinished refresh read before this change must not undo it
             val pending = loadCheckpointLocked()
@@ -211,7 +238,7 @@ object FavoritesIndexSync {
                     saveCheckpointLocked(pending.copy(touched = pending.touched + touched, intended = pending.intended + intended))
                 }
             }
-            saveLocked(after).also { if (it && markChanged) markChangedLocked() }
+            saveLocked(after, loaded).also { if (it && markChanged) markChangedLocked() }
         }
         changed
     }
@@ -250,8 +277,12 @@ object FavoritesIndexSync {
         mutex.withLock { loadCheckpointLocked()?.usableFor(user, now()) == true }
     }
 
-    private fun saveLocked(new: CloudFavorites): Boolean {
-        if (new == loadLocked()) return false
+    /**
+     * [loaded]: the cloud favorites [new] was made from. Fork: passed on, not loaded again: the soft cache may be gone
+     * by then, and reading it again held a second whole copy.
+     */
+    private fun saveLocked(new: CloudFavorites, loaded: CloudFavorites): Boolean {
+        if (new == loaded) return false
         cache = new
         // Fork: only the shards the change touches are written, see CloudFavoritesStore
         store.save(new)
@@ -478,7 +509,8 @@ object FavoritesIndexSync {
             val pending = loadCheckpointLocked()
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
             saveCheckpointLocked(pending.copy(slot = slot, next = next, galleries = pending.galleries + pages, marks = pending.marks + marks))
-            if (saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loadLocked(), user), pages, pending.touched, now(), pending.intended))) {
+            val loaded = loadLocked()
+            if (saveLocked(FavoritesIndexMerger.withRefreshPages(FavoritesIndexMerger.forUser(loaded, user), pages, pending.touched, now(), pending.intended), loaded)) {
                 markChangedLocked()
             }
             true
@@ -490,7 +522,8 @@ object FavoritesIndexSync {
             val pending = loadCheckpointLocked()
             // Signed in to another account meanwhile: these pages belong to the previous one
             if (pending == null || pending.userKey != user || userKey() != user) return@withLock false
-            val cloud = FavoritesIndexMerger.forUser(loadLocked(), user)
+            val loaded = loadLocked()
+            val cloud = FavoritesIndexMerger.forUser(loaded, user)
             val refreshed = FavoritesIndexMerger.completeRefresh(cloud, pending.galleries, pending.touched, slotNames, now(), pending.intended, pending.slots)
             // Fork: all slots read: shown as the last complete read, with what it found
             val done = if (pending.slots.containsAll(ALL_CLOUD_SLOTS)) {
@@ -498,7 +531,7 @@ object FavoritesIndexSync {
             } else {
                 refreshed
             }
-            if (saveLocked(done)) markChangedLocked()
+            if (saveLocked(done, loaded)) markChangedLocked()
             // Fork: the pages of the slots read, for the next change of their counts; an empty slot is one empty segment
             val read = SlotVerifier.segmentsOf(pending.marks, pending.galleries)
             val readBySlot = pending.galleries.groupingBy { it.slot }.eachCount()

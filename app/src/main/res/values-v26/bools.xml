@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <bool name="large_heap">false</bool>
+    <!-- Fork: the OneDrive sync of a hundred thousand favorites ran out of the default heap -->
+    <bool name="large_heap">true</bool>
 
 </resources>

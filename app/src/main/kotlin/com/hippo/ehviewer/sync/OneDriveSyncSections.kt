@@ -271,7 +271,7 @@ object ProgressSection : SyncSection<List<SyncProgress>>(
         val rowGids = rows.mapTo(HashSet()) { it.gid }
         val unknown = baselineByGid.keys.filter { it !in rowGids }
         if (unknown.isEmpty()) return local
-        val known = EhDB.loadGalleries(unknown).mapTo(HashSet()) { it.gid }
+        val known = EhDB.existingGalleryGids(unknown)
         return local + unknown.filter { it !in known }.map { baselineByGid.getValue(it) }
     }
 
@@ -281,7 +281,7 @@ object ProgressSection : SyncSection<List<SyncProgress>>(
         val localByGid = local.associateBy { it.gid }
         val mergedGids = merged.mapTo(HashSet()) { it.gid }
         val changed = merged.filter { localByGid[it.gid]?.page != it.page }
-        val galleries = EhDB.loadGalleries(changed.map { it.gid }).mapTo(HashSet()) { it.gid }
+        val galleries = EhDB.existingGalleryGids(changed.map { it.gid })
         val upsert = changed.filter { it.gid in galleries }
         val delete = local.filter { it.gid !in mergedGids }.map { it.gid }
         if (upsert.isEmpty() && delete.isEmpty()) return SyncCounts()

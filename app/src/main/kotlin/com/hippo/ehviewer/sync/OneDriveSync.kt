@@ -53,6 +53,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.encodeToStream
@@ -594,7 +596,7 @@ object OneDriveSync {
             OneDriveSyncState.withMutableSnapshot {
                 it[OneDriveSyncState.lastSyncTime] = now()
                 it[OneDriveSyncState.lastSyncFailed] = true
-                it[OneDriveSyncState.lastSyncSummary] = e.message ?: e.toString()
+                it[OneDriveSyncState.lastSyncSummary] = e.syncMessage()
             }
         }
         val rerun = synchronized(debounceLock) {
@@ -629,7 +631,14 @@ object OneDriveSync {
         devicesError?.let { logcat(TAG, it) }
         mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_favorites_index, steps, steps, favoritesIndex = true)
         // Last: it reads the local favorites the favorites step just merged
-        val indexError = runCatching { FavoritesIndexSync.sync(deviceId, deviceName) }.exceptionOrNull()
+        // Fork: not while CloudFavoritesWork reads the cloud favorites: it uploads the index itself, and both building it
+        // at once ran out of memory with a hundred thousand favorites
+        val indexError = if (FavoritesIndexSync.working.value) {
+            logcat(TAG) { "Favorites index: left to the cloud favorites work" }
+            null
+        } else {
+            runCatching { FavoritesIndexSync.sync(deviceId, deviceName) }.exceptionOrNull()
+        }
         if (indexError is CancellationException) throw indexError
         indexError?.let { logcat(TAG, it) }
         return SyncReport(results, imported, devicesError, indexError)
@@ -690,10 +699,17 @@ object OneDriveSync {
             val current = item
             // A file missing in the cloud (first sync, or cloud data cleared) is merged without baseline,
             // so nothing is deleted locally because of it.
-            val baseline = if (current != null && hasCache) readSectionOrNull(cacheFile, section.serializer)?.items else null
-            val cloud: T = when {
+            // Fork: unchanged in the cloud, the baseline is the cloud copy too and is read whole; else only what the
+            // merge needs of it, see readBaselineOrNull
+            val cloudUnchanged = current != null && current.eTag == cachedETag
+            var baseline = when {
+                current == null || !hasCache -> null
+                cloudUnchanged -> readSectionOrNull(cacheFile, section.serializer)?.items
+                else -> readBaselineOrNull(section, cacheFile)
+            }
+            var cloud: T? = when {
                 current == null -> section.empty
-                current.eTag == cachedETag && baseline != null -> baseline
+                cloudUnchanged && baseline != null -> baseline
                 else -> {
                     action = SyncAction.MERGED
                     val download = File(syncDir, "$fileName.download")
@@ -712,10 +728,14 @@ object OneDriveSync {
             phase(R.string.onedrive_sync_phase_read_local, StepProgress.READ_LOCAL)
             val local = section.collect(baseline, localChangedAt(category))
             phase(R.string.onedrive_sync_phase_merge, StepProgress.MERGE)
-            val merged = section.merge(local, cloud, baseline)
+            val merged = section.merge(local, cloud!!, baseline)
+            val cloudChanged = merged != cloud
+            // Fork: not kept through the upload and the writes, with a large list they took the memory of a copy each
+            baseline = null
+            cloud = null
             val output = File(syncDir, "$fileName.upload")
             writeSection(output, section.serializer, SectionFile(updatedAt = now(), deviceId = deviceId, items = merged))
-            val newETag = if (merged != cloud || current == null) {
+            val newETag = if (cloudChanged || current == null) {
                 try {
                     phase(R.string.onedrive_sync_phase_upload, StepProgress.UPLOAD_SECTION)
                     OneDriveClient.upload("$SHARED_FOLDER/$fileName", output, current?.eTag) { done, total ->
@@ -761,6 +781,18 @@ object OneDriveSync {
     }
 
     private fun <T> readSectionOrNull(file: File, serializer: KSerializer<T>): SectionFile<T>? = runCatching { readSection(file, serializer) }.getOrNull()
+
+    /**
+     * Fork: the baseline of a merge with a changed cloud copy. Favorites and history take only the gid and the time of
+     * each gallery from it, all the merge reads of the baseline (presence and change of the time, the merged galleries
+     * come from the local or the cloud copy): with a hundred thousand favorites, whole records took a copy of memory.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> readBaselineOrNull(section: SyncSection<T>, file: File): T? = if (section === FavoritesSection || section === HistorySection) {
+        readSectionOrNull(file, ListSerializer(SyncGalleryStamp.serializer()))?.items?.map { SyncGalleryRecord(it.gid, it.time, BaselineGallery) } as T?
+    } else {
+        readSectionOrNull(file, section.serializer)?.items
+    }
 
     private fun <T> writeSection(file: File, serializer: KSerializer<T>, value: SectionFile<T>) {
         file.parentFile?.mkdirs()
@@ -869,12 +901,15 @@ object OneDriveSync {
             )
         }.toMutableList()
         if (report.imported > 0) lines += appCtx.getString(R.string.onedrive_sync_downloads_imported, report.imported)
-        report.devicesError?.let { lines += appCtx.getString(R.string.onedrive_sync_devices_failed, it.message ?: it.toString()) }
-        report.indexError?.let { lines += appCtx.getString(R.string.onedrive_sync_favorites_index_failed, it.message ?: it.toString()) }
+        report.devicesError?.let { lines += appCtx.getString(R.string.onedrive_sync_devices_failed, it.syncMessage()) }
+        report.indexError?.let { lines += appCtx.getString(R.string.onedrive_sync_favorites_index_failed, it.syncMessage()) }
         return lines.joinToString("\n").ifEmpty { appCtx.getString(R.string.onedrive_sync_no_changes) }
     }
 
-    fun summaryOf(result: Result<SyncReport>): String = result.fold(::summarize) { it.message ?: it.toString() }
+    fun summaryOf(result: Result<SyncReport>): String = result.fold(::summarize) { it.syncMessage() }
+
+    /** Fork: an out of memory error says so in words, its own message is the numbers of the heap. */
+    private fun Throwable.syncMessage(): String = if (this is OutOfMemoryError) appCtx.getString(R.string.onedrive_sync_out_of_memory) else message ?: toString()
 
     fun categoryTitle(category: SyncCategory) = when (category) {
         SyncCategory.SETTINGS -> R.string.onedrive_sync_category_settings
@@ -1054,3 +1089,10 @@ object OneDriveSync {
 
     // endregion
 }
+
+/** Fork: what a merge reads of a gallery of the baseline, see [OneDriveSync.readBaselineOrNull]. */
+@Serializable
+private class SyncGalleryStamp(val gid: Long, val time: Long)
+
+/** Fork: the gallery of every record of a baseline read as [SyncGalleryStamp]: the merge never takes it. */
+private val BaselineGallery = SyncGallery(gid = 0, token = "")

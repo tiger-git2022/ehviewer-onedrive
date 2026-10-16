@@ -682,6 +682,7 @@
     <string name="onedrive_sync_category_counts">%1$s: %2$d added, %3$d updated, %4$d removed</string>
     <string name="onedrive_sync_downloads_imported">Imported %d downloads from subscribed devices</string>
     <string name="onedrive_sync_devices_failed">Download lists failed: %s</string>
+    <string name="onedrive_sync_out_of_memory">Not enough memory for this sync</string>
     <string name="onedrive_sync_auto">Automatic sync</string>
     <string name="onedrive_sync_auto_summary">Sync favorites, history and search history periodically, on app start and after changes</string>
     <string name="onedrive_sync_interval">Sync interval</string>
