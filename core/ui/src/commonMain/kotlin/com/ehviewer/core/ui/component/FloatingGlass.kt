@@ -13,11 +13,8 @@ enum class GlassStyle {
     /** A large part with text (a top bar): a little more blur, so the text over busy covers stays readable. */
     Panel,
 
-    /** A drawer: a lightly blurred glass, bending gently over a wide band at its inner edge, with a deeper shadow. */
+    /** A drawer or a dialog: a blurred glass, bending gently over a wide band at its edge, with a deeper shadow. */
     Sheet,
-
-    /** A dialog over the page: like [Sheet], clearer. */
-    Dialog,
 
     /** A whole screen in front of the content (the expanded search): a heavy blur, no bending edges. */
     Backdrop,

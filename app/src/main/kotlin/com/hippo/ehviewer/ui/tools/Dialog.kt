@@ -103,6 +103,7 @@ import arrow.core.right
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.FastScrollLazyColumn
 import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
 import com.ehviewer.core.ui.component.floatingGlass
@@ -571,7 +572,7 @@ private fun BoxScope.GlassDialog(glass: FloatingGlass, onDismissRequest: () -> U
             val colors = MaterialTheme.colorScheme
             MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
                 Surface(
-                    modifier = modifier.floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_DIALOG_TINT), GlassStyle.Dialog),
+                    modifier = modifier.floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
                     shape = AlertDialogDefaults.shape,
                     color = Color.Transparent,
                     contentColor = colors.onSurface,
@@ -786,9 +787,6 @@ private fun CheckableItem(text: String, checked: Boolean, modifier: Modifier = M
 
 private val IconWithTextCorner = RoundedCornerShape(8.dp)
 private val GlassDialogScrim = Color.Black.copy(alpha = 0.32f)
-
-/** Fork: how much of the dialog color lies over the glass of a dialog. */
-private const val GLASS_DIALOG_TINT = 0.3f
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
 
 val LocalGlobalDialogState = compositionLocalOf<DialogState> { error("CompositionLocal LocalDialogState not present!") }
