@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -131,6 +132,7 @@ import com.ramcosta.composedestinations.spec.Direction
 import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import moe.tarsin.navigate
 import moe.tarsin.snackbar
 import moe.tarsin.string
@@ -206,7 +208,12 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     val toplists = remember { entries zip values }
     val quickSearchName = getSuitableTitleForUrlBuilder(urlBuilder, false)
     var saveProgress by Settings.qSSaveProgress.asMutableState()
-    var languageFilter by Settings.languageFilter.asMutableState()
+    // Fork: the language filter changes at once and is stored after: DataStore stores a change a moment later, and a
+    // search right after tapping "汉" took the language from before
+    val languageSetting by Settings.languageFilter.collectAsState()
+    var languageFilter by remember { mutableIntStateOf(languageSetting) }
+    LaunchedEffect(languageSetting) { languageFilter = languageSetting }
+    LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { Settings.languageFilter.value = it } }
 
     fun getFirstVisibleItemIndex() = if (listMode == 0) {
         listState.firstVisibleItemIndex
@@ -495,6 +502,23 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         searchBarOffsetY = { searchBarOffsetY },
         // Fork
         showSyncProgress = true,
+        // Fork: a keyword search clears from the collapsed bar; tag, uploader and image searches are pages of their own
+        onClearSearch = if ((urlBuilder.mode == MODE_NORMAL || urlBuilder.mode == MODE_SUBSCRIPTION) && !urlBuilder.keyword.isNullOrEmpty()) {
+            {
+                // From the first page
+                urlBuilder = urlBuilder.copy(keyword = null).apply { setRange(0) }
+                data.refresh()
+            }
+        } else {
+            null
+        },
+        // Fork: "汉" while typing too: the search takes the language filter it sets
+        expandedTrailingIcon = {
+            ChineseOnlyButton(
+                checked = languageFilter == CHINESE_LANGUAGE_FILTER,
+                onCheckedChange = { on -> languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1 },
+            )
+        },
         trailingIcon = {
             val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
             if (OneDriveClient.isSupported && oneDriveAccount != null) {

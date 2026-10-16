@@ -132,6 +132,10 @@ fun SearchBarScreen(
     localSearch: Boolean = true,
     searchBarOffsetY: () -> Int = { 0 },
     trailingIcon: @Composable () -> Unit = {},
+    // Fork: clears the search from the collapsed search bar, without opening the keyboard; null without a search
+    onClearSearch: (() -> Unit)? = null,
+    // Fork: before the clear button of the expanded search bar
+    expandedTrailingIcon: @Composable () -> Unit = {},
     filter: @Composable (() -> Unit)? = null,
     floatingActionButton: @Composable () -> Unit = {},
     // Fork: the progress of a OneDrive sync below the search bar
@@ -317,19 +321,33 @@ fun SearchBarScreen(
                     },
                     trailingIcon = {
                         if (expanded) {
-                            AnimatedContent(targetState = searchFieldState.text.isNotEmpty()) { hasText ->
-                                if (hasText) {
-                                    IconButton(onClick = { searchFieldState.clearText() }, shapes = IconButtonDefaults.shapes()) {
-                                        Icon(Icons.Default.Close, contentDescription = null)
-                                    }
-                                } else {
-                                    IconButton(onClick = { navigate(ImageSearchScreenDestination) }, shapes = IconButtonDefaults.shapes()) {
-                                        Icon(Icons.Default.ImageSearch, contentDescription = null)
+                            Row {
+                                expandedTrailingIcon()
+                                AnimatedContent(targetState = searchFieldState.text.isNotEmpty()) { hasText ->
+                                    if (hasText) {
+                                        IconButton(onClick = { searchFieldState.clearText() }, shapes = IconButtonDefaults.shapes()) {
+                                            Icon(Icons.Default.Close, contentDescription = null)
+                                        }
+                                    } else {
+                                        IconButton(onClick = { navigate(ImageSearchScreenDestination) }, shapes = IconButtonDefaults.shapes()) {
+                                            Icon(Icons.Default.ImageSearch, contentDescription = null)
+                                        }
                                     }
                                 }
                             }
                         } else {
                             Row {
+                                if (onClearSearch != null) {
+                                    IconButton(
+                                        onClick = {
+                                            searchFieldState.clearText()
+                                            onClearSearch()
+                                        },
+                                        shapes = IconButtonDefaults.shapes(),
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_search))
+                                    }
+                                }
                                 trailingIcon()
                             }
                         }
