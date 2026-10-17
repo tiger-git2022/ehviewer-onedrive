@@ -109,8 +109,12 @@ fun FabLayout(
     expanded: Boolean,
     onExpandChanged: (Boolean) -> Unit,
     autoCancel: Boolean,
+    // Fork: collapsed, the main button shows [primaryIcon] and a tap runs [onPrimaryClick] instead of expanding
+    primaryIcon: ImageVector? = null,
+    onPrimaryClick: (suspend () -> Unit)? = null,
     fabBuilder: FabBuilder.() -> Unit,
 ) {
+    val primaryClick by rememberUpdatedState(onPrimaryClick)
     val updatedHidden by rememberUpdatedState(hidden)
     val updatedExpanded by rememberUpdatedState(expanded)
     val newState = when {
@@ -208,7 +212,14 @@ fun FabLayout(
         }
         val appearState by state.appearProgress.asState()
         FloatingActionButton(
-            onClick = { onExpandChanged(!updatedExpanded) },
+            onClick = {
+                val action = primaryClick
+                if (!updatedExpanded && action != null) {
+                    launch(Dispatchers.Default) { action() }
+                } else {
+                    onExpandChanged(!updatedExpanded)
+                }
+            },
             modifier = Modifier.padding(16.dp).graphicsLayer {
                 rotationZ = lerp(-90f, 0f, appearState)
                 scaleX = appearState
@@ -218,13 +229,17 @@ fun FabLayout(
             contentColor = glassContent,
             elevation = glassElevation,
         ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = null,
-                modifier = Modifier.graphicsLayer {
-                    rotationZ = lerp(-135f, 0f, animatedProgress)
-                },
-            )
+            if (primaryIcon != null && !updatedExpanded) {
+                Icon(imageVector = primaryIcon, contentDescription = null)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.graphicsLayer {
+                        rotationZ = lerp(-135f, 0f, animatedProgress)
+                    },
+                )
+            }
         }
     }
 }
