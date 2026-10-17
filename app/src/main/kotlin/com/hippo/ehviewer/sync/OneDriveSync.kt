@@ -599,10 +599,11 @@ object OneDriveSync {
             mutableRunning.value = true
             // This sync takes every change made so far; a change from now on schedules the next one
             mutableChangesPending.value = false
-            clearChangeCountdown()
             try {
                 val start = SystemClock.elapsedRealtime()
                 val report = withContext(SyncWrite()) { doSync(manual = trigger == SyncTrigger.MANUAL) }
+                // Fork: after it went through: a failed sync leaves the countdown to try again
+                clearChangeCountdown()
                 logcat(TAG) { "Sync ($trigger) finished in ${SystemClock.elapsedRealtime() - start} ms" }
                 Result.success(report)
             } catch (e: CancellationException) {
