@@ -30,14 +30,12 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
-import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NewLabel
@@ -45,7 +43,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -110,7 +107,6 @@ import com.ehviewer.core.util.launchIO
 import com.ehviewer.core.util.mapToLongArray
 import com.ehviewer.core.util.onEachLatest
 import com.ehviewer.core.util.withNonCancellableContext
-import com.ehviewer.core.util.withUIContext
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
@@ -119,7 +115,6 @@ import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.download.DownloadsFilterMode
-import com.hippo.ehviewer.download.SortMode
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
@@ -132,8 +127,6 @@ import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitInputText
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
-import com.hippo.ehviewer.ui.tools.awaitSelectItemWithCheckBox
-import com.hippo.ehviewer.ui.tools.awaitSingleChoice
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -148,7 +141,6 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = Screen(navigator) {
     var gridView by Settings.gridView.asMutableState()
-    var sortMode by Settings.downloadSortMode.asMutableState()
     val filterMode by Settings.downloadFilterMode.collectAsState { DownloadsFilterMode.from(it) }
     val showProgress by Settings.showReadingProgress.collectAsState()
     var filterState by rememberSerializable { mutableStateOf(DownloadsFilterState(filterMode, Settings.recentDownloadLabel.value)) }
@@ -703,56 +695,24 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
             checkedInfoMap.clear()
         },
         autoCancel = !selectMode,
+        // Fork: the main button selects the galleries read past two thirds, to delete them (it opened shuffle, sort
+        // and filter before)
+        primaryIcon = Icons.Default.Checklist,
+        onPrimaryClick = {
+            val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
+            val read = list.filter { info ->
+                val page = progress[info.gid] ?: return@filter false
+                info.pages > 0 && (page + 1) * 3 > info.pages * 2
+            }
+            if (read.isEmpty()) {
+                snackbar(noMostlyRead)
+            } else {
+                checkedInfoMap.putAll(read.associateBy { it.gid })
+                snackbar(mostlyReadSelected.format(read.size))
+            }
+        },
     ) {
-        if (!selectMode) {
-            // Fork: selects the galleries read past two thirds, to delete them; the buttons for those stay open
-            onClick(Icons.Default.Checklist, autoClose = false) {
-                val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
-                val read = list.filter { info ->
-                    val page = progress[info.gid] ?: return@filter false
-                    info.pages > 0 && (page + 1) * 3 > info.pages * 2
-                }
-                fabExpanded = false
-                if (read.isEmpty()) {
-                    snackbar(noMostlyRead)
-                } else {
-                    checkedInfoMap.putAll(read.associateBy { it.gid })
-                    snackbar(mostlyReadSelected.format(read.size))
-                }
-            }
-            onClick(Icons.Default.Shuffle) {
-                if (list.isNotEmpty()) {
-                    withUIContext { navToReader(list.random().galleryInfo) }
-                }
-            }
-            onClick(Icons.AutoMirrored.Default.Sort) {
-                val oldMode = SortMode.from(sortMode)
-                val sortModes = contextOf<Context>().resources.getStringArray(com.hippo.ehviewer.R.array.download_sort_modes).toList()
-                val (selected, checked) = awaitSelectItemWithCheckBox(
-                    sortModes,
-                    R.string.sort_by,
-                    R.string.group_by_download_label,
-                    SortMode.All.indexOfFirst { it.field == oldMode.field && it.order == oldMode.order },
-                    oldMode.groupByDownloadLabel,
-                )
-                val mode = SortMode.All[selected].copy(groupByDownloadLabel = checked)
-                if (mode != oldMode) {
-                    sortMode = mode.flag
-                    isLoading = true
-                    DownloadManager.sortDownloads(mode)
-                    invalidateKey = !invalidateKey
-                }
-            }
-            onClick(Icons.Default.FilterList) {
-                val downloadStates = contextOf<Context>().resources.getStringArray(com.hippo.ehviewer.R.array.download_state).toList()
-                val state = awaitSingleChoice(
-                    downloadStates,
-                    filterState.state + 1,
-                    R.string.download_filter,
-                ) - 1
-                filterState = filterState.copy(state = state)
-            }
-        } else {
+        if (selectMode) {
             onClick(Icons.Default.DoneAll, autoClose = false) {
                 val info = list.associateBy { it.gid }
                 checkedInfoMap.putAll(info)
