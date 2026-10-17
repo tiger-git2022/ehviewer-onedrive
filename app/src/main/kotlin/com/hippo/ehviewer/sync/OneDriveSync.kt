@@ -359,6 +359,8 @@ object OneDriveSync {
                         } else {
                             resumePendingChanges()
                         }
+                        // Fork: new favorites to download are looked for right away, not only by a sync
+                        scope.launch { runCatching { FavoritesIndexSync.checkForAutoDownload() }.onFailure { logcat(TAG, it) } }
                     }
                     Lifecycle.Event.ON_STOP -> {
                         inForeground = false
