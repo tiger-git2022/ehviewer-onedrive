@@ -61,7 +61,7 @@ fun BoxScope.ReaderAppBars(
     ) {
         TopAppBar(
             title = { Text(text = title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, glassTint, GlassStyle.Panel, READER_GLASS_CORNER),
+            modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, glassTint, GlassStyle.Panel),
             colors = TopAppBarDefaults.topAppBarColors(containerColor = barColor),
             navigationIcon = { NavigationIcon() },
         )
@@ -88,13 +88,11 @@ fun BoxScope.ReaderAppBars(
             BottomReaderBar(
                 onClickSettings = onClickSettings,
                 containerColor = barColor,
-                modifier = Modifier.edgeGlass(glass, GlassEdge.Top, glassTint, GlassStyle.Panel, READER_GLASS_CORNER),
+                modifier = Modifier.edgeGlass(glass, GlassEdge.Top, glassTint, GlassStyle.Panel),
             )
         }
     }
 }
 
-// Fork: the glass of the reader menus, only their edge toward the page shows, rounded; enough tint to read them over
-// any page
-private val READER_GLASS_CORNER = 24.dp
+// Fork: enough tint to read the reader menus over any page
 const val READER_GLASS_TINT = 0.3f
