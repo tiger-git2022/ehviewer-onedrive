@@ -224,6 +224,9 @@
     <string name="download_remove_dialog_title">移除下载项</string>
     <string name="download_remove_dialog_message">从下载列表移除 %s ？</string>
     <string name="download_remove_dialog_message_2">从下载列表移除 %d 项？</string>
+    <string name="download_select_mostly_read_none">这里没有读过 2/3 的漫画</string>
+    <string name="download_select_mostly_read_done">已选中 %d 本读过 2/3 的漫画</string>
+    <string name="download_remove_files_failed">有 %d 本的文件没能删除</string>
     <string name="download_remove_dialog_check_text">删除图片文件</string>
     <string name="stat_download_action_stop_all">全部停止</string>
     <string name="default_download_label_name">默认</string>

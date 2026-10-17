@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Download
@@ -139,6 +140,7 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import moe.tarsin.navigate
+import moe.tarsin.snackbar
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -202,6 +204,9 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         remember { mutableStateListOf() }
     }
 
+    val noMostlyRead = stringResource(R.string.download_select_mostly_read_none)
+    val mostlyReadSelected = stringResource(R.string.download_select_mostly_read_done)
+    val removeFilesFailed = stringResource(R.string.download_remove_files_failed)
     val newLabel = stringResource(R.string.new_label_title)
     val renameLabel = stringResource(R.string.rename_label_title)
     val labelsStr = stringResource(R.string.download_labels)
@@ -700,6 +705,21 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         autoCancel = !selectMode,
     ) {
         if (!selectMode) {
+            // Fork: selects the galleries read past two thirds, to delete them; the buttons for those stay open
+            onClick(Icons.Default.Checklist, autoClose = false) {
+                val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
+                val read = list.filter { info ->
+                    val page = progress[info.gid] ?: return@filter false
+                    info.pages > 0 && (page + 1) * 3 > info.pages * 2
+                }
+                fabExpanded = false
+                if (read.isEmpty()) {
+                    snackbar(noMostlyRead)
+                } else {
+                    checkedInfoMap.putAll(read.associateBy { it.gid })
+                    snackbar(mostlyReadSelected.format(read.size))
+                }
+            }
             onClick(Icons.Default.Shuffle) {
                 if (list.isNotEmpty()) {
                     withUIContext { navToReader(list.random().galleryInfo) }
@@ -747,8 +767,9 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
             }
             onClick(Icons.Default.Delete) {
                 val infoList = checkedInfoMap.takeAndClear()
-                confirmRemoveDownloadRange(infoList)
-                list.removeAll(infoList)
+                // Fork: off the list at once, the files go on being deleted after
+                val failed = confirmRemoveDownloadRange(infoList) { list.removeAll(infoList) }
+                if (failed > 0) snackbar(removeFilesFailed.format(failed))
             }
             onClick(Icons.AutoMirrored.Default.DriveFileMove) {
                 val infoList = checkedInfoMap.takeAndClear()

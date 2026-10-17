@@ -103,11 +103,17 @@ object EhDB {
 
     suspend fun randomLocalFav() = db.localFavoritesDao().random()
 
+    // Fork: one transaction for all, not two per gallery: removing dozens at once was slow
     suspend fun removeDownloadInfo(downloadInfo: List<DownloadInfo>) {
-        val dao = db.downloadsDao()
-        downloadInfo.forEach {
-            dao.delete(it.downloadInfo)
-            deleteGalleryInfo(it.galleryInfo)
+        if (downloadInfo.isEmpty()) return
+        db.useWriterConnection { conn ->
+            conn.immediateTransaction {
+                downloadInfo.chunked(SQL_CHUNK).forEach { chunk ->
+                    db.downloadsDao().delete(chunk.map { it.downloadInfo })
+                    // Kept while in the history or the favorites (and so is the reading progress)
+                    db.galleryDao().deleteUnreferenced(chunk.map { it.gid })
+                }
+            }
         }
         OneDriveSync.notifyDownloadsChanged()
     }

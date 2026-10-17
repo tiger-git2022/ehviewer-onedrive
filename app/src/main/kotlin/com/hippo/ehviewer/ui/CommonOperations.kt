@@ -47,6 +47,7 @@ import com.ehviewer.core.model.GalleryInfo.Companion.LOCAL_FAVORITED
 import com.ehviewer.core.model.GalleryInfo.Companion.NOT_FAVORITED
 import com.ehviewer.core.ui.component.LabeledCheckbox
 import com.ehviewer.core.util.isAtLeastT
+import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.mapToLongArray
 import com.ehviewer.core.util.toEpochMillis
 import com.ehviewer.core.util.toLocalDateTime
@@ -77,8 +78,15 @@ import com.hippo.ehviewer.util.requestPermission
 import com.hippo.ehviewer.util.restartApplication
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.time.Clock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -360,25 +368,36 @@ suspend fun confirmRemoveDownload(info: GalleryInfo) {
     }
 }
 
+/**
+ * Fork: [onConfirmed] once confirmed, before anything is deleted, so the list can drop them at once. The files are
+ * deleted a few galleries at a time, on even if the screen is left, and one that cannot be deleted does not stop the
+ * others. Returns how many galleries kept files that could not be deleted.
+ */
 context(_: DialogState)
-suspend fun confirmRemoveDownloadRange(list: Collection<DownloadInfo>) {
+suspend fun confirmRemoveDownloadRange(list: Collection<DownloadInfo>, onConfirmed: () -> Unit = {}): Int {
     val text = appCtx.getString(R.string.download_remove_dialog_message_2, list.size)
     val checked = confirmRemoveDownload(text)
-    withIOContext {
-        // Delete
+    onConfirmed()
+    return withContext(NonCancellable + Dispatchers.IO) {
         DownloadManager.deleteRangeDownload(list.mapToLongArray(DownloadInfo::gid))
-        // Delete image files
-        if (checked) {
-            list.forEach { info ->
-                // Delete file
-                info.downloadDir?.delete()
-                info.tempDownloadDir?.delete()
-                // Remove download path
-                EhDB.removeDownloadDirname(info.gid)
+        if (!checked) return@withContext 0
+        val limit = Semaphore(REMOVE_FILES_PARALLELISM)
+        list.map { info ->
+            async {
+                limit.withPermit {
+                    runCatching {
+                        info.downloadDir?.delete()
+                        info.tempDownloadDir?.delete()
+                        EhDB.removeDownloadDirname(info.gid)
+                    }.onFailure { logcat(it) }.isFailure
+                }
             }
-        }
+        }.awaitAll().count { it }
     }
 }
+
+// Each a directory of images; through the system file picker every file is its own call
+private const val REMOVE_FILES_PARALLELISM = 4
 
 context(_: DialogState)
 suspend fun showMoveDownloadLabel(info: GalleryInfo) {
