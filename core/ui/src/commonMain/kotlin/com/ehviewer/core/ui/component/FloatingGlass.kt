@@ -53,17 +53,19 @@ private val GlassBleed = 48.dp
 /**
  * Fork: [glass] for a part along a side of the screen (a top bar, a drawer), showing only its [edge]: the glass reaches
  * past the other sides, so their lit edge, shadow and bend lay off the screen and the part melts into the screen there.
- * A top or bottom bar with [corner]s keeps them at both ends of its edge: then only the side facing away reaches off
- * the screen, the sides stay along the screen borders.
+ * With [corner]s, the part keeps them at both ends of its edge, and only the side facing away from it reaches off the
+ * screen: the two sides between stay, along the screen borders for a bar, at the ends of the screen for a drawer.
  */
 fun Modifier.edgeGlass(glass: FloatingGlass?, edge: GlassEdge, tint: Color, style: GlassStyle, corner: Dp = 0.dp): Modifier {
     if (glass == null) return this
-    val rounded = corner > 0.dp && (edge == GlassEdge.Top || edge == GlassEdge.Bottom)
+    val rounded = corner > 0.dp
     // A corner-based shape: the lens of the glass takes only rounded rectangles (another shape throws on Android 13+)
     val shape = when {
         !rounded -> RoundedCornerShape(0.dp)
         edge == GlassEdge.Bottom -> RoundedCornerShape(bottomStart = corner, bottomEnd = corner)
-        else -> RoundedCornerShape(topStart = corner, topEnd = corner)
+        edge == GlassEdge.Top -> RoundedCornerShape(topStart = corner, topEnd = corner)
+        edge == GlassEdge.Start -> RoundedCornerShape(topStart = corner, bottomStart = corner)
+        else -> RoundedCornerShape(topEnd = corner, bottomEnd = corner)
     }
     var left = 0
     var top = 0
@@ -72,11 +74,12 @@ fun Modifier.edgeGlass(glass: FloatingGlass?, edge: GlassEdge, tint: Color, styl
     return layout { measurable, constraints ->
         val bleed = GlassBleed.roundToPx()
         val shown = edge.absolute(layoutDirection)
-        val sides = if (rounded) 0 else bleed
-        left = if (shown == AbsoluteEdge.Left) 0 else sides
-        right = if (shown == AbsoluteEdge.Right) 0 else sides
-        top = if (shown == AbsoluteEdge.Top) 0 else bleed
-        bottom = if (shown == AbsoluteEdge.Bottom) 0 else bleed
+        // Off the screen: every side but the edge, or with corners only the side facing away from it
+        fun bleeds(side: AbsoluteEdge) = side != shown && (!rounded || side == shown.opposite)
+        left = if (bleeds(AbsoluteEdge.Left)) bleed else 0
+        right = if (bleeds(AbsoluteEdge.Right)) bleed else 0
+        top = if (bleeds(AbsoluteEdge.Top)) bleed else 0
+        bottom = if (bleeds(AbsoluteEdge.Bottom)) bleed else 0
         val placeable = measurable.measure(constraints.offset(left + right, top + bottom))
         layout(placeable.width - left - right, placeable.height - top - bottom) { placeable.place(-left, -top) }
     }.then(glass.surface(shape, tint, style)).layout { measurable, constraints ->
@@ -86,7 +89,20 @@ fun Modifier.edgeGlass(glass: FloatingGlass?, edge: GlassEdge, tint: Color, styl
     }
 }
 
-private enum class AbsoluteEdge { Left, Top, Right, Bottom }
+private enum class AbsoluteEdge {
+    Left,
+    Top,
+    Right,
+    Bottom,
+    ;
+
+    val opposite get() = when (this) {
+        Left -> Right
+        Top -> Bottom
+        Right -> Left
+        Bottom -> Top
+    }
+}
 
 private fun GlassEdge.absolute(direction: LayoutDirection) = when (this) {
     GlassEdge.Top -> AbsoluteEdge.Top
