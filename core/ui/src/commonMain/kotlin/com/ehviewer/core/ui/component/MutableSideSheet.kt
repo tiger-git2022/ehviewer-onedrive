@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerDefaults
 import androidx.compose.material3.DrawerState2
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +23,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
@@ -50,13 +50,14 @@ fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boo
     // Fork: liquid glass from the app, see FloatingGlass
     val glass = LocalSideSheetGlass.current
     val sheetColor = DrawerDefaults.modalContainerColor
-    val shape = if (glass != null) GlassSheetShape else ShapeDefaults.Large.copy(topEnd = CornerSize(0), bottomEnd = CornerSize(0))
+    // Fork: with glass, only the edge it is pulled out by shows
+    val shape = if (glass != null) RectangleShape else ShapeDefaults.Large.copy(topEnd = CornerSize(0), bottomEnd = CornerSize(0))
     CompositionLocalProvider(LocalSideSheetContainer provides sheet) {
         ModalSideDrawer(
             drawerContent = {
                 if (f != null) {
                     ModalDrawerSheet(
-                        modifier = Modifier.widthIn(max = width - 112.dp).floatingGlass(glass, shape, sheetColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                        modifier = Modifier.widthIn(max = width - 112.dp).edgeGlass(glass, GlassEdge.Start, sheetColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
                         drawerShape = shape,
                         drawerContainerColor = if (glass != null) Color.Transparent else sheetColor,
                         drawerContentColor = MaterialTheme.colorScheme.contentColorFor(sheetColor),
@@ -81,4 +82,3 @@ const val GLASS_SHEET_TINT = 0.4f
 /** Fork: the corners of a glass drawer, chosen in the drawer glass tuner. */
 val GLASS_SHEET_CORNER = 15.dp
 
-private val GlassSheetShape = RoundedCornerShape(topStart = GLASS_SHEET_CORNER, bottomStart = GLASS_SHEET_CORNER)

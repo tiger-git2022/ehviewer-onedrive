@@ -56,8 +56,9 @@ import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.model.GalleryTagGroup
 import com.ehviewer.core.model.TagNamespace
+import com.ehviewer.core.ui.component.GlassEdge
 import com.ehviewer.core.ui.component.GlassStyle
-import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.edgeGlass
 import com.ehviewer.core.ui.util.LocalWindowSizeClass
 import com.ehviewer.core.ui.util.isExpanded
 import com.ehviewer.core.ui.util.launchInVM
@@ -71,8 +72,8 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.data.fillInfo
-import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.coil.justDownload
+import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
@@ -212,7 +213,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     Scaffold(
         topBar = {
             MediumFlexibleTopAppBar(
-                modifier = Modifier.floatingGlass(glass, TopBarGlassShape, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel),
+                // Fork: only its bottom edge shows, the top and the sides melt into the screen
+                modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, TOP_BAR_GLASS_CORNER),
                 colors = if (backdrop != null) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent) else TopAppBarDefaults.topAppBarColors(),
                 title = {
                     galleryInfo?.let {
@@ -449,4 +451,4 @@ private fun Modifier.expandTopBarOnWheelAtTop(state: LazyGridState, behavior: To
 private fun List<GalleryTagGroup>.artistName() = find { it.namespace == TagNamespace.Artist }?.tags?.firstOrNull()?.text
 
 // Fork: the glass of the top bar, its lower corners rounded
-private val TopBarGlassShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
+private val TOP_BAR_GLASS_CORNER = 24.dp
