@@ -71,18 +71,22 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.data.fillInfo
+import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.coil.justDownload
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.spider.SpiderDen
 import com.hippo.ehviewer.sync.MihonSearch
+import com.hippo.ehviewer.sync.OneDriveClient
+import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -196,6 +200,9 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val exportSuccess = stringResource(id = R.string.export_as_archive_success)
     val exportFailed = stringResource(id = R.string.export_as_archive_failed)
     val windowSizeClass = LocalWindowSizeClass.current
+    val share = stringResource(id = R.string.share)
+    val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
+    val syncIconShown = OneDriveClient.isSupported && oneDriveAccount != null
     // Fork: with liquid glass, the top bar refracts the details below it, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
     // Only once the details scroll below it: at the top, a glass over nothing stood out
@@ -233,17 +240,26 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                             },
                             maxItemCount = if (windowSizeClass.isExpanded) 4 else 2,
                         ) {
-                            clickableItem(
-                                onClick = {
-                                    AppHelper.share(contextOf<MainActivity>(), galleryDetailUrl)
-                                    // In case the link is copied to the clipboard
-                                    Settings.clipboardTextHashCode = galleryDetailUrl.hashCode()
-                                },
-                                icon = {
-                                    Icon(imageVector = Icons.Default.Share, contentDescription = null)
-                                },
-                                label = "",
-                            )
+                            val shareItem = {
+                                clickableItem(
+                                    onClick = {
+                                        AppHelper.share(contextOf<MainActivity>(), galleryDetailUrl)
+                                        // In case the link is copied to the clipboard
+                                        Settings.clipboardTextHashCode = galleryDetailUrl.hashCode()
+                                    },
+                                    icon = {
+                                        Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                                    },
+                                    label = share,
+                                )
+                            }
+                            // Fork: with a OneDrive account, the sync state (a ring with the progress while syncing)
+                            // takes the place of the share button, as in the search bar; sharing moves to the menu
+                            if (syncIconShown) {
+                                customItem(appbarContent = { OneDriveSyncIcon() }, menuContent = {})
+                            } else {
+                                shareItem()
+                            }
                             clickableItem(
                                 onClick = {
                                     val detail = galleryInfo as? GalleryDetail ?: return@clickableItem
@@ -278,6 +294,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                                 },
                                 label = refresh,
                             )
+                            if (syncIconShown) shareItem()
                             clickableItem(
                                 onClick = {
                                     val gd = galleryInfo as? GalleryDetail ?: return@clickableItem
