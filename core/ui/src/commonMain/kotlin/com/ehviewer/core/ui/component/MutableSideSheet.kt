@@ -50,13 +50,14 @@ fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boo
     // Fork: liquid glass from the app, see FloatingGlass
     val glass = LocalSideSheetGlass.current
     val sheetColor = DrawerDefaults.modalContainerColor
+    // Fork: with glass, rounded toward the page, the side along the screen border melts into the screen
     val shape = if (glass != null) GlassSheetShape else ShapeDefaults.Large.copy(topEnd = CornerSize(0), bottomEnd = CornerSize(0))
     CompositionLocalProvider(LocalSideSheetContainer provides sheet) {
         ModalSideDrawer(
             drawerContent = {
                 if (f != null) {
                     ModalDrawerSheet(
-                        modifier = Modifier.widthIn(max = width - 112.dp).floatingGlass(glass, shape, sheetColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                        modifier = Modifier.widthIn(max = width - 112.dp).edgeGlass(glass, GlassEdge.Start, sheetColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
                         drawerShape = shape,
                         drawerContainerColor = if (glass != null) Color.Transparent else sheetColor,
                         drawerContentColor = MaterialTheme.colorScheme.contentColorFor(sheetColor),

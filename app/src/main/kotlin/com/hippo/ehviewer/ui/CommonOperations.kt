@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
@@ -33,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.database.model.DownloadInfo
@@ -285,53 +287,50 @@ context(_: DialogState, _: MainActivity, _: DestinationsNavigator)
 suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     val downloaded = DownloadManager.getDownloadState(info.gid) != DownloadInfo.STATE_INVALID
     val favorited = info.favoriteSlot != NOT_FAVORITED
-    val items = buildList {
-        add(Icons.AutoMirrored.Default.MenuBook to R.string.read)
-        val download = if (downloaded) {
-            Icons.Default.Delete to R.string.delete_downloads
-        } else {
-            Icons.Default.Download to R.string.download
-        }
-        add(download)
-        val favorite = if (favorited) {
-            Icons.Default.HeartBroken to R.string.remove_from_favourites
-        } else {
-            Icons.Default.Favorite to R.string.add_to_favourites
-        }
-        add(favorite)
-        if (downloaded) {
-            add(Icons.AutoMirrored.Default.DriveFileMove to R.string.download_move_dialog_title)
+    suspend fun addToFavorites(choose: Boolean) {
+        runSuspendCatching {
+            // The collection picker also offers to remove it
+            val added = modifyFavorites(info, choose)
+            tip(if (added) R.string.add_to_favorite_success else R.string.remove_from_favorite_success)
+        }.onFailure {
+            tip(R.string.add_to_favorite_failure)
         }
     }
-    val selected = awaitSelectItemWithIcon(items, EhUtils.getSuitableTitle(info))
-    when (selected) {
-        0 -> {
-            EhDB.putHistoryInfo(info)
-            navToReader(info)
-        }
-        1 -> if (downloaded) {
-            confirmRemoveDownload(info)
-        } else {
-            startDownload(false, info)
-        }
-        2 -> if (favorited) {
+    val actions = mutableListOf<GalleryInfoAction>()
+    fun action(icon: ImageVector, text: Int, run: suspend () -> Unit) = actions.add(GalleryInfoAction(icon, text, run))
+    action(Icons.AutoMirrored.Default.MenuBook, R.string.read) {
+        EhDB.putHistoryInfo(info)
+        navToReader(info)
+    }
+    if (downloaded) {
+        action(Icons.Default.Delete, R.string.delete_downloads) { confirmRemoveDownload(info) }
+    } else {
+        action(Icons.Default.Download, R.string.download) { startDownload(false, info) }
+    }
+    if (favorited) {
+        action(Icons.Default.HeartBroken, R.string.remove_from_favourites) {
             runSuspendCatching {
                 removeFromFavorites(info)
                 tip(R.string.remove_from_favorite_success)
             }.onFailure {
                 tip(R.string.remove_from_favorite_failure)
             }
-        } else {
-            runSuspendCatching {
-                modifyFavorites(info)
-                tip(R.string.add_to_favorite_success)
-            }.onFailure {
-                tip(R.string.add_to_favorite_failure)
-            }
         }
-        3 -> showMoveDownloadLabel(info)
+    } else {
+        action(Icons.Default.Favorite, R.string.add_to_favourites) { addToFavorites(choose = false) }
     }
+    // Fork: the collection to add to (or to move to), besides the default one; signed out, only the local favorites
+    if (Settings.hasSignedIn.value) {
+        action(Icons.AutoMirrored.Default.PlaylistAdd, R.string.add_to_favourites_choose) { addToFavorites(choose = true) }
+    }
+    if (downloaded) {
+        action(Icons.AutoMirrored.Default.DriveFileMove, R.string.download_move_dialog_title) { showMoveDownloadLabel(info) }
+    }
+    val selected = awaitSelectItemWithIcon(actions.map { it.icon to it.text }, EhUtils.getSuitableTitle(info))
+    actions[selected].run()
 }
+
+private class GalleryInfoAction(val icon: ImageVector, val text: Int, val run: suspend () -> Unit)
 
 
 context(_: DialogState)

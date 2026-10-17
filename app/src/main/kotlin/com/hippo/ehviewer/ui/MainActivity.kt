@@ -115,12 +115,13 @@ import com.ehviewer.core.files.toOkioPath
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.GLASS_SHEET_CORNER
 import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
+import com.ehviewer.core.ui.component.GlassEdge
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
 import com.ehviewer.core.ui.component.LocalSideSheetGlass
 import com.ehviewer.core.ui.component.LocalSideSheetState
 import com.ehviewer.core.ui.component.MutableSideSheet
-import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.edgeGlass
 import com.ehviewer.core.ui.icons.EhIcons
 import com.ehviewer.core.ui.icons.filled.Subscriptions
 import com.ehviewer.core.ui.util.LocalSnackBarFabPadding
@@ -419,6 +420,7 @@ class MainActivity : AppCompatActivity() {
                     val pagesBackdrop = rememberGlassBackdrop()
                     val drawerGlass = rememberLiquidGlass(pagesBackdrop)
                     val drawerColor = DrawerDefaults.modalContainerColor
+                    // Fork: rounded toward the page; with glass, the side along the screen border melts into the screen
                     val drawerShape = if (drawerGlass != null) RoundedCornerShape(topEnd = GLASS_SHEET_CORNER, bottomEnd = GLASS_SHEET_CORNER) else DrawerDefaults.shape
                     ModalNavigationDrawer(
                         drawerContent = {
@@ -426,7 +428,7 @@ class MainActivity : AppCompatActivity() {
                                 drawerState = navDrawerState,
                                 modifier = Modifier.widthIn(max = (configuration.screenWidthDp - 56).dp)
                                     .onSizeChanged { minOffset = -it.width.toFloat() }
-                                    .floatingGlass(drawerGlass, drawerShape, drawerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                                    .edgeGlass(drawerGlass, GlassEdge.End, drawerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
                                 drawerShape = drawerShape,
                                 drawerContainerColor = if (drawerGlass != null) Color.Transparent else drawerColor,
                                 drawerContentColor = MaterialTheme.colorScheme.contentColorFor(drawerColor),
