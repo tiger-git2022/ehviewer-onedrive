@@ -62,8 +62,9 @@ object FavoritesIndexSync {
     private val SHARD_GRACE = 1.hours
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
 
-    // Fork: with auto download on, new favorites are looked for this often, see checkForAutoDownload
-    private const val AUTO_DOWNLOAD_CHECK_INTERVAL_MILLIS = 10 * 60_000L
+    // Fork: with auto download on, new favorites are looked for at every sync and when the app comes to the front (see
+    // checkForAutoDownload), one page each; this only keeps the two from reading it twice in a row
+    private const val AUTO_DOWNLOAD_CHECK_INTERVAL_MILLIS = 60_000L
     private const val PAGE_INTERVAL_MILLIS = 1_000L
 
     /** Pages of "all" (the newest favorites first) a count check reads at most for favorites added on the website. */
@@ -690,9 +691,9 @@ object FavoritesIndexSync {
     }
 
     /**
-     * Fork: with auto download on, looks for new favorites (one page request, at most every ten minutes) when the app
-     * comes to the front, without waiting for a sync: they used to be found only by the check of a sync (at most once
-     * an hour) or by opening their slot. A change found schedules a sync of the index like any other.
+     * Fork: with auto download on, looks for new favorites (one page request) when the app comes to the front, without
+     * waiting for a sync, and every sync looks too: they used to be found only by the check of a sync (at most once an
+     * hour) or by opening their slot. A change found schedules a sync of the index like any other.
      */
     suspend fun checkForAutoDownload() {
         if (!Settings.hasSignedIn.value || !AutoDownload.isOn) return
