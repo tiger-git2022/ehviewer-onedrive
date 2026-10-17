@@ -214,7 +214,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         topBar = {
             MediumFlexibleTopAppBar(
                 // Fork: only its bottom edge shows, the top and the sides melt into the screen
-                modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel),
+                modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 colors = if (backdrop != null) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent) else TopAppBarDefaults.topAppBarColors(),
                 title = {
                     galleryInfo?.let {
@@ -450,3 +450,5 @@ private fun Modifier.expandTopBarOnWheelAtTop(state: LazyGridState, behavior: To
 // Fork: the first artist tag, for a search in Mihon
 private fun List<GalleryTagGroup>.artistName() = find { it.namespace == TagNamespace.Artist }?.tags?.firstOrNull()?.text
 
+// Fork: the lower corners of the glass of the top bar
+private val BAR_GLASS_CORNER = 24.dp

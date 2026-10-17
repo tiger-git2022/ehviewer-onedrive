@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
@@ -49,15 +50,21 @@ enum class GlassEdge { Top, Bottom, Start, End }
 // How far the glass reaches past the other sides, off the screen: more than the bend of the lens
 private val GlassBleed = 48.dp
 
-// A corner-based shape: the lens of the glass takes only rounded rectangles (another shape throws on Android 13+)
-private val EdgeGlassShape = RoundedCornerShape(0.dp)
-
 /**
  * Fork: [glass] for a part along a side of the screen (a top bar, a drawer), showing only its [edge]: the glass reaches
  * past the other sides, so their lit edge, shadow and bend lay off the screen and the part melts into the screen there.
+ * A top or bottom bar with [corner]s keeps them at both ends of its edge: then only the side facing away reaches off
+ * the screen, the sides stay along the screen borders.
  */
-fun Modifier.edgeGlass(glass: FloatingGlass?, edge: GlassEdge, tint: Color, style: GlassStyle): Modifier {
+fun Modifier.edgeGlass(glass: FloatingGlass?, edge: GlassEdge, tint: Color, style: GlassStyle, corner: Dp = 0.dp): Modifier {
     if (glass == null) return this
+    val rounded = corner > 0.dp && (edge == GlassEdge.Top || edge == GlassEdge.Bottom)
+    // A corner-based shape: the lens of the glass takes only rounded rectangles (another shape throws on Android 13+)
+    val shape = when {
+        !rounded -> RoundedCornerShape(0.dp)
+        edge == GlassEdge.Bottom -> RoundedCornerShape(bottomStart = corner, bottomEnd = corner)
+        else -> RoundedCornerShape(topStart = corner, topEnd = corner)
+    }
     var left = 0
     var top = 0
     var right = 0
@@ -65,13 +72,14 @@ fun Modifier.edgeGlass(glass: FloatingGlass?, edge: GlassEdge, tint: Color, styl
     return layout { measurable, constraints ->
         val bleed = GlassBleed.roundToPx()
         val shown = edge.absolute(layoutDirection)
-        left = if (shown == AbsoluteEdge.Left) 0 else bleed
-        right = if (shown == AbsoluteEdge.Right) 0 else bleed
+        val sides = if (rounded) 0 else bleed
+        left = if (shown == AbsoluteEdge.Left) 0 else sides
+        right = if (shown == AbsoluteEdge.Right) 0 else sides
         top = if (shown == AbsoluteEdge.Top) 0 else bleed
         bottom = if (shown == AbsoluteEdge.Bottom) 0 else bleed
         val placeable = measurable.measure(constraints.offset(left + right, top + bottom))
         layout(placeable.width - left - right, placeable.height - top - bottom) { placeable.place(-left, -top) }
-    }.then(glass.surface(EdgeGlassShape, tint, style)).layout { measurable, constraints ->
+    }.then(glass.surface(shape, tint, style)).layout { measurable, constraints ->
         // The content keeps the bounds of the part
         val placeable = measurable.measure(constraints.offset(-left - right, -top - bottom))
         layout(placeable.width + left + right, placeable.height + top + bottom) { placeable.place(left, top) }
