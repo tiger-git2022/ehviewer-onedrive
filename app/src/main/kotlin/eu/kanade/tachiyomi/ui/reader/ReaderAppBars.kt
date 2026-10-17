@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -25,9 +24,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.ehviewer.core.ui.component.GlassEdge
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.IntSliderState
-import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.edgeGlass
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -61,7 +61,7 @@ fun BoxScope.ReaderAppBars(
     ) {
         TopAppBar(
             title = { Text(text = title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            modifier = Modifier.floatingGlass(glass, TopGlassShape, glassTint, GlassStyle.Panel),
+            modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, glassTint, GlassStyle.Panel, BAR_GLASS_CORNER),
             colors = TopAppBarDefaults.topAppBarColors(containerColor = barColor),
             navigationIcon = { NavigationIcon() },
         )
@@ -88,13 +88,14 @@ fun BoxScope.ReaderAppBars(
             BottomReaderBar(
                 onClickSettings = onClickSettings,
                 containerColor = barColor,
-                modifier = Modifier.floatingGlass(glass, BottomGlassShape, glassTint, GlassStyle.Panel),
+                modifier = Modifier.edgeGlass(glass, GlassEdge.Top, glassTint, GlassStyle.Panel, BAR_GLASS_CORNER),
             )
         }
     }
 }
 
-// Fork: the glass of the reader menus, rounded toward the page; enough tint to read them over any page
-private val TopGlassShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
-private val BottomGlassShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+// Fork: the corners of the glass of the reader menus, toward the page
+private val BAR_GLASS_CORNER = 24.dp
+
+// Fork: enough tint to read the reader menus over any page
 const val READER_GLASS_TINT = 0.3f

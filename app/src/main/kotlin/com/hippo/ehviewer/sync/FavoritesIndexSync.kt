@@ -61,6 +61,10 @@ object FavoritesIndexSync {
     /** A shard no manifest lists is deleted once it is this old, see [syncIndex]. */
     private val SHARD_GRACE = 1.hours
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
+
+    // Fork: with auto download on, new favorites are looked for at every sync and when the app comes to the front (see
+    // checkForAutoDownload), one page each; this only keeps the two from reading it twice in a row
+    private const val AUTO_DOWNLOAD_CHECK_INTERVAL_MILLIS = 60_000L
     private const val PAGE_INTERVAL_MILLIS = 1_000L
 
     /** Pages of "all" (the newest favorites first) a count check reads at most for favorites added on the website. */
@@ -133,6 +137,9 @@ object FavoritesIndexSync {
     /** E-Hentai account of [lastCheck]: another account is checked right away. */
     @Volatile
     private var lastCheckUser: String? = null
+
+    // A check of a sync and one of checkForAutoDownload at once would both read the pages
+    private val checkMutex = Mutex()
 
     /** The unfinished refresh, see [CloudRefreshCheckpoint]. Guarded by [mutex], read once from [checkpointStore]. */
     private var checkpoint: CloudRefreshCheckpoint? = null
@@ -643,14 +650,17 @@ object FavoritesIndexSync {
      * Favorites added on the website are taken from the newest pages of "all"; slots whose counts still differ
      * (favorites removed or moved there, or the list was never read) are left to [CloudFavoritesWork].
      */
-    private suspend fun checkCloudFavorites() {
+    private suspend fun checkCloudFavorites() = checkMutex.withLock { checkCloudFavoritesLocked() }
+
+    private suspend fun checkCloudFavoritesLocked() {
         val user = userKey()
         if (hasUnfinishedRefresh(user)) {
             enqueueCloudFavoritesWork(appCtx)
             return
         }
         val elapsed = SystemClock.elapsedRealtime()
-        if (lastCheck != 0L && lastCheckUser == user && elapsed - lastCheck < CHECK_INTERVAL_MILLIS) return
+        val interval = if (AutoDownload.isOn) AUTO_DOWNLOAD_CHECK_INTERVAL_MILLIS else CHECK_INTERVAL_MILLIS
+        if (lastCheck != 0L && lastCheckUser == user && elapsed - lastCheck < interval) return
         var page = EhEngine.getFavoritesPage(FavListUrlBuilder().build())
         if (userKey() != user) return
         lastCheck = elapsed
@@ -678,6 +688,20 @@ object FavoritesIndexSync {
             if (userKey() != user) return
             pageCount++
         }
+    }
+
+    /**
+     * Fork: with auto download on, looks for new favorites (one page request) when the app comes to the front, without
+     * waiting for a sync, and every sync looks too: they used to be found only by the check of a sync (at most once an
+     * hour) or by opening their slot. A change found schedules a sync of the index like any other.
+     */
+    suspend fun checkForAutoDownload() {
+        if (!Settings.hasSignedIn.value || !AutoDownload.isOn) return
+        val before = current()
+        runEhStep { checkCloudFavorites() }
+        // Left for the next step when a sync runs
+        if (!OneDriveSync.running.value) mutableProgress.value = null
+        if (current() != before && enabled) OneDriveSync.scheduleFavoritesIndexSync()
     }
 
     /** Reads the cloud favorites and looks up every missing Japanese title again in the background. */

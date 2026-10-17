@@ -54,6 +54,9 @@ object AutoDownload {
             emptySet()
         }
 
+    /** Fork: new galleries of some slots are added, see [FavoritesIndexSync.checkForAutoDownload]. */
+    val isOn: Boolean get() = slots.isNotEmpty()
+
     /** After the cloud favorites list changed, see [FavoritesIndexSync]. */
     fun onCloudFavoritesSaved(cloud: CloudFavorites) {
         if (slots.isEmpty()) {

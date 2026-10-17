@@ -316,6 +316,9 @@ object OneDriveSync {
     private var debounceJob: Job? = null
     private var batchStartedAt = 0L
 
+    // Fork: when the countdown syncs, kept while the app is in the background so it goes on from there
+    private var dueAt = 0L
+
     @Volatile
     private var pendingAfterSync = false
 
@@ -356,6 +359,8 @@ object OneDriveSync {
                         } else {
                             resumePendingChanges()
                         }
+                        // Fork: new favorites to download are looked for right away, not only by a sync
+                        scope.launch { runCatching { FavoritesIndexSync.checkForAutoDownload() }.onFailure { logcat(TAG, it) } }
                     }
                     Lifecycle.Event.ON_STOP -> {
                         inForeground = false
@@ -385,7 +390,7 @@ object OneDriveSync {
      * Debounce of change triggered syncs: every change restarts a 60 s countdown, a batch waits at most 5 min
      * from its first change, and only one sync runs at a time (a change during a sync is synced after it).
      */
-    private fun scheduleChangeSync() {
+    private fun scheduleChangeSync(resume: Boolean = false) {
         if (!autoSyncAllowed || !OneDriveSyncState.syncOnChange.value) return
         synchronized(debounceLock) {
             mutableChangesPending.value = true
@@ -399,14 +404,24 @@ object OneDriveSync {
             }
             val now = SystemClock.elapsedRealtime()
             if (batchStartedAt == 0L) batchStartedAt = now
-            val wait = minOf(DEBOUNCE_MILLIS, batchStartedAt + MAX_WAIT_MILLIS - now).coerceAtLeast(0)
-            mutableChangeSyncCountdown.value = ChangeSyncCountdown(now + wait, batchStartedAt + MAX_WAIT_MILLIS)
+            val batchEndsAt = batchStartedAt + MAX_WAIT_MILLIS
+            // Fork: back from the background, the countdown goes on (or syncs at once if it ran out) instead of
+            // starting over, which put off the sync again at every switch of app
+            val target = if (resume && dueAt > 0L) dueAt else now + DEBOUNCE_MILLIS
+            val due = minOf(target, batchEndsAt).coerceAtLeast(now)
+            dueAt = due
+            mutableChangeSyncCountdown.value = ChangeSyncCountdown(due, batchEndsAt)
             debounceJob?.cancel()
             debounceJob = scope.launch {
-                delay(wait)
+                delay(due - now)
+                val self = currentCoroutineContext()[Job]
                 synchronized(debounceLock) {
+                    // Fork: a change came in as this one ran out and started a newer countdown: that one syncs.
+                    // Clearing here dropped the newer countdown from the sync icon
+                    if (debounceJob !== self) return@launch
                     debounceJob = null
                     batchStartedAt = 0L
+                    dueAt = 0L
                     mutableChangeSyncCountdown.value = null
                 }
                 // Not a child of the countdown, so a later change cannot cancel the running sync
@@ -417,6 +432,17 @@ object OneDriveSync {
         }
     }
 
+    /** Fork: a sync takes every change made so far: the countdown for them would only sync again for nothing. */
+    private fun clearChangeCountdown() {
+        synchronized(debounceLock) {
+            debounceJob?.cancel()
+            debounceJob = null
+            batchStartedAt = 0L
+            dueAt = 0L
+            mutableChangeSyncCountdown.value = null
+        }
+    }
+
     /**
      * Fork: back in the foreground, changes handed to WorkManager ([handOffPendingChanges]) count down here again:
      * Android may hold that work back for long, while the sync icon shows them as waiting.
@@ -424,7 +450,7 @@ object OneDriveSync {
     private fun resumePendingChanges() {
         val dirty = SyncCategory.entries.any { it.automatic && OneDriveSyncState.isEnabled(it) && OneDriveSyncState.dirty(it).value }
         val indexDirty = OneDriveSyncState.exportFavoritesIndex.value && OneDriveSyncState.favoritesIndexDirty.value
-        if (changesPending.value || dirty || indexDirty) scheduleChangeSync()
+        if (changesPending.value || dirty || indexDirty) scheduleChangeSync(resume = true)
     }
 
     /** The app went to the background: let WorkManager sync the changes the countdown has not synced yet. */
@@ -433,7 +459,11 @@ object OneDriveSync {
             val pending = debounceJob != null || pendingAfterSync
             debounceJob?.cancel()
             debounceJob = null
-            batchStartedAt = 0L
+            // Fork: the countdown and its five minutes are kept for when the app comes back, see scheduleChangeSync
+            if (!pending) {
+                batchStartedAt = 0L
+                dueAt = 0L
+            }
             pendingAfterSync = false
             mutableChangeSyncCountdown.value = null
             pending
@@ -574,6 +604,8 @@ object OneDriveSync {
             try {
                 val start = SystemClock.elapsedRealtime()
                 val report = withContext(SyncWrite()) { doSync(manual = trigger == SyncTrigger.MANUAL) }
+                // Fork: after it went through: a failed sync leaves the countdown to try again
+                clearChangeCountdown()
                 logcat(TAG) { "Sync ($trigger) finished in ${SystemClock.elapsedRealtime() - start} ms" }
                 Result.success(report)
             } catch (e: CancellationException) {
