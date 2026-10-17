@@ -289,8 +289,9 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     val favorited = info.favoriteSlot != NOT_FAVORITED
     suspend fun addToFavorites(choose: Boolean) {
         runSuspendCatching {
-            modifyFavorites(info, choose)
-            tip(R.string.add_to_favorite_success)
+            // The collection picker also offers to remove it
+            val added = modifyFavorites(info, choose)
+            tip(if (added) R.string.add_to_favorite_success else R.string.remove_from_favorite_success)
         }.onFailure {
             tip(R.string.add_to_favorite_failure)
         }
