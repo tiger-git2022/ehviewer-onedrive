@@ -105,6 +105,9 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.LocalPageBackdrop
+import com.hippo.ehviewer.ui.glassContent
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.tools.addBBCodeTextContextMenuItems
@@ -299,6 +302,9 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
         var editTextMeasured by remember { mutableStateOf(MinimumContentPaddingEditText) }
         var isRefreshing by remember { mutableStateOf(false) }
         val refreshState = rememberPullToRefreshState()
+        // Fork: the comments recorded for the glass of the refresh indicator drawn over them, see LiquidGlass.kt
+        val commentsBackdrop = LocalPageBackdrop.current
+        val commentsGlass = rememberLiquidGlass(commentsBackdrop)
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = {
@@ -313,11 +319,12 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             modifier = Modifier.imePadding().padding(top = paddingValues.calculateTopPadding()),
             state = refreshState,
             indicator = {
-                // Fork: with liquid glass, a disc of glass
+                // Fork: like the lists of the search pages, glass refracting the comments
                 RefreshIndicator(
                     modifier = Modifier.align(Alignment.TopCenter),
                     isRefreshing = isRefreshing,
                     state = refreshState,
+                    glass = commentsGlass,
                 )
             },
         ) {
@@ -338,7 +345,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             val layoutDirection = LocalLayoutDirection.current
             val lazyListState = rememberLazyListState()
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(horizontal = keylineMargin).mouseDragScroll(lazyListState),
+                modifier = Modifier.glassContent(commentsBackdrop).fillMaxSize().padding(horizontal = keylineMargin).mouseDragScroll(lazyListState),
                 state = lazyListState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(

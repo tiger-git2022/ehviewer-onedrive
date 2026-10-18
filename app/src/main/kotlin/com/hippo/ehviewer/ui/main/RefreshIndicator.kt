@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicatorDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
@@ -27,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -56,9 +56,9 @@ class RefreshIndicatorHost {
 val LocalRefreshIndicatorHost = staticCompositionLocalOf<RefreshIndicatorHost?> { null }
 
 /**
- * Fork: the pull to refresh indicator. With liquid glass, a drop of glass with the refresh arrow, turning with the pull
- * and while refreshing ([glass] refracting the page; without one, a translucent disc with a lit rim). Without liquid
- * glass, the Material indicator.
+ * Fork: the pull to refresh indicator of every list: the refresh arrow, turning with the pull and while refreshing, in
+ * a drop of glass ([glass] refracting the page; without one, a translucent disc with a lit rim), or on a plain disc
+ * with liquid glass off.
  */
 @Composable
 fun RefreshIndicator(
@@ -68,15 +68,6 @@ fun RefreshIndicator(
     glass: FloatingGlass? = null,
     offsetY: () -> Int = { 0 },
 ) {
-    if (LocalPageBackdrop.current == null) {
-        PullToRefreshDefaults.LoadingIndicator(
-            state = state,
-            isRefreshing = isRefreshing,
-            containerColor = LoadingIndicatorDefaults.containedContainerColor,
-            modifier = modifier.offset { IntOffset(0, offsetY()) },
-        )
-        return
-    }
     // Nothing to draw (nor to refract) while not pulled
     if (state.distanceFraction <= 0f && !isRefreshing) return
     val scheme = MaterialTheme.colorScheme
@@ -95,6 +86,9 @@ fun RefreshIndicator(
             .then(
                 if (glass != null) {
                     Modifier.floatingGlass(glass, CircleShape, scheme.surfaceContainerHigh.copy(alpha = GLASS_TINT), GlassStyle.Control)
+                } else if (LocalPageBackdrop.current == null) {
+                    // Liquid glass off: the same arrow on a plain disc
+                    Modifier.shadow(3.dp, CircleShape).background(scheme.surfaceContainerHigh, CircleShape)
                 } else {
                     val rim = if (dark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
                     Modifier.background(scheme.surfaceContainerHigh.copy(alpha = 0.55f), CircleShape).border(1.dp, rim, CircleShape)
