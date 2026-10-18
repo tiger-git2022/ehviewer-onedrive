@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.plus
 import androidx.compose.foundation.layout.size
@@ -31,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -41,11 +41,17 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
@@ -114,8 +120,25 @@ fun GalleryList(
             }
         }
     }
+    // Fork: a mouse wheel turned up at the top scrolls, it does not pull to refresh (a drag still does): what a wheel
+    // leaves over upward is kept from the refresh, until the next press
+    val wheelTurned = remember { BooleanArray(1) }
+    val wheelGuard = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource) = if (wheelTurned[0] && available.y > 0f) Offset(0f, available.y) else Offset.Zero
+        }
+    }
     Box(
-        modifier = modifier.pullToRefresh(
+        modifier = modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    when (awaitPointerEvent(PointerEventPass.Initial).type) {
+                        PointerEventType.Scroll -> wheelTurned[0] = true
+                        PointerEventType.Press -> wheelTurned[0] = false
+                    }
+                }
+            }
+        }.pullToRefresh(
             isRefreshing = isRefreshing,
             state = refreshState,
             enabled = data.loadState.refresh is LoadState.NotLoading,
@@ -143,7 +166,7 @@ fun GalleryList(
             val columnWidth by collectDetailSizeAsState()
             FastScrollLazyVerticalGrid(
                 columns = GridCells.Adaptive(columnWidth),
-                modifier = contentModifier.fillMaxSize().mouseDragScroll(detailListState),
+                modifier = contentModifier.fillMaxSize().nestedScroll(wheelGuard).mouseDragScroll(detailListState),
                 state = detailListState,
                 contentPadding = contentPadding + PaddingValues(marginH, marginV),
                 verticalArrangement = Arrangement.spacedBy(dimensionResource(com.hippo.ehviewer.R.dimen.gallery_list_interval)),
@@ -173,7 +196,7 @@ fun GalleryList(
             val thumbColumns by Settings.thumbColumns.collectAsState()
             FastScrollLazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(thumbColumns),
-                modifier = contentModifier.fillMaxSize().mouseDragScroll(thumbListState),
+                modifier = contentModifier.fillMaxSize().nestedScroll(wheelGuard).mouseDragScroll(thumbListState),
                 state = thumbListState,
                 contentPadding = contentPadding + PaddingValues(marginH, marginV),
                 verticalItemSpacing = gridInterval,
@@ -236,12 +259,27 @@ fun GalleryList(
         }
 
         // Fork: with liquid glass, a disc of glass, see RefreshIndicator
-        RefreshIndicator(
-            state = refreshState,
-            isRefreshing = isRefreshing,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = contentPadding.calculateTopPadding())
-                .offset { IntOffset(0, searchBarOffsetY()) },
-        )
+        // Fork: with liquid glass, drawn by the page over the content the glass refracts, so it can be glass too
+        val host = LocalRefreshIndicatorHost.current
+        if (host != null) {
+            val top = contentPadding.calculateTopPadding()
+            SideEffect {
+                host.state = refreshState
+                host.isRefreshing = isRefreshing
+                host.top = top
+                host.offsetY = searchBarOffsetY
+            }
+            DisposableEffect(host) {
+                onDispose { if (host.state === refreshState) host.state = null }
+            }
+        } else {
+            RefreshIndicator(
+                state = refreshState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = contentPadding.calculateTopPadding()),
+                offsetY = searchBarOffsetY,
+            )
+        }
     }
 }
 

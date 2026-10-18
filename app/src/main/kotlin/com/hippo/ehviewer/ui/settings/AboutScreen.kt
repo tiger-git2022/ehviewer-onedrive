@@ -36,6 +36,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.ehviewer.core.files.delete
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
+import com.ehviewer.core.util.launchIO
 import com.ehviewer.core.util.withUIContext
 import com.hippo.ehviewer.BuildConfig
 import com.hippo.ehviewer.EhDB
@@ -52,6 +53,7 @@ import com.hippo.ehviewer.updater.AppUpdater
 import com.hippo.ehviewer.updater.EhRelease
 import com.hippo.ehviewer.util.AppConfig
 import com.hippo.ehviewer.util.FileUtils
+import com.hippo.ehviewer.util.ProgressDialog
 import com.hippo.ehviewer.util.ReadableTime
 import com.hippo.ehviewer.util.displayString
 import com.hippo.ehviewer.util.installPackage
@@ -125,11 +127,24 @@ fun AnimatedVisibilityScope.AboutScreen(navigator: DestinationsNavigator) = Scre
                 entryValueRes = com.hippo.ehviewer.R.array.update_frequency_values,
                 state = Settings.updateIntervalDays.asMutableState(),
             )
-            WorkPreference(title = stringResource(id = R.string.settings_about_check_for_updates)) {
-                runSuspendCatching {
-                    AppUpdater.checkForUpdate(true)?.let { showNewVersion(it) } ?: launchSnackbar(string(R.string.already_latest_version))
-                }.onFailure {
-                    launchSnackbar(string(R.string.update_failed, it.displayString()))
+            // Fork: "please wait" only while checking. Shown for the whole work, it lay over the new version and the
+            // download dialogs and took their taps: stuck until the app was closed
+            var checking by remember { mutableStateOf(false) }
+            if (checking) ProgressDialog()
+            Preference(title = stringResource(id = R.string.settings_about_check_for_updates)) {
+                if (checking) return@Preference
+                checking = true
+                launchIO {
+                    runSuspendCatching {
+                        val release = try {
+                            AppUpdater.checkForUpdate(true)
+                        } finally {
+                            checking = false
+                        }
+                        release?.let { showNewVersion(it) } ?: launchSnackbar(string(R.string.already_latest_version))
+                    }.onFailure {
+                        launchSnackbar(string(R.string.update_failed, it.displayString()))
+                    }
                 }
             }
         }
