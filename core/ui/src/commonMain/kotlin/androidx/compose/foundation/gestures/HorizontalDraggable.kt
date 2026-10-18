@@ -56,7 +56,8 @@ internal abstract class HorizontalDragGestureNode(
     private var channel: Channel<HorizontalDragEvent>? = null
     private var isListeningForEvents = false
 
-    abstract fun canDrag(change: PointerInputChange): Boolean
+    /** Fork: [totalDelta] is the whole move since the press. */
+    abstract fun canDrag(totalDelta: Offset): Boolean
 
     /**
      * Responsible for the dragging behavior between the start and the end of the drag. It

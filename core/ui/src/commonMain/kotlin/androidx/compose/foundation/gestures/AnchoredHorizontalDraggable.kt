@@ -20,8 +20,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.HorizontalDragEvent.DragDelta
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.requireLayoutDirection
 import androidx.compose.ui.platform.InspectorInfo
@@ -118,7 +116,7 @@ private class AnchoredHorizontalDraggableNode<T>(
     private val isReverseDirection: Boolean
         get() = requireLayoutDirection() == LayoutDirection.Rtl
 
-    override fun canDrag(change: PointerInputChange): Boolean = canDrag(change.positionChange().reverseIfNeeded())
+    override fun canDrag(totalDelta: Offset): Boolean = canDrag.invoke(totalDelta.reverseIfNeeded())
 
     override suspend fun drag(forEachDelta: suspend ((dragDelta: DragDelta) -> Unit) -> Unit) {
         state.anchoredDrag {

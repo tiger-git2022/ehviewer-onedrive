@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +27,8 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -88,12 +91,14 @@ import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
+import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
 import com.hippo.ehviewer.ui.tools.awaitSelectTags
+import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.util.AppHelper
 import com.hippo.ehviewer.util.awaitActivityResult
 import com.hippo.ehviewer.util.bgWork
@@ -201,6 +206,19 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val exportSuccess = stringResource(id = R.string.export_as_archive_success)
     val exportFailed = stringResource(id = R.string.export_as_archive_failed)
     val windowSizeClass = LocalWindowSizeClass.current
+    // Fork: pulled to refresh, until the details came back (or failed)
+    var refreshing by remember { mutableStateOf(false) }
+    val refreshDetail = {
+        // Invalidate cache
+        detailCache.remove(gid)
+
+        // Trigger recompose
+        galleryInfo = galleryInfo?.findBaseInfo()
+        getDetailError = ""
+    }
+    LaunchedEffect(galleryInfo, getDetailError) {
+        if (galleryInfo is GalleryDetail || getDetailError.isNotBlank()) refreshing = false
+    }
     val share = stringResource(id = R.string.share)
     val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
     val syncIconShown = OneDriveClient.isSupported && oneDriveAccount != null
@@ -283,14 +301,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                                 label = addTag,
                             )
                             clickableItem(
-                                onClick = {
-                                    // Invalidate cache
-                                    detailCache.remove(gid)
-
-                                    // Trigger recompose
-                                    galleryInfo = galleryInfo?.findBaseInfo()
-                                    getDetailError = ""
-                                },
+                                onClick = { refreshDetail() },
                                 icon = {
                                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                                 },
@@ -402,17 +413,29 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     }
                 }
             }
-            GalleryDetailContent(
-                galleryInfo = gi,
-                contentPadding = it,
-                getDetailError = getDetailError,
-                onRetry = { getDetailError = "" },
-                voteTag = voteTag,
-                // Fork: recorded for the glass of the top bar
-                modifier = Modifier.glassContent(backdrop).nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .expandTopBarOnWheelAtTop(gridState, scrollBehavior),
-                state = gridState,
-            )
+            // Fork: pull to refresh, as the refresh of the menu. Below the top bar's nested scrolling, so a pull expands
+            // the bar first; a mouse drags the details too, see mouseDragScroll
+            val refreshState = rememberPullToRefreshState()
+            Box(
+                modifier = Modifier.fillMaxSize().pullToRefresh(isRefreshing = refreshing, state = refreshState, onRefresh = { refreshing = true; refreshDetail() })
+                    .nestedScroll(scrollBehavior.nestedScrollConnection).mouseDragScroll(gridState),
+            ) {
+                GalleryDetailContent(
+                    galleryInfo = gi,
+                    contentPadding = it,
+                    getDetailError = getDetailError,
+                    onRetry = { getDetailError = "" },
+                    voteTag = voteTag,
+                    // Fork: recorded for the glass of the top bar
+                    modifier = Modifier.glassContent(backdrop).expandTopBarOnWheelAtTop(gridState, scrollBehavior),
+                    state = gridState,
+                )
+                RefreshIndicator(
+                    state = refreshState,
+                    isRefreshing = refreshing,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = it.calculateTopPadding()),
+                )
+            }
         } else if (getDetailError.isNotBlank()) {
             GalleryDetailErrorTip(error = getDetailError, onClick = { getDetailError = "" })
         } else {
