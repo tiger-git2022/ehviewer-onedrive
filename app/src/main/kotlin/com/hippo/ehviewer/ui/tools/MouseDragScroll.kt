@@ -18,6 +18,7 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.unit.Velocity
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -37,8 +38,12 @@ fun Modifier.mouseDragScroll(state: ScrollableState): Modifier = composed {
                 if (down.type != PointerType.Mouse) return@awaitEachGesture
                 var overSlop = 0f
                 val start = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
-                    change.consume()
-                    overSlop = over
+                    // Going more sideways than up or down: left to the drawers (not taken, it waits on)
+                    val move = change.position - down.position
+                    if (move.x.absoluteValue <= move.y.absoluteValue) {
+                        change.consume()
+                        overSlop = over
+                    }
                 } ?: return@awaitEachGesture
                 // As a scroll of the list, like a finger's: it stops a fling and shows the fast scroller
                 val deltas = Channel<Float>(Channel.UNLIMITED)

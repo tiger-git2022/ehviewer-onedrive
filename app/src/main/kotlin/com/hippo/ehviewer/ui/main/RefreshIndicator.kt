@@ -1,97 +1,120 @@
 package com.hippo.ehviewer.ui.main
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicatorDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.floatingGlass
 import com.hippo.ehviewer.ui.LocalPageBackdrop
+import kotlin.math.roundToInt
 
 /**
- * Fork: the pull to refresh indicator. With liquid glass, a disc of glass with a lit rim, like the floating buttons
- * (it lies inside the content the glass refracts, so it cannot refract it itself): a thin ring fills up with the pull
- * around an arrow turning with it, and spins while refreshing. Without it, the Material indicator.
+ * Fork: the pull to refresh of a list inside the content liquid glass refracts. Glass drawn there cannot refract the
+ * content it is part of, so the page holding the glass draws the indicator over that content (see SearchBarScreen)
+ * from what the list tells it here.
+ */
+@Stable
+class RefreshIndicatorHost {
+    var state by mutableStateOf<PullToRefreshState?>(null)
+    var isRefreshing by mutableStateOf(false)
+    var top by mutableStateOf(0.dp)
+    var offsetY: () -> Int = { 0 }
+}
+
+/** The host of the page, null where the list draws its indicator itself. */
+val LocalRefreshIndicatorHost = staticCompositionLocalOf<RefreshIndicatorHost?> { null }
+
+/**
+ * Fork: the pull to refresh indicator. With liquid glass, a drop of glass with the refresh arrow, turning with the pull
+ * and while refreshing ([glass] refracting the page; without one, a translucent disc with a lit rim). Without liquid
+ * glass, the Material indicator.
  */
 @Composable
-fun RefreshIndicator(state: PullToRefreshState, isRefreshing: Boolean, modifier: Modifier = Modifier) {
+fun RefreshIndicator(
+    state: PullToRefreshState,
+    isRefreshing: Boolean,
+    modifier: Modifier = Modifier,
+    glass: FloatingGlass? = null,
+    offsetY: () -> Int = { 0 },
+) {
     if (LocalPageBackdrop.current == null) {
         PullToRefreshDefaults.LoadingIndicator(
             state = state,
             isRefreshing = isRefreshing,
             containerColor = LoadingIndicatorDefaults.containedContainerColor,
-            modifier = modifier,
+            modifier = modifier.offset { IntOffset(0, offsetY()) },
         )
         return
     }
+    // Nothing to draw (nor to refract) while not pulled
+    if (state.distanceFraction <= 0f && !isRefreshing) return
     val scheme = MaterialTheme.colorScheme
     val dark = scheme.surface.luminance() < 0.5f
-    val rim = if (dark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
-    val color = scheme.primary
-    PullToRefreshDefaults.IndicatorBox(
-        state = state,
-        isRefreshing = isRefreshing,
-        modifier = modifier,
-        shape = CircleShape,
-        containerColor = scheme.surfaceContainerHigh.copy(alpha = 0.55f),
-        elevation = 0.dp,
-    ) {
-        Box(modifier = Modifier.fillMaxSize().border(1.dp, rim, CircleShape), contentAlignment = Alignment.Center) {
-            Crossfade(targetState = isRefreshing, label = "Refresh") { refreshing ->
-                Box(modifier = Modifier.size(RingSize), contentAlignment = Alignment.Center) {
-                    if (refreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.fillMaxSize(),
-                            color = color,
-                            strokeWidth = RingStroke,
-                            trackColor = color.copy(alpha = 0.18f),
-                            strokeCap = StrokeCap.Round,
-                            gapSize = ProgressIndicatorDefaults.CircularIndicatorTrackGapSize,
-                        )
-                    } else {
-                        CircularProgressIndicator(
-                            progress = { state.distanceFraction.coerceIn(0f, 1f) },
-                            modifier = Modifier.fillMaxSize(),
-                            color = color,
-                            strokeWidth = RingStroke,
-                            trackColor = color.copy(alpha = 0.18f),
-                            strokeCap = StrokeCap.Round,
-                            gapSize = ProgressIndicatorDefaults.CircularIndicatorTrackGapSize,
-                        )
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = null,
-                            tint = color,
-                            modifier = Modifier.size(ArrowSize).graphicsLayer {
-                                val fraction = state.distanceFraction.coerceIn(0f, 1f)
-                                alpha = fraction
-                                rotationZ = fraction * 270f
-                            },
-                        )
-                    }
-                }
+    val spin = rememberInfiniteTransition(label = "Refresh")
+    val spinAngle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "Spin")
+    Box(
+        modifier = modifier
+            .offset {
+                // Comes down with the pull from above the top of the list, like the Material indicator
+                val travel = state.distanceFraction * PullToRefreshDefaults.PositionalThreshold.toPx() - IndicatorSize.toPx()
+                IntOffset(0, travel.roundToInt() + offsetY())
             }
-        }
+            .graphicsLayer { alpha = if (isRefreshing) 1f else (state.distanceFraction * 2f).coerceIn(0f, 1f) }
+            .size(IndicatorSize)
+            .then(
+                if (glass != null) {
+                    Modifier.floatingGlass(glass, CircleShape, scheme.surfaceContainerHigh.copy(alpha = GLASS_TINT), GlassStyle.Control)
+                } else {
+                    val rim = if (dark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
+                    Modifier.background(scheme.surfaceContainerHigh.copy(alpha = 0.55f), CircleShape).border(1.dp, rim, CircleShape)
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Refresh,
+            contentDescription = null,
+            tint = scheme.onSurface,
+            modifier = Modifier.size(ArrowSize).graphicsLayer {
+                rotationZ = if (isRefreshing) spinAngle else state.distanceFraction.coerceIn(0f, 1f) * 270f
+            },
+        )
     }
 }
 
-private val RingSize = 28.dp
-private val RingStroke = 2.dp
-private val ArrowSize = 16.dp
+private val IndicatorSize: Dp = 40.dp
+private val ArrowSize: Dp = 22.dp
+
+// Like the floating buttons
+private const val GLASS_TINT = 0.25f

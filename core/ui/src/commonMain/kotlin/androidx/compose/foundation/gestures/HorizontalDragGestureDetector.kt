@@ -23,6 +23,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ViewConfiguration
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.absoluteValue
 
 /**
  * A Gesture detector that waits for pointer down and touch slop in the horizontal direction and
@@ -78,22 +79,28 @@ internal suspend fun PointerInputScope.detectHorizontalDragGestures(
         var overSlop = Offset.Zero
 
         if (awaitTouchSlop) {
+            var decided = false
             do {
                 drag = awaitHorizontalTouchSlopOrCancellation(
                     down.id,
                 ) { change, over ->
-                    // Fork: the direction of the whole move, not of the last event: a mouse reports small steps, and
-                    // one going a bit up or down turned down a swipe that went sideways. Another finger taking over
-                    // started elsewhere: its last step then
+                    // Fork: the direction of the whole move, not of the last event. Another finger taking over started
+                    // elsewhere: its last step then
                     val move = if (change.id == down.id) change.position - down.position else change.positionChange()
-                    if (canDrag.invoke(move)) {
+                    if (move.getDistance() < viewConfiguration.touchSlop) {
+                        // Fork: a mouse passes its slop after a pixel or two, too soon to tell sideways from up or
+                        // down: decided once it went as far as a finger must. Meanwhile held while it goes the way
+                        // this opens, so the drawer around does not take it
+                        if (canDrag.invoke(Offset(move.x, 0f)) && move.x.absoluteValue >= move.y.absoluteValue) change.consume()
+                    } else if (canDrag.invoke(move)) {
                         change.consume()
                         overSlop = Offset(over, 0f)
+                        decided = true
                     } else {
                         throw CancellationException()
                     }
                 }
-            } while (drag != null && !drag.isConsumed)
+            } while (drag != null && !decided)
         } else {
             drag = initialDown
         }

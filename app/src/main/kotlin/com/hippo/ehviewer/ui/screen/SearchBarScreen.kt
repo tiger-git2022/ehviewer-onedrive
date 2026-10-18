@@ -53,6 +53,7 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.SearchBarDefaults.InputField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -90,7 +91,10 @@ import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.glassOnSelectedColor
 import com.hippo.ehviewer.ui.glassSelectedColor
+import com.hippo.ehviewer.ui.main.LocalRefreshIndicatorHost
 import com.hippo.ehviewer.ui.main.OneDriveSyncProgressBanner
+import com.hippo.ehviewer.ui.main.RefreshIndicator
+import com.hippo.ehviewer.ui.main.RefreshIndicatorHost
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.theme.scrim
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -242,6 +246,7 @@ fun SearchBarScreen(
     // Fork: liquid glass refracting the list, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
     val glass = rememberLiquidGlass(backdrop)
+    val refreshHost = remember { RefreshIndicatorHost() }
     val glassShape = SearchBarDefaults.inputFieldShape
     val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)
     val expandedGlassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f)
@@ -260,8 +265,29 @@ fun SearchBarScreen(
                 }
             },
             floatingActionButton = floatingActionButton,
-            content = if (backdrop == null) content else { padding -> Box(Modifier.fillMaxSize().glassContent(backdrop)) { content(padding) } },
+            content = if (backdrop == null) {
+                content
+            } else {
+                @Composable { padding: PaddingValues ->
+                    CompositionLocalProvider(LocalRefreshIndicatorHost provides refreshHost) {
+                        Box(Modifier.fillMaxSize().glassContent(backdrop)) { content(padding) }
+                    }
+                }
+            },
         )
+        // Fork: the pull to refresh of the list, over the content the glass refracts so it is glass itself, see
+        // RefreshIndicatorHost
+        if (backdrop != null) {
+            refreshHost.state?.let { state ->
+                RefreshIndicator(
+                    state = state,
+                    isRefreshing = refreshHost.isRefreshing,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = refreshHost.top),
+                    glass = glass,
+                    offsetY = refreshHost.offsetY,
+                )
+            }
+        }
         // Fork: below the search bar, it stays below the status bar when the search bar scrolls away
         if (showSyncProgress && !expanded) {
             val statusBarTop = WindowInsets.statusBars.getTop(LocalDensity.current)
