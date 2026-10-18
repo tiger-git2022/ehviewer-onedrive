@@ -83,8 +83,10 @@ internal suspend fun PointerInputScope.detectHorizontalDragGestures(
                     down.id,
                 ) { change, over ->
                     // Fork: the direction of the whole move, not of the last event: a mouse reports small steps, and
-                    // one going a bit up or down turned down a swipe that went sideways
-                    if (canDrag.invoke(change.position - down.position)) {
+                    // one going a bit up or down turned down a swipe that went sideways. Another finger taking over
+                    // started elsewhere: its last step then
+                    val move = if (change.id == down.id) change.position - down.position else change.positionChange()
+                    if (canDrag.invoke(move)) {
                         change.consume()
                         overSlop = Offset(over, 0f)
                     } else {
