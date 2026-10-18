@@ -316,8 +316,6 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
                 tip(R.string.remove_from_favorite_failure)
             }
         }
-    } else {
-        action(Icons.Default.Favorite, R.string.add_to_favourites) { addToFavorites(choose = false) }
     }
     // Fork: the collection to add to (or to move to), besides the default one; signed out, only the local favorites
     if (Settings.hasSignedIn.value) {
@@ -325,6 +323,10 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     }
     if (downloaded) {
         action(Icons.AutoMirrored.Default.DriveFileMove, R.string.download_move_dialog_title) { showMoveDownloadLabel(info) }
+    }
+    // Fork: the default collection last
+    if (!favorited) {
+        action(Icons.Default.Favorite, R.string.add_to_favourites) { addToFavorites(choose = false) }
     }
     val selected = awaitSelectItemWithIcon(actions.map { it.icon to it.text }, EhUtils.getSuitableTitle(info))
     actions[selected].run()
