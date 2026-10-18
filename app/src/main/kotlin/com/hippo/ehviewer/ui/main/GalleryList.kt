@@ -24,12 +24,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicatorDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -65,8 +63,8 @@ import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.coil.PrefetchAround
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ktbuilder.imageRequest
-import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.screen.collectDetailSizeAsState
+import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.util.displayString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.drop
@@ -145,7 +143,7 @@ fun GalleryList(
             val columnWidth by collectDetailSizeAsState()
             FastScrollLazyVerticalGrid(
                 columns = GridCells.Adaptive(columnWidth),
-                modifier = contentModifier.fillMaxSize(),
+                modifier = contentModifier.fillMaxSize().mouseDragScroll(detailListState),
                 state = detailListState,
                 contentPadding = contentPadding + PaddingValues(marginH, marginV),
                 verticalArrangement = Arrangement.spacedBy(dimensionResource(com.hippo.ehviewer.R.dimen.gallery_list_interval)),
@@ -175,7 +173,7 @@ fun GalleryList(
             val thumbColumns by Settings.thumbColumns.collectAsState()
             FastScrollLazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(thumbColumns),
-                modifier = contentModifier.fillMaxSize(),
+                modifier = contentModifier.fillMaxSize().mouseDragScroll(thumbListState),
                 state = thumbListState,
                 contentPadding = contentPadding + PaddingValues(marginH, marginV),
                 verticalItemSpacing = gridInterval,
@@ -237,13 +235,10 @@ fun GalleryList(
             }
         }
 
-        // Fork: with liquid glass, a translucent disc (inside the content the glass refracts)
-        val glass = LocalPageBackdrop.current != null
-        PullToRefreshDefaults.LoadingIndicator(
+        // Fork: with liquid glass, a disc of glass, see RefreshIndicator
+        RefreshIndicator(
             state = refreshState,
             isRefreshing = isRefreshing,
-            containerColor = if (glass) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f) else LoadingIndicatorDefaults.containedContainerColor,
-            elevation = if (glass) 0.dp else PullToRefreshDefaults.LoadingIndicatorElevation,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = contentPadding.calculateTopPadding())
                 .offset { IntOffset(0, searchBarOffsetY()) },
         )

@@ -57,7 +57,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * about the [PointerInputChange] and the movement offset.
  */
 internal suspend fun PointerInputScope.detectHorizontalDragGestures(
-    canDrag: (PointerInputChange) -> Boolean,
+    // Fork: given the whole move since the press, see below
+    canDrag: (Offset) -> Boolean,
     onDragStart: (change: PointerInputChange, initialDelta: Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
@@ -81,7 +82,11 @@ internal suspend fun PointerInputScope.detectHorizontalDragGestures(
                 drag = awaitHorizontalTouchSlopOrCancellation(
                     down.id,
                 ) { change, over ->
-                    if (canDrag.invoke(change)) {
+                    // Fork: the direction of the whole move, not of the last event: a mouse reports small steps, and
+                    // one going a bit up or down turned down a swipe that went sideways. Another finger taking over
+                    // started elsewhere: its last step then
+                    val move = if (change.id == down.id) change.position - down.position else change.positionChange()
+                    if (canDrag.invoke(move)) {
                         change.consume()
                         overSlop = Offset(over, 0f)
                     } else {

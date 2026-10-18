@@ -50,7 +50,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -106,10 +105,12 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.tools.addBBCodeTextContextMenuItems
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
+import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.ui.tools.normalizeSpan
 import com.hippo.ehviewer.ui.tools.showNoButton
 import com.hippo.ehviewer.ui.tools.toBBCode
@@ -312,7 +313,8 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             modifier = Modifier.imePadding().padding(top = paddingValues.calculateTopPadding()),
             state = refreshState,
             indicator = {
-                PullToRefreshDefaults.LoadingIndicator(
+                // Fork: with liquid glass, a disc of glass
+                RefreshIndicator(
                     modifier = Modifier.align(Alignment.TopCenter),
                     isRefreshing = isRefreshing,
                     state = refreshState,
@@ -336,7 +338,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             val layoutDirection = LocalLayoutDirection.current
             val lazyListState = rememberLazyListState()
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(horizontal = keylineMargin),
+                modifier = Modifier.fillMaxSize().padding(horizontal = keylineMargin).mouseDragScroll(lazyListState),
                 state = lazyListState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(

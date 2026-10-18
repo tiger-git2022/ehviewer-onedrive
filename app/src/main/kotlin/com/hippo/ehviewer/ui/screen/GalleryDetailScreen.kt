@@ -94,6 +94,7 @@ import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
 import com.hippo.ehviewer.ui.tools.awaitSelectTags
+import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.util.AppHelper
 import com.hippo.ehviewer.util.awaitActivityResult
 import com.hippo.ehviewer.util.bgWork
@@ -402,17 +403,20 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     }
                 }
             }
-            GalleryDetailContent(
-                galleryInfo = gi,
-                contentPadding = it,
-                getDetailError = getDetailError,
-                onRetry = { getDetailError = "" },
-                voteTag = voteTag,
-                // Fork: recorded for the glass of the top bar
-                modifier = Modifier.glassContent(backdrop).nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .expandTopBarOnWheelAtTop(gridState, scrollBehavior),
-                state = gridState,
-            )
+            // Fork: a mouse drags the details too, see mouseDragScroll. On a box around them: the details pass their
+            // modifier on to some of their rows as well
+            Box(modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection).mouseDragScroll(gridState)) {
+                GalleryDetailContent(
+                    galleryInfo = gi,
+                    contentPadding = it,
+                    getDetailError = getDetailError,
+                    onRetry = { getDetailError = "" },
+                    voteTag = voteTag,
+                    // Fork: recorded for the glass of the top bar
+                    modifier = Modifier.glassContent(backdrop).expandTopBarOnWheelAtTop(gridState, scrollBehavior),
+                    state = gridState,
+                )
+            }
         } else if (getDetailError.isNotBlank()) {
             GalleryDetailErrorTip(error = getDetailError, onClick = { getDetailError = "" })
         } else {
