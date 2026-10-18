@@ -253,6 +253,7 @@ fun ModalSideDrawer(
                 state = drawerState.anchoredDraggableState,
                 animationSpec = AnimationSpec,
             ),
+            takesAnyMouseMove = true,
         ),
     ) {
         val radius by remember {

@@ -61,6 +61,8 @@ import kotlin.math.absoluteValue
 internal suspend fun PointerInputScope.detectHorizontalDragGestures(
     // Fork: given the whole move since the press, see below
     canDrag: (Offset) -> Boolean,
+    // Fork: a mouse takes any sideways move the way this opens, see below
+    takesAnyMouseMove: () -> Boolean,
     onDragStart: (change: PointerInputChange, initialDelta: Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
@@ -88,9 +90,10 @@ internal suspend fun PointerInputScope.detectHorizontalDragGestures(
                     // Fork: the direction of the whole move, not of the last event. Another finger taking over started
                     // elsewhere: its last step then
                     val move = if (change.id == down.id) change.position - down.position else change.positionChange()
-                    if (change.type == PointerType.Mouse) {
-                        // Fork: a mouse, like the Material drawer: any sideways move the way this opens takes it, up or
-                        // down too. The list takes the moves that go more up or down first, see mouseDragScroll
+                    if (change.type == PointerType.Mouse && takesAnyMouseMove()) {
+                        // Fork: a mouse over a drawer, like the Material drawer: any sideways move the way this opens
+                        // takes it, up or down too. The list takes the moves that go more up or down first, see
+                        // mouseDragScroll
                         if (canDrag.invoke(Offset(move.x, 0f))) {
                             change.consume()
                             overSlop = Offset(over, 0f)
@@ -99,8 +102,9 @@ internal suspend fun PointerInputScope.detectHorizontalDragGestures(
                             throw CancellationException()
                         }
                     } else if (move.getDistance() < viewConfiguration.touchSlop) {
-                        // Fork: a finger is decided once it went as far as its slop. Meanwhile held while it goes the
-                        // way this opens, so the drawer around does not take it
+                        // Fork: a mouse passes its slop after a pixel or two, too soon to tell sideways from up or
+                        // down: decided once it went as far as a finger must. Meanwhile held while it goes the way
+                        // this opens, so the drawer around does not take it
                         if (canDrag.invoke(Offset(move.x, 0f)) && move.x.absoluteValue >= move.y.absoluteValue) change.consume()
                     } else if (canDrag.invoke(move)) {
                         change.consume()

@@ -36,6 +36,8 @@ fun <T> Modifier.anchoredHorizontalDraggable(
     enabled: Boolean = true,
     startDragImmediately: Boolean = state.isAnimationRunning,
     flingBehavior: FlingBehavior,
+    // Fork: a drawer: a mouse takes any sideways move, like the Material drawer
+    takesAnyMouseMove: Boolean = false,
 ): Modifier = this then AnchoredHorizontalDraggableElement(
     state = state,
     canDrag = { (x, y) ->
@@ -45,6 +47,7 @@ fun <T> Modifier.anchoredHorizontalDraggable(
     enabled = enabled,
     startDragImmediately = startDragImmediately,
     flingBehavior = flingBehavior,
+    takesAnyMouseMove = takesAnyMouseMove,
 )
 
 private class AnchoredHorizontalDraggableElement<T>(
@@ -53,6 +56,7 @@ private class AnchoredHorizontalDraggableElement<T>(
     private val enabled: Boolean,
     private val startDragImmediately: Boolean,
     private val flingBehavior: FlingBehavior,
+    private val takesAnyMouseMove: Boolean,
 ) : ModifierNodeElement<AnchoredHorizontalDraggableNode<T>>() {
     override fun create() = AnchoredHorizontalDraggableNode(
         state,
@@ -60,6 +64,7 @@ private class AnchoredHorizontalDraggableElement<T>(
         enabled,
         startDragImmediately,
         flingBehavior,
+        takesAnyMouseMove,
     )
 
     override fun update(node: AnchoredHorizontalDraggableNode<T>) {
@@ -69,6 +74,7 @@ private class AnchoredHorizontalDraggableElement<T>(
             enabled,
             startDragImmediately,
             flingBehavior,
+            takesAnyMouseMove,
         )
     }
 
@@ -78,6 +84,7 @@ private class AnchoredHorizontalDraggableElement<T>(
         result = 31 * result + enabled.hashCode()
         result = 31 * result + startDragImmediately.hashCode()
         result = 31 * result + flingBehavior.hashCode()
+        result = 31 * result + takesAnyMouseMove.hashCode()
         return result
     }
 
@@ -91,6 +98,7 @@ private class AnchoredHorizontalDraggableElement<T>(
         if (enabled != other.enabled) return false
         if (startDragImmediately != other.startDragImmediately) return false
         if (flingBehavior != other.flingBehavior) return false
+        if (takesAnyMouseMove != other.takesAnyMouseMove) return false
 
         return true
     }
@@ -102,6 +110,7 @@ private class AnchoredHorizontalDraggableElement<T>(
         properties["enabled"] = enabled
         properties["startDragImmediately"] = startDragImmediately
         properties["flingBehavior"] = flingBehavior
+        properties["takesAnyMouseMove"] = takesAnyMouseMove
     }
 }
 
@@ -111,12 +120,15 @@ private class AnchoredHorizontalDraggableNode<T>(
     enabled: Boolean,
     private var startDragImmediately: Boolean,
     private var flingBehavior: FlingBehavior,
+    private var takesAnyMouseMove: Boolean,
 ) : HorizontalDragGestureNode(enabled = enabled) {
 
     private val isReverseDirection: Boolean
         get() = requireLayoutDirection() == LayoutDirection.Rtl
 
     override fun canDrag(totalDelta: Offset): Boolean = canDrag.invoke(totalDelta.reverseIfNeeded())
+
+    override fun takesAnyMouseMove(): Boolean = takesAnyMouseMove
 
     override suspend fun drag(forEachDelta: suspend ((dragDelta: DragDelta) -> Unit) -> Unit) {
         state.anchoredDrag {
@@ -162,8 +174,10 @@ private class AnchoredHorizontalDraggableNode<T>(
         enabled: Boolean,
         startDragImmediately: Boolean,
         flingBehavior: FlingBehavior,
+        takesAnyMouseMove: Boolean,
     ) {
         this.flingBehavior = flingBehavior
+        this.takesAnyMouseMove = takesAnyMouseMove
 
         var resetPointerInputHandling = false
 

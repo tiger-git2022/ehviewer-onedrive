@@ -59,6 +59,9 @@ internal abstract class HorizontalDragGestureNode(
     /** Fork: [totalDelta] is the whole move since the press. */
     abstract fun canDrag(totalDelta: Offset): Boolean
 
+    /** Fork: whether a mouse takes any sideways move [canDrag] allows, not only the ones that go mostly sideways. */
+    open fun takesAnyMouseMove(): Boolean = false
+
     /**
      * Responsible for the dragging behavior between the start and the end of the drag. It
      * continually invokes `forEachDelta` to process incoming events. In return, `forEachDelta`
@@ -184,6 +187,7 @@ internal abstract class HorizontalDragGestureNode(
             try {
                 detectHorizontalDragGestures(
                     canDrag = ::canDrag,
+                    takesAnyMouseMove = ::takesAnyMouseMove,
                     onDragStart = onDragStart,
                     onDragEnd = onDragEnd,
                     onDragCancel = onDragCancel,
