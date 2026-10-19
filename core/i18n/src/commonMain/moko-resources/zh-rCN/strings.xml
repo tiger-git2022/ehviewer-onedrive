@@ -685,6 +685,7 @@
     <string name="onedrive_sync_auto_download_summary">%s里新加的画廊会自动加入本机的下载列表，每本只加一次；勾选时已有的不算</string>
     <string name="onedrive_sync_auto_download_separator">、</string>
     <string name="onedrive_sync_auto_download_slot">「%s」</string>
+    <string name="onedrive_sync_auto_download_label">「%s」自动下载到</string>
     <string name="download_size_estimated">约 %s</string>
     <string name="onedrive_sync_content">同步内容</string>
     <string name="onedrive_sync_category_settings">设置</string>
@@ -764,4 +765,5 @@
     <string name="auto_local_favorite">打开未收藏的漫画时自动加入本地收藏</string>
     <string name="auto_local_favorite_summary">打开一本不在任何收藏夹（云端或本地）里的漫画时，自动把它加入本地收藏</string>
     <string name="hide_favorited">隐藏已收藏</string>
+    <string name="moved_to_local_favorites">已移出云端收藏，保留在本地收藏</string>
 </resources>

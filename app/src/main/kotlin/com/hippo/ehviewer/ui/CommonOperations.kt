@@ -223,6 +223,42 @@ suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): 
     }
 }
 
+/**
+ * Fork: a tap on the favorite button of a gallery page. Opened galleries already go to the local favorites (see
+ * [AutoLocalFavorite]), so a tap moves a local favorite into the default cloud collection (asking for one when there is
+ * no default cloud collection), and a cloud favorite back to the local favorites only; a gallery in no favorites goes to
+ * the local favorites. Signed out it adds or removes the local favorite, as before. Returns true when it added.
+ */
+context(_: DialogState)
+suspend fun cycleFavorite(galleryInfo: GalleryInfo): Boolean {
+    if (!Settings.hasSignedIn.value) return modifyFavorites(galleryInfo)
+    val localFavorited = EhDB.containLocalFavorites(galleryInfo.gid)
+    return when {
+        galleryInfo.favoriteSlot >= 0 -> {
+            // Leaves the cloud favorites and stays (or becomes) a local favorite
+            if (!localFavorited) EhDB.putLocalFavorites(galleryInfo)
+            doModifyFavorites(galleryInfo, NOT_FAVORITED, localFavorited = true)
+        }
+        !localFavorited && galleryInfo.favoriteSlot == NOT_FAVORITED -> {
+            doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited = false)
+        }
+        else -> {
+            val slot = Settings.defaultFavSlot.value
+            val added = if (slot in 0..9) {
+                doModifyFavorites(galleryInfo, slot, localFavorited)
+            } else {
+                modifyFavorites(galleryInfo, choose = true)
+            }
+            // A gallery is in one place: once in the cloud favorites it leaves the local ones (back there when it leaves
+            // the cloud again, above)
+            if (galleryInfo.favoriteSlot >= 0 && EhDB.containLocalFavorites(galleryInfo.gid)) {
+                EhDB.removeLocalFavorites(galleryInfo)
+            }
+            added
+        }
+    }
+}
+
 private suspend fun doModifyFavorites(
     galleryInfo: GalleryInfo,
     slot: Int = NOT_FAVORITED,

@@ -703,6 +703,7 @@
     <string name="onedrive_sync_auto_download_summary">Galleries newly added to %s go to the downloads on this device, once each. Those there when a collection was chosen are left out</string>
     <string name="onedrive_sync_auto_download_separator">", "</string>
     <string name="onedrive_sync_auto_download_slot">\"%s\"</string>
+    <string name="onedrive_sync_auto_download_label">Downloads of \"%s\" go to</string>
     <string name="download_size_estimated">About %s</string>
     <string name="onedrive_sync_content">Content</string>
     <string name="onedrive_sync_category_settings">Settings</string>
@@ -782,4 +783,5 @@
     <string name="auto_local_favorite">Add opened galleries to local favorites</string>
     <string name="auto_local_favorite_summary">A gallery opened that is in no favorites (cloud or local) goes to the local favorites</string>
     <string name="hide_favorited">Hide favorited</string>
+    <string name="moved_to_local_favorites">Removed from the cloud favorites, kept in the local favorites</string>
 </resources>
