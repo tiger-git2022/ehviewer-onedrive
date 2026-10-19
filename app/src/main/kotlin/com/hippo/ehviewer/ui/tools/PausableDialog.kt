@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.safeContent
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -65,7 +64,8 @@ fun BoxScope.PausableAlertDialog(
     val mutex = remember { MutatorMutex() }
     var showDialog by remember { mutableStateOf(true) }
     if (showDialog) {
-        AlertDialog(
+        // Fork: as liquid glass, like the other dialogs
+        EhAlertDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = confirmButton,
             dismissButton = dismissButton,

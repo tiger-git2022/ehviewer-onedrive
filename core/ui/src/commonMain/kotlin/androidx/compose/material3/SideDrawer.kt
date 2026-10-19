@@ -253,7 +253,9 @@ fun ModalSideDrawer(
                 state = drawerState.anchoredDraggableState,
                 animationSpec = AnimationSpec,
             ),
-            takesAnyMouseMove = true,
+            // Fork: closed, a mouse decides at once like the Material drawer around (see awaitMouseSideways); open, that
+            // drawer is off and a mouse waits like a finger, so a click in the sheet that slips a pixel stays a click
+            takesAnyMouseMove = drawerState.isClosed,
         ),
     ) {
         val radius by remember {

@@ -76,6 +76,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.currentCompositeKeyHashCode
@@ -229,6 +230,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setMD3Content {
+            val globalDialogState = this
             val configuration = LocalConfiguration.current
             val navDrawerState = rememberDrawerState(DrawerValue.Closed)
             val sideSheetState = rememberDrawerState2(DrawerValue.Closed)
@@ -418,6 +420,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     // Fork: both drawers as liquid glass refracting the pages, see LiquidGlass.kt
                     val pagesBackdrop = rememberGlassBackdrop()
+                    SideEffect { globalDialogState.backdrop = pagesBackdrop }
                     val drawerGlass = rememberLiquidGlass(pagesBackdrop)
                     val drawerColor = DrawerDefaults.modalContainerColor
                     // Fork: rounded toward the page; with glass, the side along the screen border melts into the screen

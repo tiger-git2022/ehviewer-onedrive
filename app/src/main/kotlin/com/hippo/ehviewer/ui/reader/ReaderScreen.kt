@@ -81,6 +81,7 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
+import com.hippo.ehviewer.ui.tools.EhModalBottomSheet
 import com.hippo.ehviewer.ui.tools.awaitInputText
 import com.hippo.ehviewer.ui.tools.dialog
 import com.hippo.ehviewer.util.displayString
@@ -255,11 +256,11 @@ fun ReaderScreen(pageLoader: PageLoader, info: BaseGalleryInfo?) {
                     dialog { cont ->
                         fun dispose() = cont.resume(Unit)
                         val state = rememberBottomSheetState(SheetValue.Hidden)
-                        ModalBottomSheet(
+                        // Fork: as liquid glass, like the dialogs
+                        EhModalBottomSheet(
                             onDismissRequest = { dispose() },
                             modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
                             sheetState = state,
-                            contentWindowInsets = { WindowInsets() },
                         ) {
                             ReaderPageSheetMeta(
                                 retry = { pageLoader.retryPage(page.index) },
@@ -269,7 +270,8 @@ fun ReaderScreen(pageLoader: PageLoader, info: BaseGalleryInfo?) {
                                 save = { launchIO { with(pageLoader) { save(page) } } },
                                 saveTo = { launchIO { with(pageLoader) { saveTo(page) } } },
                                 showAds = { page.unblock() }.takeIf { blocked },
-                                dismiss = { launch { state.hide().also { dispose() } } },
+                                // The glass sheet has no sheet state to hide
+                                dismiss = { launch { if (state.isVisible) state.hide().also { dispose() } else dispose() } },
                             )
                         }
                     }

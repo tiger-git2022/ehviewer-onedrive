@@ -37,7 +37,10 @@ inline fun ComponentActivity.setMD3Content(crossinline content: @Composable Dial
                 CompositionLocalProvider(LocalGlobalDialogState provides dialogState) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         content(dialogState)
-                        dialogState.Place()
+                        // Fork: the app-wide dialogs as liquid glass over the pages too, see DialogState.backdrop
+                        CompositionLocalProvider(LocalPageBackdrop provides dialogState.backdrop) {
+                            dialogState.Place()
+                        }
                     }
                 }
             }
