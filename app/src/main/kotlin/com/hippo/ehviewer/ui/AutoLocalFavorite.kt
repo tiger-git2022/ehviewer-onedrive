@@ -21,16 +21,22 @@ object AutoLocalFavorite {
     suspend fun onOpened(info: GalleryInfo) {
         if (!Settings.autoLocalFavorite.value || info.favoriteSlot != NOT_FAVORITED) return
         if (!synchronized(handled) { handled.add(info.gid) }) return
+        var done = false
         try {
-            if (EhDB.containLocalFavorites(info.gid)) return
-            EhDB.putLocalFavorites(info)
-            info.favoriteSlot = LOCAL_FAVORITED
-            // Same as adding it with the favorite button: the button, the lists and the sync learn of it
-            FavouriteStatusRouter.notify(info)
+            if (!EhDB.containLocalFavorites(info.gid)) {
+                EhDB.putLocalFavorites(info)
+                info.favoriteSlot = LOCAL_FAVORITED
+                // Same as adding it with the favorite button: the button, the lists and the sync learn of it
+                FavouriteStatusRouter.notify(info)
+            }
+            done = true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logcat(TAG, e)
+        } finally {
+            // Left before it was added, or failed: the next opening tries again
+            if (!done) synchronized(handled) { handled.remove(info.gid) }
         }
     }
 }
