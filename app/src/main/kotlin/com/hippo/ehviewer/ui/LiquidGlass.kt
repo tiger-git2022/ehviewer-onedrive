@@ -65,7 +65,12 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    return remember(backdrop, dark) { backdrop?.let { liquidGlass(it, dark) } }
+    // Fork: the drawers and the dialogs as set in Settings → EH
+    val sheetBlur by Settings.sheetGlassBlur.collectAsState()
+    val sheetTint by Settings.sheetGlassTint.collectAsState()
+    return remember(backdrop, dark, sheetBlur, sheetTint) {
+        backdrop?.let { liquidGlass(it, dark, sheetBlur / 10f, sheetTint / 100f) }
+    }
 }
 
 // The edge of the glass: a lit edge, wider and brighter than the library default (0.5 dp), so the glass reads as glass.
@@ -79,8 +84,10 @@ private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.
 private val DarkSheetEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.5f)))
 private val SheetShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.3f))
 
-private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { shape, tint, style ->
-    val surface = if (dark) tint else Color.White.copy(alpha = tint.alpha)
+private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, sheetTint: Float) = FloatingGlass { shape, tint, style ->
+    // The drawers and the dialogs take the tint set in the settings
+    val alpha = if (style == GlassStyle.Sheet) sheetTint.coerceIn(0f, 1f) else tint.alpha
+    val surface = if (dark) tint.copy(alpha = alpha) else Color.White.copy(alpha = alpha)
     val edge = when {
         !dark || style == GlassStyle.Backdrop -> null
         style == GlassStyle.Sheet -> DarkSheetEdge
@@ -108,10 +115,10 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean) = FloatingGlass { sha
                     blur(4f.dp.toPx())
                     lens(16f.dp.toPx(), 28f.dp.toPx(), chromaticAberration = true)
                 }
-                // A wide gentle bend at the edge, chosen in the drawer glass tuner, and a blur keeping the lists
-                // readable over busy covers
+                // A wide gentle bend at the edge, chosen in the drawer glass tuner, and the blur set in the settings
+                // (2.5 dp by default) keeping the lists readable over busy covers
                 GlassStyle.Sheet -> {
-                    blur(2.5f.dp.toPx())
+                    if (sheetBlur > 0f) blur(sheetBlur.dp.toPx())
                     lens(25f.dp.toPx(), 10f.dp.toPx())
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
