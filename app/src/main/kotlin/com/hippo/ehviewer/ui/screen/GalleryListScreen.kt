@@ -117,6 +117,7 @@ import com.hippo.ehviewer.ui.main.ChineseOnlyButton
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
+import com.hippo.ehviewer.ui.main.HideFavoritedButton
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.SearchFilter
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -214,8 +215,8 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     var languageFilter by remember { mutableIntStateOf(languageSetting) }
     LaunchedEffect(languageSetting) { languageFilter = languageSetting }
     LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { Settings.languageFilter.value = it } }
-    // Fork: hiding the favorited galleries (a chip of the search filter) reloads the list from the first page, once
-    // the setting is stored: the pager reads it
+    // Fork: hiding the favorited galleries (the crossed-out heart on the search bar) reloads the list from the first
+    // page, once the setting is stored: the pager reads it
     val hideFavorited by Settings.hideFavoritedInLists.collectAsState()
     LaunchedEffect(Unit) {
         snapshotFlow { hideFavorited }.drop(1).collect {
@@ -540,6 +541,11 @@ fun AnimatedVisibilityScope.GalleryListScreen(
                     Icon(imageVector = Icons.Outlined.Bookmarks, contentDescription = stringResource(id = R.string.quick_search))
                 }
             }
+            // Fork: hide the favorited galleries, the list reloads once the setting is stored (see above)
+            HideFavoritedButton(
+                checked = hideFavorited,
+                onCheckedChange = { Settings.hideFavoritedInLists.value = it },
+            )
             // Fork: Chinese only, refreshing the list; the image limits moved to Settings → EH
             val filterable = urlBuilder.mode.let { it == MODE_NORMAL || it == MODE_SUBSCRIPTION || it == MODE_TAG || it == MODE_UPLOADER }
             ChineseOnlyButton(

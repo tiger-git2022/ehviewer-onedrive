@@ -25,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,7 +40,6 @@ import com.ehviewer.core.ui.util.thenIf
 import com.ehviewer.core.util.launch
 import com.ehviewer.core.util.toIntOrDefault
 import com.hippo.ehviewer.Settings
-import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.collectAsState
@@ -96,14 +94,6 @@ fun SearchFilter(
         modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Fork: the galleries in the cloud or local favorites left out of the gallery lists, a setting kept until
-        // tapped again; the list refreshes by itself, see GalleryListScreen
-        var hideFavorited by Settings.hideFavoritedInLists.asMutableState()
-        FilterChip(
-            selected = hideFavorited,
-            onClick = { hideFavorited = !hideFavorited },
-            label = { Text(text = stringResource(id = R.string.hide_favorited)) },
-        )
         val any = stringResource(id = R.string.any)
         val languageStr = stringResource(id = R.string.key_language)
         val languages = remember {
