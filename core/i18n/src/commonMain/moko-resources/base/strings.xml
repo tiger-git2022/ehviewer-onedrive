@@ -470,6 +470,10 @@
     <string name="black_dark_theme">Black dark theme</string>
     <string name="liquid_glass">Liquid glass</string>
     <string name="liquid_glass_summary">The search bar, the sync progress, the floating buttons and both drawers refract the content below them. The refraction needs Android 13 or later</string>
+    <string name="sheet_glass_blur">Drawer and dialog blur</string>
+    <string name="sheet_glass_blur_summary">The value over 10 is the blur radius in dp: 0 is no blur, 25 the default. Blur needs Android 12</string>
+    <string name="sheet_glass_tint">Drawer and dialog opacity</string>
+    <string name="sheet_glass_tint_summary">The percent of color over the glass: higher is less see-through, 40 the default</string>
     <string name="harmonize_category_color">Harmonize category color for Dynamic Color</string>
     <string name="sort_by">Sort by</string>
     <string name="added_time_desc">Added time (descending)</string>

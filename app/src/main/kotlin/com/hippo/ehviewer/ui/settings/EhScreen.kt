@@ -186,11 +186,31 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                 state = Settings.harmonizeCategoryColor.asMutableState(),
             )
             // Fork
+            val liquidGlass = Settings.liquidGlass.asMutableState()
             SwitchPreference(
                 title = stringResource(id = R.string.liquid_glass),
                 summary = stringResource(id = R.string.liquid_glass_summary),
-                state = Settings.liquidGlass.asMutableState(),
+                state = liquidGlass,
             )
+            // Fork: the glass of the drawers and the dialogs, see ui/LiquidGlass.kt
+            AnimatedVisibility(visible = liquidGlass.value) {
+                Column {
+                    IntSliderPreference(
+                        maxValue = 100,
+                        step = 19,
+                        title = stringResource(id = R.string.sheet_glass_blur),
+                        summary = stringResource(id = R.string.sheet_glass_blur_summary),
+                        pref = Settings.sheetGlassBlur,
+                    )
+                    IntSliderPreference(
+                        maxValue = 100,
+                        step = 19,
+                        title = stringResource(id = R.string.sheet_glass_tint),
+                        summary = stringResource(id = R.string.sheet_glass_tint_summary),
+                        pref = Settings.sheetGlassTint,
+                    )
+                }
+            }
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.settings_eh_launch_page),
                 entry = com.hippo.ehviewer.R.array.launch_page_entries,

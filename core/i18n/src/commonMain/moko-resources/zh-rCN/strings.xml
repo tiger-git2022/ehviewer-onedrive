@@ -448,6 +448,10 @@
     <string name="black_dark_theme">纯黑深色主题</string>
     <string name="liquid_glass">液态玻璃</string>
     <string name="liquid_glass_summary">搜索栏、同步进度、悬浮按钮和左右侧拉栏改成液态玻璃，折射下面的内容。折射效果需要 Android 13 以上</string>
+    <string name="sheet_glass_blur">侧边栏和弹窗的模糊度</string>
+    <string name="sheet_glass_blur_summary">数值除以 10 是模糊半径（dp）：0 不模糊，默认 25。模糊需要 Android 12 以上</string>
+    <string name="sheet_glass_tint">侧边栏和弹窗的不透明度</string>
+    <string name="sheet_glass_tint_summary">玻璃上底色的百分比：越大越不透明、越容易看清文字，默认 40</string>
     <string name="harmonize_category_color">类别颜色适配动态配色</string>
     <string name="backup_before_update">更新前备份数据</string>
     <string name="use_ci_update_channel">使用持续集成(CI)构建频道更新</string>
