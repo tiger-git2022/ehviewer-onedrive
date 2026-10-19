@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
@@ -69,6 +68,7 @@ import com.hippo.ehviewer.client.EhFilter.trigger
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.tools.EhAlertDialog
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.dialog
 import com.ramcosta.composedestinations.annotation.Destination
@@ -110,7 +110,8 @@ fun AnimatedVisibilityScope.FilterScreen(navigator: DestinationsNavigator) = Scr
                         }
                     }
                 }
-                AlertDialog(
+                // Fork: as liquid glass, like the other dialogs
+                EhAlertDialog(
                     onDismissRequest = { cont.cancel() },
                     confirmButton = {
                         TextButton(onClick = ::invalidateAndSave, shapes = ButtonDefaults.shapes()) {

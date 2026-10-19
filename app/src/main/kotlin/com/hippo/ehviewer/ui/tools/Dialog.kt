@@ -5,25 +5,34 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -45,9 +54,11 @@ import androidx.compose.material.icons.filled.NewLabel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerColors
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DisplayMode
@@ -63,22 +74,27 @@ import androidx.compose.material3.InputChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerDialog
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,12 +104,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
@@ -104,9 +128,12 @@ import arrow.core.right
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.FastScrollLazyColumn
 import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.GLASS_SHEET_CORNER
 import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
+import com.ehviewer.core.ui.component.GlassEdge
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
+import com.ehviewer.core.ui.component.edgeGlass
 import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.ifNotNullThen
 import com.ehviewer.core.ui.util.ifTrueThen
@@ -114,8 +141,10 @@ import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.EhTagDatabase.suggestion
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.rememberLiquidGlass
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -132,6 +161,9 @@ interface DialogScope<R> {
 typealias MutableComposable = MutableState<(@Composable BoxScope.() -> Unit)?>
 
 class DialogState(val mutex: MutatorMutex = MutatorMutex()) : MutableComposable by mutableStateOf(null) {
+    /** Fork: the pages the dialogs of the app-wide state refract as liquid glass, set by MainActivity. */
+    var backdrop by mutableStateOf<LayerBackdrop?>(null)
+
     @Composable
     fun rememberLocal() = remember { DialogState(mutex) }
 
@@ -340,7 +372,7 @@ suspend fun awaitInputText(
     val coroutineScope = rememberCoroutineScope()
     val state = rememberTextFieldState(initial)
     var error by remember(cont) { mutableStateOf<String?>(null) }
-    AlertDialog(
+    EhAlertDialog(
         onDismissRequest = {
             cont.cancel()
             onUserDismiss?.invoke()
@@ -398,7 +430,7 @@ suspend fun awaitInputTextWithCheckBox(
     val state = rememberTextFieldState(initial)
     var error by remember(cont) { mutableStateOf<String?>(null) }
     var checkedState by remember { mutableStateOf(checked) }
-    AlertDialog(
+    EhAlertDialog(
         onDismissRequest = { cont.cancel() },
         confirmButton = {
             TextButton(
@@ -509,21 +541,20 @@ suspend fun awaitSelectDate(
         initialDisplayMode,
         selectableDates,
     )
-    DatePickerDialog(
-        onDismissRequest = { cont.cancel() },
-        confirmButton = {
-            TextButton(onClick = { state.selectedDateMillis?.let { cont.resume(it) } ?: cont.cancel() }, shapes = ButtonDefaults.shapes()) {
-                Text(text = stringResource(id = android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { cont.cancel() }, shapes = ButtonDefaults.shapes()) {
-                Text(text = stringResource(id = android.R.string.cancel))
-            }
-        },
-    ) {
+    val confirmButton = @Composable {
+        TextButton(onClick = { state.selectedDateMillis?.let { cont.resume(it) } ?: cont.cancel() }, shapes = ButtonDefaults.shapes()) {
+            Text(text = stringResource(id = android.R.string.ok))
+        }
+    }
+    val dismissButton = @Composable {
+        TextButton(onClick = { cont.cancel() }, shapes = ButtonDefaults.shapes()) {
+            Text(text = stringResource(id = android.R.string.cancel))
+        }
+    }
+    val picker: @Composable (Modifier, DatePickerColors) -> Unit = { modifier, colors ->
         DatePicker(
             state = state,
+            modifier = modifier,
             title = {
                 Text(
                     text = stringResource(id = title),
@@ -531,7 +562,32 @@ suspend fun awaitSelectDate(
                 )
             },
             showModeToggle = showModeToggle,
+            colors = colors,
         )
+    }
+    // Fork: as liquid glass, like the other dialogs
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    if (glass != null) {
+        GlassDialog(glass, onDismissRequest = { cont.cancel() }, modifier = Modifier.requiredWidth(360.dp).heightIn(max = 568.dp)) {
+            Column {
+                picker(Modifier.weight(1f, fill = false), DatePickerDefaults.colors(containerColor = Color.Transparent))
+                Row(
+                    modifier = Modifier.align(Alignment.End).padding(start = 6.dp, end = 6.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    dismissButton()
+                    confirmButton()
+                }
+            }
+        }
+    } else {
+        DatePickerDialog(
+            onDismissRequest = { cont.cancel() },
+            confirmButton = confirmButton,
+            dismissButton = dismissButton,
+        ) {
+            picker(Modifier, DatePickerDefaults.colors())
+        }
     }
 }
 
@@ -561,11 +617,24 @@ suspend fun <R> showNoButton(respectDefaultWidth: Boolean = true, block: @Compos
 
 /** Fork: a dialog over the page as liquid glass, like the drawers, see [showNoButton]. */
 @Composable
-private fun BoxScope.GlassDialog(glass: FloatingGlass, onDismissRequest: () -> Unit, modifier: Modifier, content: @Composable () -> Unit) {
-    BackHandler(onBack = onDismissRequest)
+internal fun BoxScope.GlassDialog(
+    glass: FloatingGlass,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier,
+    dismissOnBackPress: Boolean = true,
+    dismissOnClickOutside: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    // Takes back even when it does not dismiss, like a dialog window
+    BackHandler { if (dismissOnBackPress) onDismissRequest() }
     val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
     AnimatedVisibility(visibleState = shown, modifier = Modifier.matchParentSize(), enter = fadeIn()) {
-        Box(Modifier.fillMaxSize().background(GlassDialogScrim).clickable(interactionSource = null, indication = null, onClick = onDismissRequest))
+        // Takes the taps even when they do not dismiss, so the page under it does not get them
+        Box(
+            Modifier.fillMaxSize().background(GlassDialogScrim).clickable(interactionSource = null, indication = null) {
+                if (dismissOnClickOutside) onDismissRequest()
+            },
+        )
     }
     Box(Modifier.matchParentSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         AnimatedVisibility(visibleState = shown, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
@@ -585,11 +654,96 @@ private fun BoxScope.GlassDialog(glass: FloatingGlass, onDismissRequest: () -> U
 }
 
 /**
+ * Fork: a [ModalBottomSheet] as liquid glass over the page, like [GlassDialog]: it slides up from the bottom, a tap
+ * outside or back closes it. Without liquid glass it is the Material sheet.
+ */
+@Composable
+fun BoxScope.EhModalBottomSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    sheetState: SheetState = rememberModalBottomSheetState(),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    if (glass == null) {
+        ModalBottomSheet(
+            onDismissRequest = onDismissRequest,
+            modifier = modifier,
+            sheetState = sheetState,
+            contentWindowInsets = { WindowInsets() },
+            content = content,
+        )
+        return
+    }
+    BackHandler(onBack = onDismissRequest)
+    val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
+    AnimatedVisibility(visibleState = shown, modifier = Modifier.matchParentSize(), enter = fadeIn()) {
+        Box(Modifier.fillMaxSize().background(GlassDialogScrim).clickable(interactionSource = null, indication = null, onClick = onDismissRequest))
+    }
+    // Dragged down by the handle or the content, as the Material sheet: far or fast enough closes it, else it springs back
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var sheetHeight by remember { mutableIntStateOf(0) }
+    val flingToClose = with(LocalDensity.current) { SheetFlingToClose.toPx() }
+    suspend fun settle(velocity: Float) {
+        val close = dragOffset > sheetHeight / 3f || velocity > flingToClose
+        animate(dragOffset, if (close) sheetHeight.toFloat() else 0f, velocity) { value, _ -> dragOffset = value }
+        if (close) onDismissRequest()
+    }
+    val dragState = rememberDraggableState { dragOffset = (dragOffset + it).coerceAtLeast(0f) }
+    val scrollConnection = remember {
+        object : NestedScrollConnection {
+            // Pulled down: scrolling back up lifts the sheet before it scrolls the content
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y >= 0f || dragOffset <= 0f) return Offset.Zero
+                val taken = available.y.coerceAtLeast(-dragOffset)
+                dragOffset += taken
+                return Offset(0f, taken)
+            }
+
+            // The content at its top pulls the sheet down
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || available.y <= 0f) return Offset.Zero
+                dragOffset += available.y
+                return Offset(0f, available.y)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (dragOffset <= 0f) return Velocity.Zero
+                settle(available.y)
+                return available
+            }
+        }
+    }
+    Box(Modifier.matchParentSize().then(modifier), contentAlignment = Alignment.BottomCenter) {
+        AnimatedVisibility(visibleState = shown, enter = slideInVertically { it }) {
+            val colors = MaterialTheme.colorScheme
+            MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
+                Surface(
+                    modifier = Modifier.offset { IntOffset(0, dragOffset.roundToInt()) }
+                        .onSizeChanged { sheetHeight = it.height }
+                        .nestedScroll(scrollConnection)
+                        .draggable(dragState, Orientation.Vertical, onDragStopped = { settle(it) })
+                        .fillMaxWidth().edgeGlass(glass, GlassEdge.Top, colors.surfaceContainerLow.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
+                    shape = GlassBottomSheetShape,
+                    color = Color.Transparent,
+                    contentColor = colors.onSurface,
+                ) {
+                    Column {
+                        BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
+                        content()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Fork: an [AlertDialog] as liquid glass over the page, like [showNoButton], laid out like the Material one. A secure
  * dialog stays a window, its own flag keeps it from screenshots.
  */
 @Composable
-private fun BoxScope.EhAlertDialog(
+fun BoxScope.EhAlertDialog(
     onDismissRequest: () -> Unit,
     confirmButton: @Composable () -> Unit,
     dismissButton: @Composable (() -> Unit)? = null,
@@ -609,7 +763,13 @@ private fun BoxScope.EhAlertDialog(
         )
         return
     }
-    GlassDialog(glass, onDismissRequest, modifier = Modifier.padding(horizontal = 24.dp).widthIn(min = 280.dp, max = 560.dp)) {
+    GlassDialog(
+        glass,
+        onDismissRequest,
+        modifier = Modifier.padding(horizontal = 24.dp).widthIn(min = 280.dp, max = 560.dp),
+        dismissOnBackPress = properties.dismissOnBackPress,
+        dismissOnClickOutside = properties.dismissOnClickOutside,
+    ) {
         Column(modifier = Modifier.padding(24.dp)) {
             title?.let {
                 ProvideTextStyle(MaterialTheme.typography.headlineSmall) {
@@ -641,27 +801,48 @@ suspend fun awaitSelectTime(
     initialMinute: Int,
 ) = dialog { cont ->
     val state = rememberTimePickerState(initialHour, initialMinute)
-    TimePickerDialog(
-        onDismissRequest = { cont.cancel() },
-        confirmButton = {
-            TextButton(onClick = { cont.resume(state.hour to state.minute) }, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(id = android.R.string.ok))
+    val confirmButton = @Composable {
+        TextButton(onClick = { cont.resume(state.hour to state.minute) }, shapes = ButtonDefaults.shapes()) {
+            Text(stringResource(id = android.R.string.ok))
+        }
+    }
+    val titleText = @Composable {
+        Text(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+    val dismissButton = @Composable {
+        TextButton(onClick = { cont.cancel() }, shapes = ButtonDefaults.shapes()) {
+            Text(stringResource(id = android.R.string.cancel))
+        }
+    }
+    // Fork: as liquid glass, like the other dialogs
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    if (glass != null) {
+        GlassDialog(glass, onDismissRequest = { cont.cancel() }, modifier = Modifier) {
+            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                titleText()
+                TimePicker(state = state)
+                Row(
+                    modifier = Modifier.align(Alignment.End).padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    dismissButton()
+                    confirmButton()
+                }
             }
-        },
-        title = {
-            Text(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        },
-        dismissButton = {
-            TextButton(onClick = { cont.cancel() }, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(id = android.R.string.cancel))
-            }
-        },
-        content = { TimePicker(state = state) },
-    )
+        }
+    } else {
+        TimePickerDialog(
+            onDismissRequest = { cont.cancel() },
+            confirmButton = confirmButton,
+            title = titleText,
+            dismissButton = dismissButton,
+            content = { TimePicker(state = state) },
+        )
+    }
 }
 
 context(_: DialogState)
@@ -838,6 +1019,8 @@ private fun CheckableItem(text: String, checked: Boolean, modifier: Modifier = M
 
 private val IconWithTextCorner = RoundedCornerShape(8.dp)
 private val GlassDialogScrim = Color.Black.copy(alpha = 0.32f)
+private val SheetFlingToClose = 1000.dp
+private val GlassBottomSheetShape = RoundedCornerShape(topStart = GLASS_SHEET_CORNER, topEnd = GLASS_SHEET_CORNER)
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
 
 val LocalGlobalDialogState = compositionLocalOf<DialogState> { error("CompositionLocal LocalDialogState not present!") }

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -47,6 +46,7 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.destinations.LicenseScreenDestination
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.tools.DialogState
+import com.hippo.ehviewer.ui.tools.EhAlertDialog
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.dialog
 import com.hippo.ehviewer.updater.AppUpdater
@@ -202,7 +202,8 @@ private suspend fun awaitUpdateDownload(url: String, path: Path) = dialog<Unit> 
             last = done
         }
     }
-    AlertDialog(
+    // Fork: as liquid glass, like the other dialogs
+    EhAlertDialog(
         onDismissRequest = { cont.cancel() },
         confirmButton = {},
         dismissButton = {
