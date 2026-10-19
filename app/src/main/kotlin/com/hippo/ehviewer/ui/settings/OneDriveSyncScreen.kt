@@ -363,7 +363,8 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                             val slotLabels = remember(autoDownloadLabels) { OneDriveSyncState.parseSlotLabels(autoDownloadLabels) }
                             val followDefault = stringResource(id = R.string.default_download_label)
                             chosenSlots.forEach { slot ->
-                                val label = slotLabels[slot.toString()]
+                                // A label deleted meanwhile is not used, see AutoDownload.add
+                                val label = slotLabels[slot.toString()]?.takeIf { DownloadManager.containLabel(it) }
                                 Preference(
                                     title = stringResource(id = R.string.onedrive_sync_auto_download_label, Settings.favCat[slot]),
                                     summary = label ?: followDefault,

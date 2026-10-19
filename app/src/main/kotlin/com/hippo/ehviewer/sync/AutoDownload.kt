@@ -73,6 +73,14 @@ object AutoDownload {
         scope.launch { runCatching { check(FavoritesIndexSync.cloudFavorites()) }.onFailure { logcat(TAG, it) } }
     }
 
+    /** A download label renamed to [to], or deleted ([to] null): the slots that used it follow, see [OneDriveSyncState.autoDownloadLabels]. */
+    fun onLabelChanged(from: String, to: String?) {
+        val labels = OneDriveSyncState.parseSlotLabels(OneDriveSyncState.autoDownloadLabels.value)
+        if (from !in labels.values) return
+        val updated = if (to == null) labels.filterValues { it != from } else labels.mapValues { (_, label) -> if (label == from) to else label }
+        OneDriveSyncState.autoDownloadLabels.value = OneDriveSyncState.encodeStringMap(updated)
+    }
+
     private suspend fun check(cloud: CloudFavorites) = mutex.withLock {
         val slots = slots
         if (slots.isEmpty()) {

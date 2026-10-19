@@ -54,6 +54,7 @@ import com.hippo.ehviewer.spider.downloadDirname
 import com.hippo.ehviewer.spider.readComicInfo
 import com.hippo.ehviewer.spider.readCompatFromPath
 import com.hippo.ehviewer.spider.toSimpleTags
+import com.hippo.ehviewer.sync.AutoDownload
 import com.hippo.ehviewer.util.AppConfig
 import com.hippo.ehviewer.util.insertWith
 import com.hippo.ehviewer.util.runAssertingNotMainThread
@@ -529,6 +530,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
             val new = exist.copy(label = to)
             labelList.add(index, new)
             EhDB.updateDownloadLabel(new)
+            // Fork: the auto download labels follow
+            AutoDownload.onLabelChanged(from, to)
             sortMutex.withLock {
                 allInfoList.forEach {
                     if (it.label == from) {
@@ -549,6 +552,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
             }
             removeAt(index)
         }
+        // Fork: the auto download labels follow
+        AutoDownload.onLabelChanged(label, null)
         sortMutex.withLock {
             allInfoList.forEach {
                 if (it.label == label) {
