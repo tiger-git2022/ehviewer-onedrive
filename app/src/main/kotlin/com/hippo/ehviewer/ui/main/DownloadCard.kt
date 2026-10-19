@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Pause
@@ -22,12 +23,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
@@ -92,15 +94,15 @@ fun DownloadCard(
         val stateFailed2 = stringResource(R.string.download_state_failed_2, info.legacy)
         val downloadState by DownloadManager.collectDownloadState(info.gid)
         Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp)) {
-            // Fork: laid out like the gallery list (GalleryInfoListItem): a title of up to three slightly smaller lines,
-            // one small line for the rating, the uploader and the state, and a smaller category tag
+            // Fork: laid out like the gallery list (GalleryInfoListItem): a title of up to three lines in the space left,
+            // then one small line for the rating, the uploader and the state and a smaller category tag, at the bottom
             Text(
                 text = EhUtils.getSuitableTitle(info),
+                modifier = Modifier.weight(1f),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
-            Spacer(modifier = Modifier.weight(1f))
             if (downloadState != DownloadInfo.STATE_DOWNLOAD) {
                 val stateText = when (downloadState) {
                     DownloadInfo.STATE_NONE -> stringResource(R.string.download_state_none)
@@ -175,13 +177,20 @@ fun DownloadCard(
                     DownloadInfo.STATE_FINISH -> Icons.Default.DownloadDone
                     else -> Icons.Default.PlayArrow
                 }
+                // Fork: a 32dp button, so the row is not much taller than the tag and the title keeps its room
                 if (selectMode) {
-                    Box(modifier = Modifier.offset(4.dp).minimumInteractiveComponentSize()) {
+                    Box(modifier = Modifier.offset(4.dp).size(32.dp), contentAlignment = Alignment.Center) {
                         Icon(imageVector = icon, contentDescription = null)
                     }
                 } else {
-                    IconButton(onClick = if (running) onStop else onStart, shapes = IconButtonDefaults.shapes(), modifier = Modifier.offset(4.dp)) {
-                        Icon(imageVector = icon, contentDescription = null)
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                        IconButton(
+                            onClick = if (running) onStop else onStart,
+                            shapes = IconButtonDefaults.shapes(),
+                            modifier = Modifier.offset(4.dp).size(32.dp),
+                        ) {
+                            Icon(imageVector = icon, contentDescription = null)
+                        }
                     }
                 }
             }
