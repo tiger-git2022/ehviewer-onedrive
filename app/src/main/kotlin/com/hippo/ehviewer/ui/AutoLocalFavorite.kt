@@ -8,6 +8,8 @@ import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.util.FavouriteStatusRouter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * Fork: a gallery opened that is in no favorites (cloud or local) goes to the local favorites, with
@@ -25,18 +27,22 @@ object AutoLocalFavorite {
         if (!synchronized(handled) { handled.add(info.gid) }) return
         var done = false
         try {
-            if (!EhDB.containLocalFavorites(info.gid)) EhDB.putLocalFavorites(info)
-            // Also when an earlier attempt added it but was left before this: the gallery still read "not favorited"
-            info.favoriteSlot = LOCAL_FAVORITED
-            // Same as adding it with the favorite button: the button, the lists and the sync learn of it
-            FavouriteStatusRouter.notify(info)
-            done = true
+            // Not cancellable: leaving the page halfway left the row without the favorite state or the sync mark.
+            // An upsert, so a row already there (added on another device and synced) is only marked again
+            withContext(NonCancellable) {
+                EhDB.putLocalFavorites(info)
+                info.favoriteSlot = LOCAL_FAVORITED
+                // Same as adding it with the favorite button: the button, the lists and the sync learn of it
+                FavouriteStatusRouter.notify(info)
+                // Here: withContext still throws on return when the page was left meanwhile
+                done = true
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logcat(TAG, e)
         } finally {
-            // Left before it was added, or failed: the next opening tries again
+            // Failed (or left before it started): the next opening tries again
             if (!done) synchronized(handled) { handled.remove(info.gid) }
         }
     }
