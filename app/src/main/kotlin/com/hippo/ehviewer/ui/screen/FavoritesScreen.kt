@@ -22,11 +22,8 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -57,7 +55,6 @@ import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.ui.component.FAB_ANIMATE_TIME
 import com.ehviewer.core.ui.component.FabLayout
-import com.ehviewer.core.ui.component.LocalSideSheetState
 import com.ehviewer.core.ui.component.ProvideSideSheetContent
 import com.ehviewer.core.ui.icons.EhIcons
 import com.ehviewer.core.ui.icons.filled.GoTo
@@ -78,7 +75,8 @@ import com.hippo.ehviewer.sync.NO_CLOUD_SLOT
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.awaitSelectDate
-import com.hippo.ehviewer.ui.main.AvatarIcon
+import com.hippo.ehviewer.ui.main.CHINESE_LANGUAGE_FILTER
+import com.hippo.ehviewer.ui.main.ChineseOnlyButton
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
@@ -91,6 +89,7 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import moe.tarsin.coroutines.runSwallowingWithUI
 import moe.tarsin.navigate
 
@@ -132,6 +131,11 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         urlBuilder = newUrlBuilder
         data.refresh()
     }
+
+    // Fork: "汉" (the language filter shared with the gallery list) filters the favorites, which reload once it is
+    // stored: the pager reads it
+    val languageFilter by Settings.languageFilter.collectAsState()
+    LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { refresh() } }
 
     ProvideSideSheetContent { sheetState ->
         val localFavCount by viewModel.localFavCount.collectAsState(0)
@@ -203,11 +207,12 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         trailingIcon = {
             // Fork: OneDrive sync state; a sync from here reloads the local favorites it merged
             OneDriveSyncIcon(onSynced = { if (urlBuilder.isLocal) refresh() })
-            val sheetState = LocalSideSheetState.current
-            IconButton(onClick = { launch { sheetState.open() } }, shapes = IconButtonDefaults.shapes()) {
-                Icon(imageVector = Icons.Outlined.FolderSpecial, contentDescription = null)
-            }
-            AvatarIcon()
+            // Fork: "汉" as on the gallery list, in place of the collections button (a swipe from the right edge away)
+            // and the avatar (the image limits are in Settings → EH); it reloads once the setting is stored (see above)
+            ChineseOnlyButton(
+                checked = languageFilter == CHINESE_LANGUAGE_FILTER,
+                onCheckedChange = { on -> Settings.languageFilter.value = if (on) CHINESE_LANGUAGE_FILTER else -1 },
+            )
         },
     ) { contentPadding ->
         val listMode by Settings.listMode.collectAsState()

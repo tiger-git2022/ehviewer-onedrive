@@ -13,12 +13,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import com.ehviewer.core.i18n.R
+import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.glassOnSelectedColor
 import com.hippo.ehviewer.ui.glassSelectedColor
 
 /** Index of Chinese in GalleryInfo.S_LANG_TAGS, the language filter the button sets. */
 const val CHINESE_LANGUAGE_FILTER = 1
+
+/** A Chinese gallery, by its language tag or else its title; the favorites have no language search, see FavoritesViewModel. */
+fun GalleryInfo.isChinese(): Boolean {
+    if (simpleLanguage == null) generateSLang()
+    return simpleLanguage == GalleryInfo.S_LANGS[CHINESE_LANGUAGE_FILTER]
+}
 
 /**
  * Fork: "汉" next to the search bar of the gallery list. On, searches are limited to Chinese galleries (the language
