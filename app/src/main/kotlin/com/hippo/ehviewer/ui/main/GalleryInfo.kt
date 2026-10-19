@@ -147,17 +147,24 @@ fun GalleryInfoListItem(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+            // Fork: a smaller category tag and date, so the whole date and time fit on one line
+            ProvideTextStyle(MaterialTheme.typography.labelMedium) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val categoryColor = EhUtils.getCategoryColor(info.category)
                     val categoryText = EhUtils.getCategory(info.category).uppercase()
                     Text(
                         text = categoryText,
-                        modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 2.dp, horizontal = 8.dp),
+                        modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
                         color = EhUtils.getCategoryTextColor(categoryColor),
+                        maxLines = 1,
                     )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(text = info.posted.orEmpty())
+                    Spacer(modifier = Modifier.weight(1f).widthIn(min = 4.dp))
+                    Text(
+                        text = info.posted.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                 }
             }
         }
