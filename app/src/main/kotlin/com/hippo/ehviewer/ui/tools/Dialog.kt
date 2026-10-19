@@ -5,12 +5,16 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -26,6 +30,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -88,6 +93,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,12 +104,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
@@ -129,6 +144,7 @@ import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -664,12 +680,50 @@ fun BoxScope.EhModalBottomSheet(
     AnimatedVisibility(visibleState = shown, modifier = Modifier.matchParentSize(), enter = fadeIn()) {
         Box(Modifier.fillMaxSize().background(GlassDialogScrim).clickable(interactionSource = null, indication = null, onClick = onDismissRequest))
     }
+    // Dragged down by the handle or the content, as the Material sheet: far or fast enough closes it, else it springs back
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var sheetHeight by remember { mutableIntStateOf(0) }
+    val flingToClose = with(LocalDensity.current) { SheetFlingToClose.toPx() }
+    suspend fun settle(velocity: Float) {
+        val close = dragOffset > sheetHeight / 3f || velocity > flingToClose
+        animate(dragOffset, if (close) sheetHeight.toFloat() else 0f, velocity) { value, _ -> dragOffset = value }
+        if (close) onDismissRequest()
+    }
+    val dragState = rememberDraggableState { dragOffset = (dragOffset + it).coerceAtLeast(0f) }
+    val scrollConnection = remember {
+        object : NestedScrollConnection {
+            // Pulled down: scrolling back up lifts the sheet before it scrolls the content
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y >= 0f || dragOffset <= 0f) return Offset.Zero
+                val taken = available.y.coerceAtLeast(-dragOffset)
+                dragOffset += taken
+                return Offset(0f, taken)
+            }
+
+            // The content at its top pulls the sheet down
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || available.y <= 0f) return Offset.Zero
+                dragOffset += available.y
+                return Offset(0f, available.y)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (dragOffset <= 0f) return Velocity.Zero
+                settle(available.y)
+                return available
+            }
+        }
+    }
     Box(Modifier.matchParentSize().then(modifier), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(visibleState = shown, enter = slideInVertically { it }) {
             val colors = MaterialTheme.colorScheme
             MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth().edgeGlass(glass, GlassEdge.Top, colors.surfaceContainerLow.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
+                    modifier = Modifier.offset { IntOffset(0, dragOffset.roundToInt()) }
+                        .onSizeChanged { sheetHeight = it.height }
+                        .nestedScroll(scrollConnection)
+                        .draggable(dragState, Orientation.Vertical, onDragStopped = { settle(it) })
+                        .fillMaxWidth().edgeGlass(glass, GlassEdge.Top, colors.surfaceContainerLow.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
                     shape = GlassBottomSheetShape,
                     color = Color.Transparent,
                     contentColor = colors.onSurface,
@@ -965,6 +1019,7 @@ private fun CheckableItem(text: String, checked: Boolean, modifier: Modifier = M
 
 private val IconWithTextCorner = RoundedCornerShape(8.dp)
 private val GlassDialogScrim = Color.Black.copy(alpha = 0.32f)
+private val SheetFlingToClose = 1000.dp
 private val GlassBottomSheetShape = RoundedCornerShape(topStart = GLASS_SHEET_CORNER, topEnd = GLASS_SHEET_CORNER)
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
 
