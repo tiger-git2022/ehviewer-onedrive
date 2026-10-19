@@ -38,7 +38,7 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                 val urlBuilder = urlBuilder.value
                 if (urlBuilder.mode == MODE_TOPLIST) {
                     // TODO: Since we know total pages, let pager support jump
-                    val key: Int
+                    var key: Int
                     val url = mutex.withLock {
                         with(urlBuilder) {
                             params.key?.let { page = it.toInt() }
@@ -46,12 +46,34 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                             build()
                         }
                     }
-                    val prev = (key - 1).takeIf { it > 0 }
-                    val next = (key + 1).takeIf { it <= TOPLIST_PAGES }
                     runSuspendCatching {
-                        // Fork: hide the favorited galleries
-                        EhEngine.getGalleryList(url).let { if (Settings.hideFavoritedInLists.value) it.withoutFavorited() else it }
+                        var result = EhEngine.getGalleryList(url)
+                        // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
+                        // (before it when prepending), as an empty page ended the list
+                        if (Settings.hideFavoritedInLists.value) {
+                            val forward = params !is LoadParams.Prepend
+                            var skipped = 0
+                            var shown = result.withoutFavorited()
+                            while (shown.galleryInfoList.isEmpty() && skipped < MAX_SKIPPED_FAVORITED_PAGES) {
+                                val other = if (forward) key + 1 else key - 1
+                                if (other < 1 || other > TOPLIST_PAGES) break
+                                key = other
+                                val otherUrl = mutex.withLock {
+                                    with(urlBuilder) {
+                                        page = other
+                                        build()
+                                    }
+                                }
+                                result = EhEngine.getGalleryList(otherUrl)
+                                shown = result.withoutFavorited()
+                                skipped++
+                            }
+                            result = shown
+                        }
+                        result
                     }.foldToLoadResult { result ->
+                        val prev = (key - 1).takeIf { it > 0 }
+                        val next = (key + 1).takeIf { it <= TOPLIST_PAGES }
                         LoadResult.Page(result.galleryInfoList, prev?.toString(), next?.toString())
                     }
                 } else {
