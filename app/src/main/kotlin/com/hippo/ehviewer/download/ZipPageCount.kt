@@ -15,7 +15,10 @@ internal fun countZipPages(channel: FileChannel): Int? {
     // The end of central directory record, before a comment of up to 64 KiB
     val tailSize = minOf(size, EOCD_SIZE + 0xFFFFL).toInt()
     val tail = channel.readAt(size - tailSize, tailSize)
-    val eocd = (tailSize - EOCD_SIZE downTo 0).firstOrNull { tail.getInt(it) == EOCD_SIGNATURE } ?: return null
+    // The record whose comment ends the file: a comment may hold the signature too
+    val eocd = (tailSize - EOCD_SIZE downTo 0).firstOrNull {
+        tail.getInt(it) == EOCD_SIGNATURE && it + EOCD_SIZE + (tail.getShort(it + 20).toInt() and 0xFFFF) == tailSize
+    } ?: return null
     var directorySize = tail.getInt(eocd + 12).toLong() and 0xFFFFFFFFL
     var directoryOffset = tail.getInt(eocd + 16).toLong() and 0xFFFFFFFFL
     if (directorySize == 0xFFFFFFFFL || directoryOffset == 0xFFFFFFFFL) {

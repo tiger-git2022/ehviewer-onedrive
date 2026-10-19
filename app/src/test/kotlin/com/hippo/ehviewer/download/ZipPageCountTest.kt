@@ -50,6 +50,11 @@ class ZipPageCountTest {
     }
 
     @Test
+    fun aCommentHoldingTheEndSignature() {
+        assertEquals(3, count(zip("1.jpg", "2.jpg", "3.jpg", comment = "PK\u0005\u0006" + "y".repeat(40))))
+    }
+
+    @Test
     fun notAnArchive() {
         val file = File(dir, "not.cbz").apply { writeBytes(ByteArray(4096) { 7 }) }
         assertNull(count(file))
