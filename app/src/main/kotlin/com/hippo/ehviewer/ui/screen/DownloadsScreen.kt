@@ -704,7 +704,8 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         primaryIcon = Icons.Default.Checklist,
         onPrimaryClick = {
             val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
-            // Fork: of the pages in the CBZ when counted, as the list shows
+            // Fork: of the pages in the CBZ, as the list shows, counted now for those not shown yet
+            list.filter { it.gid in progress && it.state == DownloadInfo.STATE_FINISH }.forEach { ArchivePages.refresh(it) }
             val counts = ArchivePages.counts.value
             val read = list.filter { info ->
                 val page = progress[info.gid] ?: return@filter false

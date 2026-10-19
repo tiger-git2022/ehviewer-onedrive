@@ -25,10 +25,19 @@ object ArchivePages {
     /** gid -> pages in the archive of the download. */
     val counts: StateFlow<Map<Long, Int>> = mutableCounts.asStateFlow()
 
-    /** Counts the pages in the archive of [info] again, if it has one. */
+    /**
+     * Counts the pages in the archive of [info] again. Without an archive that can be read (gone, or downloaded again
+     * as a folder), the count is dropped and the pages of the gallery show.
+     */
     suspend fun refresh(info: DownloadInfo) {
-        val pages = withContext(Dispatchers.IO) { count(info) } ?: return
-        mutableCounts.update { if (it[info.gid] == pages) it else it + (info.gid to pages) }
+        val pages = withContext(Dispatchers.IO) { count(info) }
+        mutableCounts.update {
+            when {
+                it[info.gid] == pages -> it
+                pages == null -> it - info.gid
+                else -> it + (info.gid to pages)
+            }
+        }
     }
 
     private fun count(info: DownloadInfo): Int? {
