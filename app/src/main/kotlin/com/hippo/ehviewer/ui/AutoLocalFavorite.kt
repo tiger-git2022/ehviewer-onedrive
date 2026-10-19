@@ -25,12 +25,11 @@ object AutoLocalFavorite {
         if (!synchronized(handled) { handled.add(info.gid) }) return
         var done = false
         try {
-            if (!EhDB.containLocalFavorites(info.gid)) {
-                EhDB.putLocalFavorites(info)
-                info.favoriteSlot = LOCAL_FAVORITED
-                // Same as adding it with the favorite button: the button, the lists and the sync learn of it
-                FavouriteStatusRouter.notify(info)
-            }
+            if (!EhDB.containLocalFavorites(info.gid)) EhDB.putLocalFavorites(info)
+            // Also when an earlier attempt added it but was left before this: the gallery still read "not favorited"
+            info.favoriteSlot = LOCAL_FAVORITED
+            // Same as adding it with the favorite button: the button, the lists and the sync learn of it
+            FavouriteStatusRouter.notify(info)
             done = true
         } catch (e: CancellationException) {
             throw e
