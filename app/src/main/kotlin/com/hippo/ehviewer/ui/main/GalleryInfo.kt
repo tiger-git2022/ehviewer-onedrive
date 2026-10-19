@@ -76,15 +76,15 @@ fun GalleryInfoListItem(
             )
         }
         Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
-            // Fork: the title takes up to three lines in a slightly smaller font; the rating, the uploader, the
-            // favorite, the language and the pages share one smaller line under it
+            // Fork: the title takes up to three lines and the space left; the rating, the uploader, the favorite, the
+            // language and the pages share one smaller line pinned to the bottom with the category and the date
             Text(
                 text = EhUtils.getSuitableTitle(info),
+                modifier = Modifier.weight(1f),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
-            Spacer(modifier = Modifier.weight(1f))
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
