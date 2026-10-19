@@ -109,11 +109,13 @@ fun DownloadCard(
                     DownloadInfo.STATE_WAIT -> stringResource(R.string.download_state_wait)
                     DownloadInfo.STATE_FAILED -> if (info.legacy <= 0) stateFailed else stateFailed2
                     DownloadInfo.STATE_FINISH -> {
+                        // Fork: those in its CBZ, which may have been changed since the download
+                        val pages = rememberDownloadPages(info)
                         if (showProgress) {
                             val readProgress by remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0)
-                            if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P"
+                            if (readProgress > 0) "${readProgress + 1}/${pages}P" else "${pages}P"
                         } else {
-                            "${info.pages}P"
+                            "${pages}P"
                         }
                     }
                     else -> null // The item has been removed and this will be disposed soon

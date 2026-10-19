@@ -183,6 +183,8 @@ fun GalleryInfoGridItem(
     showProgress: Boolean = true,
     showFavoriteStatus: Boolean = true,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    // Fork: a download shows the pages in its CBZ, see rememberDownloadPages
+    pages: Int = info.pages,
 ) = ElevatedCard(
     modifier = modifier,
     onClick = onClick,
@@ -217,13 +219,13 @@ fun GalleryInfoGridItem(
             contentColor = EhUtils.getCategoryTextColor(categoryColor),
         ) {
             val shouldShowLanguage = showLanguage && info.simpleLanguage != null
-            if (showPages && info.pages > 0) {
+            if (showPages && pages > 0) {
                 val readProgress = if (showProgress) {
                     remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
                 } else {
                     0
                 }
-                Text(text = if (readProgress > 0) "${readProgress + 1}/${info.pages}" else "${info.pages}")
+                Text(text = if (readProgress > 0) "${readProgress + 1}/$pages" else "$pages")
                 if (shouldShowLanguage) {
                     Spacer(modifier = Modifier.width(4.dp))
                 }

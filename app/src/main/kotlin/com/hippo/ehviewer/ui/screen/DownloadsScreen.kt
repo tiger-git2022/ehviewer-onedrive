@@ -112,15 +112,18 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.download.ArchivePages
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.download.DownloadsFilterMode
+import com.hippo.ehviewer.download.shownPages
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
 import com.hippo.ehviewer.ui.main.DownloadCard
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
+import com.hippo.ehviewer.ui.main.rememberDownloadPages
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.showMoveDownloadLabelList
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -605,6 +608,7 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                             modifier = Modifier.thenIf(animateItems) { animateItem() },
                             showLanguage = false,
                             showProgress = showProgress,
+                            pages = rememberDownloadPages(info),
                         )
                     }
                 }
@@ -700,9 +704,13 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         primaryIcon = Icons.Default.Checklist,
         onPrimaryClick = {
             val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
+            // Fork: of the pages in the CBZ, as the list shows, counted now for those not shown yet
+            list.filter { it.gid in progress && it.state == DownloadInfo.STATE_FINISH }.forEach { ArchivePages.refresh(it) }
+            val counts = ArchivePages.counts.value
             val read = list.filter { info ->
                 val page = progress[info.gid] ?: return@filter false
-                info.pages > 0 && (page + 1) * 3 > info.pages * 2
+                val pages = info.shownPages(counts)
+                pages > 0 && (page + 1) * 3 > pages * 2
             }
             if (read.isEmpty()) {
                 snackbar(noMostlyRead)
