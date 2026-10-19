@@ -30,6 +30,7 @@ import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.asMutableState
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.sync.AutoDownload
 import com.hippo.ehviewer.sync.CLOUD_SLOT_COUNT
 import com.hippo.ehviewer.sync.CloudFavoritesWorkInfo
@@ -355,6 +356,29 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                         }
                                     }
                                     autoDownloadSlots = chosen.sorted().joinToString(",")
+                                }
+                            }
+                            // Fork: the download label of each chosen slot
+                            var autoDownloadLabels by OneDriveSyncState.autoDownloadLabels.asMutableState()
+                            val slotLabels = remember(autoDownloadLabels) { OneDriveSyncState.parseSlotLabels(autoDownloadLabels) }
+                            val followDefault = stringResource(id = R.string.default_download_label)
+                            chosenSlots.forEach { slot ->
+                                val label = slotLabels[slot.toString()]
+                                Preference(
+                                    title = stringResource(id = R.string.onedrive_sync_auto_download_label, Settings.favCat[slot]),
+                                    summary = label ?: followDefault,
+                                ) {
+                                    launch {
+                                        val labels = DownloadManager.labelList.map { it.label }
+                                        val picked = awaitSelectItem(
+                                            items = listOf(followDefault) + labels,
+                                            title = R.string.onedrive_sync_auto_download,
+                                            selected = label?.let { labels.indexOf(it) + 1 } ?: 0,
+                                        )
+                                        val map = slotLabels.toMutableMap()
+                                        if (picked <= 0) map.remove(slot.toString()) else map[slot.toString()] = labels[picked - 1]
+                                        autoDownloadLabels = OneDriveSyncState.encodeStringMap(map)
+                                    }
                                 }
                             }
                         }

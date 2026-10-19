@@ -58,6 +58,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** Cloud slots whose new galleries go to the downloads on this device, comma separated, see [AutoDownload]. */
     val autoDownloadSlots = stringPref("auto_download_slots", "")
 
+    /** The download label of each slot of [autoDownloadSlots] (slot -> label), a slot not in it uses the default label. */
+    val autoDownloadLabels = stringPref("auto_download_labels", "{}")
+
     fun parseSlots(value: String): Set<Int> = value.split(',').mapNotNullTo(sortedSetOf()) { it.trim().toIntOrNull()?.takeIf { slot -> slot in 0 until CLOUD_SLOT_COUNT } }
 
     // Result of the last sync
@@ -111,6 +114,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     fun encodeLongMap(map: Map<String, Long>) = json.encodeToString(map)
 
     fun encodeStringMap(map: Map<String, String>) = json.encodeToString(map)
+
+    /** Fork: [autoDownloadLabels] read from its value, slot (as text) -> label. */
+    fun parseSlotLabels(value: String): Map<String, String> = runCatching { json.decodeFromString<Map<String, String>>(value) }.getOrDefault(emptyMap())
 
     fun encodeSubscriptions(map: Map<String, Set<Long>>) = json.encodeToString(map)
 }

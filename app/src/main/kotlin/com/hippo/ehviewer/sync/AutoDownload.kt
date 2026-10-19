@@ -25,7 +25,8 @@ import splitties.init.appCtx
  * Fork: adds the galleries that newly appear in the cloud favorites slots chosen on this device (see
  * [OneDriveSyncState.autoDownloadSlots]) to the download list, once each. Those in a slot when it is chosen are left
  * alone, and so is a gallery moved between chosen slots. A gallery updated on E-Hentai moves to its new version there,
- * which is added like any new one.
+ * which is added like any new one. Each slot can have its own download label (see
+ * [OneDriveSyncState.autoDownloadLabels]).
  */
 object AutoDownload {
     private const val TAG = "AutoDownload"
@@ -103,16 +104,20 @@ object AutoDownload {
         }
         // Pages, thumbnail and size; a failed request is tried again with the next change of the list
         withContext(Dispatchers.IO) { EhEngine.fillGalleryListByApi(infos) }
+        val slotOf = new.associate { it.gid to it.slot }
         infos.forEach { info ->
             // A removed gallery the API has nothing for cannot be downloaded
-            if (info.pages > 0 && !DownloadManager.containDownloadInfo(info.gid)) add(info)
+            if (info.pages > 0 && !DownloadManager.containDownloadInfo(info.gid)) add(info, slotOf[info.gid])
         }
         save(state.copy(handled = kept + infos.map { it.gid }))
         logcat(TAG) { "Added ${infos.size} galleries of slots $slots to the downloads" }
     }
 
-    private suspend fun add(info: BaseGalleryInfo) {
-        val label = Settings.defaultDownloadLabel.takeIf { Settings.hasDefaultDownloadLabel && DownloadManager.containLabel(it) }
+    private suspend fun add(info: BaseGalleryInfo, slot: Int?) {
+        // The label chosen for its slot, else the default one; a label deleted since falls back too
+        val slotLabel = slot?.let { OneDriveSyncState.parseSlotLabels(OneDriveSyncState.autoDownloadLabels.value)[it.toString()] }
+        val label = slotLabel?.takeIf { DownloadManager.containLabel(it) }
+            ?: Settings.defaultDownloadLabel.takeIf { Settings.hasDefaultDownloadLabel && DownloadManager.containLabel(it) }
         try {
             with(appCtx) { DownloadService.startDownload(info, label) }
         } catch (e: IllegalStateException) {

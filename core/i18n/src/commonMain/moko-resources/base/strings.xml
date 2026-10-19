@@ -703,6 +703,7 @@
     <string name="onedrive_sync_auto_download_summary">Galleries newly added to %s go to the downloads on this device, once each. Those there when a collection was chosen are left out</string>
     <string name="onedrive_sync_auto_download_separator">", "</string>
     <string name="onedrive_sync_auto_download_slot">\"%s\"</string>
+    <string name="onedrive_sync_auto_download_label">Downloads of \"%s\" go to</string>
     <string name="download_size_estimated">About %s</string>
     <string name="onedrive_sync_content">Content</string>
     <string name="onedrive_sync_category_settings">Settings</string>
