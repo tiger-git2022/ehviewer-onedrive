@@ -13,6 +13,7 @@ import androidx.paging.cachedIn
 import androidx.savedstate.compose.serialization.serializers.MutableStateSerializer
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.util.withIOContext
+import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.client.data.ListUrlBuilder.Companion.MODE_TOPLIST
@@ -48,7 +49,8 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                     val prev = (key - 1).takeIf { it > 0 }
                     val next = (key + 1).takeIf { it <= TOPLIST_PAGES }
                     runSuspendCatching {
-                        EhEngine.getGalleryList(url)
+                        // Fork: hide the favorited galleries
+                        EhEngine.getGalleryList(url).let { if (Settings.hideFavoritedInLists.value) it.withoutFavorited() else it }
                     }.foldToLoadResult { result ->
                         LoadResult.Page(result.galleryInfoList, prev?.toString(), next?.toString())
                     }
@@ -64,7 +66,28 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                         }
                     }
                     runSuspendCatching {
-                        EhEngine.getGalleryList(url)
+                        var result = EhEngine.getGalleryList(url)
+                        // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
+                        // (before it when prepending), as an empty page ended the list
+                        if (Settings.hideFavoritedInLists.value) {
+                            val forward = params !is LoadParams.Prepend
+                            var skipped = 0
+                            var shown = result.withoutFavorited()
+                            while (shown.galleryInfoList.isEmpty() && skipped < MAX_SKIPPED_FAVORITED_PAGES) {
+                                val key = (if (forward) result.next else result.prev) ?: break
+                                val nextUrl = mutex.withLock {
+                                    with(urlBuilder) {
+                                        setIndex(key, isNext = forward)
+                                        build()
+                                    }
+                                }
+                                result = EhEngine.getGalleryList(nextUrl)
+                                shown = result.withoutFavorited()
+                                skipped++
+                            }
+                            result = shown
+                        }
+                        result
                     }.foldToLoadResult { result ->
                         LoadResult.Page(result.galleryInfoList, result.prev, result.next)
                     }

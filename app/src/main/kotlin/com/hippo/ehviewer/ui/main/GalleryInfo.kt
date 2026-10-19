@@ -36,12 +36,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.model.GalleryInfo.Companion.NOT_FAVORITED
 import com.ehviewer.core.ui.component.CrystalCard
 import com.ehviewer.core.ui.component.ElevatedCard
-import com.ehviewer.core.ui.component.GalleryListCardRating
+import com.ehviewer.core.ui.component.RatingWidgetReuse
 import com.ehviewer.core.ui.util.SharedElementBox
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.ehviewer.core.ui.util.listThumbGenerator
@@ -75,23 +76,36 @@ fun GalleryInfoListItem(
             )
         }
         Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
+            // Fork: the title takes up to three lines in a slightly smaller font; the rating, the uploader, the
+            // favorite, the language and the pages share one smaller line under it
             Text(
                 text = EhUtils.getSuitableTitle(info),
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 17.sp),
             )
             Spacer(modifier = Modifier.weight(1f))
-            ProvideTextStyle(MaterialTheme.typography.labelLarge) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ProvideTextStyle(MaterialTheme.typography.labelMedium) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp)
                     Text(
                         text = info.uploader.orEmpty(),
-                        modifier = Modifier.alignByBaseline().alpha(if (info.disowned) 0.5f else 1f),
+                        modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(modifier = Modifier.weight(1f))
                     if (isInFavScene) {
                         info.favoriteNote?.let {
-                            Text(text = it, modifier = Modifier.alignByBaseline(), fontStyle = FontStyle.Italic)
+                            Text(
+                                text = it,
+                                modifier = Modifier.widthIn(max = 96.dp),
+                                fontStyle = FontStyle.Italic,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     } else {
                         val showFav by FavouriteStatusRouter.collectAsState(info) { it != NOT_FAVORITED }
@@ -99,31 +113,28 @@ fun GalleryInfoListItem(
                             Icon(
                                 Icons.Default.Favorite,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp).align(Alignment.CenterVertically),
+                                modifier = Modifier.size(14.dp),
                             )
                             info.favoriteName?.let {
-                                Text(text = it, modifier = Modifier.alignByBaseline())
+                                Text(
+                                    text = it,
+                                    modifier = Modifier.widthIn(max = 72.dp),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Place the rating near the uploader text as there's more visual space
-                    GalleryListCardRating(rating = info.rating, modifier = Modifier.padding(top = 1.dp, bottom = 3.dp))
-                    Spacer(modifier = Modifier.weight(1f))
                     val downloaded by DownloadManager.collectContainDownloadInfo(info.gid)
                     if (downloaded) {
                         Icon(
                             Icons.Default.Download,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(14.dp),
                         )
                     }
                     info.simpleLanguage?.let {
-                        Text(text = it)
+                        Text(text = it, maxLines = 1)
                     }
                     if (info.pages != 0 && showPages) {
                         val readProgress = if (showProgress) {
@@ -131,9 +142,12 @@ fun GalleryInfoListItem(
                         } else {
                             0
                         }
-                        Text(text = if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P")
+                        Text(text = if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P", maxLines = 1)
                     }
                 }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            ProvideTextStyle(MaterialTheme.typography.labelLarge) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val categoryColor = EhUtils.getCategoryColor(info.category)
                     val categoryText = EhUtils.getCategory(info.category).uppercase()

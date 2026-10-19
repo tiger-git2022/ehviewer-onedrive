@@ -779,4 +779,7 @@
     <string name="onedrive_sync_cloud_favorites_reread_last">The cloud favorites were last read completely on %1$s, %2$d favorites then.</string>
     <string name="onedrive_sync_cloud_favorites_reread_confirm">Every sync checks the counts of the slots and finds what changed by itself. Reading again goes through every page of all slots: it is only needed for changes that keep a count, such as removing one favorite and adding another in the same slot.</string>
     <string name="onedrive_sync_cloud_favorites_reread_minutes">It takes about %1$d to %2$d minutes.</string>
+    <string name="auto_local_favorite">Add opened galleries to local favorites</string>
+    <string name="auto_local_favorite_summary">A gallery opened that is in no favorites (cloud or local) goes to the local favorites</string>
+    <string name="hide_favorited">Hide favorited</string>
 </resources>

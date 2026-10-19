@@ -214,6 +214,15 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     var languageFilter by remember { mutableIntStateOf(languageSetting) }
     LaunchedEffect(languageSetting) { languageFilter = languageSetting }
     LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { Settings.languageFilter.value = it } }
+    // Fork: hiding the favorited galleries (a chip of the search filter) reloads the list from the first page, once
+    // the setting is stored: the pager reads it
+    val hideFavorited by Settings.hideFavoritedInLists.collectAsState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { hideFavorited }.drop(1).collect {
+            urlBuilder.setRange(0)
+            data.refresh()
+        }
+    }
 
     fun getFirstVisibleItemIndex() = if (listMode == 0) {
         listState.firstVisibleItemIndex
