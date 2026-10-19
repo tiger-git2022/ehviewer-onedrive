@@ -18,8 +18,10 @@ object AutoLocalFavorite {
     private const val TAG = "AutoLocalFavorite"
     private val handled = mutableSetOf<Long>()
 
-    suspend fun onOpened(info: GalleryInfo) {
+    /** [listed] is the gallery as the list it was opened from showed it, newer than a detail kept in the cache. */
+    suspend fun onOpened(info: GalleryInfo, listed: GalleryInfo? = null) {
         if (!Settings.autoLocalFavorite.value || info.favoriteSlot != NOT_FAVORITED) return
+        if (listed != null && listed.favoriteSlot != NOT_FAVORITED) return
         if (!synchronized(handled) { handled.add(info.gid) }) return
         var done = false
         try {

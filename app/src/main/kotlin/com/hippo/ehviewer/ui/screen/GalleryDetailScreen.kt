@@ -175,7 +175,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 EhDB.putHistoryInfo(it)
                 galleryInfo = it
                 // Fork: in no favorites, it goes to the local favorites
-                AutoLocalFavorite.onOpened(it)
+                AutoLocalFavorite.onOpened(it, (args as? GalleryInfoArgs)?.galleryInfo)
             }
         }
     }
