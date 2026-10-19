@@ -3,6 +3,7 @@ package com.hippo.ehviewer.ui.main
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,10 +42,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ehviewer.core.database.model.DownloadInfo
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.CrystalCard
-import com.ehviewer.core.ui.component.GalleryListCardRating
+import com.ehviewer.core.ui.component.RatingWidgetReuse
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.ehviewer.core.ui.util.listThumbGenerator
 import com.hippo.ehviewer.EhDB
@@ -90,11 +92,13 @@ fun DownloadCard(
         val stateFailed2 = stringResource(R.string.download_state_failed_2, info.legacy)
         val downloadState by DownloadManager.collectDownloadState(info.gid)
         Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp)) {
+            // Fork: laid out like the gallery list (GalleryInfoListItem): a title of up to three slightly smaller lines,
+            // one small line for the rating, the uploader and the state, and a smaller category tag
             Text(
                 text = EhUtils.getSuitableTitle(info),
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp, lineHeight = 17.sp),
             )
             Spacer(modifier = Modifier.weight(1f))
             if (downloadState != DownloadInfo.STATE_DOWNLOAD) {
@@ -112,17 +116,19 @@ fun DownloadCard(
                     }
                     else -> null // The item has been removed and this will be disposed soon
                 }
-                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
-                    Row {
+                ProvideTextStyle(MaterialTheme.typography.labelMedium) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp)
                         Text(
                             text = info.uploader.orEmpty(),
-                            modifier = Modifier.alignByBaseline().alpha(if (info.disowned) 0.5f else 1f),
+                            modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = stateText.orEmpty(),
-                            modifier = Modifier.alignByBaseline(),
-                        )
+                        Text(text = stateText.orEmpty(), maxLines = 1)
                     }
                 }
             } else {
@@ -150,23 +156,18 @@ fun DownloadCard(
                     }
                 }
             }
-            Row {
-                Column {
-                    // Place the rating near the uploader text as there's more visual space
-                    GalleryListCardRating(rating = info.rating, modifier = Modifier.padding(top = 1.dp, bottom = 3.dp))
-                    val categoryColor = EhUtils.getCategoryColor(info.category)
-                    val categoryText = EhUtils.getCategory(info.category).uppercase()
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = categoryText,
-                            modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 2.dp, horizontal = 8.dp),
-                            color = EhUtils.getCategoryTextColor(categoryColor),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        // Fork: the size, to decide whether to download it
-                        DownloadSizeText(info = info, state = downloadState, modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val categoryColor = EhUtils.getCategoryColor(info.category)
+                val categoryText = EhUtils.getCategory(info.category).uppercase()
+                Text(
+                    text = categoryText,
+                    modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
+                    color = EhUtils.getCategoryTextColor(categoryColor),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+                // Fork: the size, to decide whether to download it
+                DownloadSizeText(info = info, state = downloadState, modifier = Modifier.padding(start = 8.dp))
                 Spacer(modifier = Modifier.weight(1f))
                 val running = downloadState == DownloadInfo.STATE_WAIT || downloadState == DownloadInfo.STATE_DOWNLOAD
                 val icon = when (downloadState) {

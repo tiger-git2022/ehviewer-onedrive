@@ -536,7 +536,10 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             icon = Icons.Default.Search,
             text = stringResource(id = R.string.similar_gallery),
             onClick = {
-                val keyword = EhUtils.extractTitle(galleryDetail.title)
+                // Fork: the Japanese title first, as translations of the same work by different groups usually keep the
+                // original Japanese title while their romaji or English titles differ; quotes inside would end the phrase
+                val keyword = (EhUtils.extractTitle(galleryDetail.titleJpn) ?: EhUtils.extractTitle(galleryDetail.title))
+                    ?.replace('"', ' ')?.trim()?.ifEmpty { null }
                 val artistTag = galleryDetail.tagGroups.artistTag()
                 if (null != keyword) {
                     navigate(
