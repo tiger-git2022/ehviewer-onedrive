@@ -244,11 +244,17 @@ suspend fun cycleFavorite(galleryInfo: GalleryInfo): Boolean {
         }
         else -> {
             val slot = Settings.defaultFavSlot.value
-            if (slot in 0..9) {
+            val added = if (slot in 0..9) {
                 doModifyFavorites(galleryInfo, slot, localFavorited)
             } else {
                 modifyFavorites(galleryInfo, choose = true)
             }
+            // A gallery is in one place: once in the cloud favorites it leaves the local ones (back there when it leaves
+            // the cloud again, above)
+            if (galleryInfo.favoriteSlot >= 0 && EhDB.containLocalFavorites(galleryInfo.gid)) {
+                EhDB.removeLocalFavorites(galleryInfo)
+            }
+            added
         }
     }
 }
