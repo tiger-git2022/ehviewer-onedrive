@@ -761,4 +761,7 @@
     <string name="onedrive_sync_cloud_favorites_reread_last">云端收藏上次完整读取在 %1$s，当时共 %2$d 本。</string>
     <string name="onedrive_sync_cloud_favorites_reread_confirm">网页上收藏数量的变化，每次同步都会自动核对。重新读取会逐页读完全部收藏夹，只有怀疑漏掉了数量不变的改动（比如同一个收藏夹删一本又加一本）时才需要。</string>
     <string name="onedrive_sync_cloud_favorites_reread_minutes">大约需要 %1$d～%2$d 分钟。</string>
+    <string name="auto_local_favorite">打开未收藏的漫画时自动加入本地收藏</string>
+    <string name="auto_local_favorite_summary">打开一本不在任何收藏夹（云端或本地）里的漫画时，自动把它加入本地收藏</string>
+    <string name="hide_favorited">隐藏已收藏</string>
 </resources>

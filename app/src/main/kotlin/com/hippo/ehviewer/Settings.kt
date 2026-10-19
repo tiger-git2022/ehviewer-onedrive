@@ -75,6 +75,12 @@ object Settings : DataStorePreferences(null) {
 
     // Fork: local favorites unless changed; a long press on the favorite button still offers every collection
     val defaultFavSlot = intPref("default_favorite_slot", -1)
+
+    // Fork: a gallery opened that is in no favorites goes to the local favorites, see ui/AutoLocalFavorite.kt
+    val autoLocalFavorite = boolPref("auto_local_favorite", true)
+
+    // Fork: gallery lists leave out the galleries in the cloud or local favorites, see GalleryListViewModel
+    val hideFavoritedInLists = boolPref("hide_favorited_in_lists", false)
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
     val blackDarkTheme = boolPref("black_dark_theme", false)
     val harmonizeCategoryColor = boolPref("harmonize_category_color", true)

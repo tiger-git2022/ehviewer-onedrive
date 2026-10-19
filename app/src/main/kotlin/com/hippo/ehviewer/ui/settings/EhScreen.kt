@@ -165,6 +165,12 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                     ) - 2
                 }
             }
+            // Fork
+            SwitchPreference(
+                title = stringResource(id = R.string.auto_local_favorite),
+                summary = stringResource(id = R.string.auto_local_favorite_summary),
+                state = Settings.autoLocalFavorite.asMutableState(),
+            )
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.dark_theme),
                 entry = com.hippo.ehviewer.R.array.night_mode_entries,

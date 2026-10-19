@@ -81,6 +81,7 @@ import com.hippo.ehviewer.spider.SpiderDen
 import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSyncState
+import com.hippo.ehviewer.ui.AutoLocalFavorite
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
@@ -173,6 +174,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
             galleryDetail?.let {
                 EhDB.putHistoryInfo(it)
                 galleryInfo = it
+                // Fork: in no favorites, it goes to the local favorites
+                AutoLocalFavorite.onOpened(it, (args as? GalleryInfoArgs)?.galleryInfo)
             }
         }
     }
