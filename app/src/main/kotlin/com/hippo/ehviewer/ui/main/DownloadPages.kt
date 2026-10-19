@@ -26,5 +26,5 @@ fun rememberDownloadPages(info: DownloadInfo): Int {
         val job = if (finished) scope.launch { ArchivePages.refresh(info) } else null
         onPauseOrDispose { job?.cancel() }
     }
-    return if (finished) info.shownPages(counts) else info.pages
+    return info.shownPages(counts, finished)
 }
