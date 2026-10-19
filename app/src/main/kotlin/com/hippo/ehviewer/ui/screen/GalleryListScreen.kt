@@ -118,8 +118,8 @@ import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
 import com.hippo.ehviewer.ui.main.HideFavoritedButton
+import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.SearchFilter
-import com.hippo.ehviewer.ui.main.oneDriveSyncLeadingIcon
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitInputText
@@ -529,12 +529,13 @@ fun AnimatedVisibilityScope.GalleryListScreen(
                 onCheckedChange = { on -> languageFilter = if (on) CHINESE_LANGUAGE_FILTER else -1 },
             )
         },
-        // Fork: the OneDrive sync state at the start of the bar
-        leadingIcon = oneDriveSyncLeadingIcon(),
         trailingIcon = {
             val oneDriveAccount by OneDriveSyncState.accountId.collectAsState()
-            // Fork: with OneDrive, no quick search button (a swipe from the right edge away) to keep the bar roomy
-            if (!OneDriveClient.isSupported || oneDriveAccount == null) {
+            if (OneDriveClient.isSupported && oneDriveAccount != null) {
+                // Fork: the OneDrive sync state takes the place of the quick search button, which stays a swipe
+                // from the right edge away
+                OneDriveSyncIcon()
+            } else {
                 val sheetState = LocalSideSheetState.current
                 IconButton(onClick = { launch { sheetState.open() } }, shapes = IconButtonDefaults.shapes()) {
                     Icon(imageVector = Icons.Outlined.Bookmarks, contentDescription = stringResource(id = R.string.quick_search))

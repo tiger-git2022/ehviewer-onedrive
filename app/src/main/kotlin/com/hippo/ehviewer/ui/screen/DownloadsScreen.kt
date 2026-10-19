@@ -120,7 +120,7 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
 import com.hippo.ehviewer.ui.main.DownloadCard
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
-import com.hippo.ehviewer.ui.main.oneDriveSyncLeadingIcon
+import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.showMoveDownloadLabelList
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -500,9 +500,9 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         } else {
             null
         },
-        // Fork: OneDrive sync state at the start of the bar, as on the gallery list and the favorites
-        leadingIcon = oneDriveSyncLeadingIcon(),
         trailingIcon = {
+            // Fork: OneDrive sync state, as on the gallery list and the favorites
+            OneDriveSyncIcon()
             var expanded by remember { mutableStateOf(false) }
             val sideSheetState = LocalSideSheetState.current
             IconButton(onClick = { gridView = !gridView }, shapes = IconButtonDefaults.shapes()) {
