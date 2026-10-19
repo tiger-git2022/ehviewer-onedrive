@@ -68,6 +68,18 @@ private fun favoritesIndexChanged(): Boolean {
     return indexDirty && export || export == indexRemoved
 }
 
+/**
+ * [OneDriveSyncIcon] at the start of the collapsed search bar, where the menu button was (the left drawer opens with a
+ * swipe); null without a OneDrive account, so the bar keeps no empty room for it.
+ */
+@Composable
+context(_: CoroutineScope, _: SnackbarHostState)
+fun oneDriveSyncLeadingIcon(onSynced: () -> Unit = {}): (@Composable () -> Unit)? {
+    val account by OneDriveSyncState.accountId.collectAsState()
+    if (!OneDriveClient.isSupported || account == null) return null
+    return { OneDriveSyncIcon(onSynced) }
+}
+
 /** What [OneDriveSyncIcon] shows, the first that applies. */
 private enum class SyncIconState { RUNNING, PENDING, FAILED, SUCCEEDED, NOT_SYNCED }
 

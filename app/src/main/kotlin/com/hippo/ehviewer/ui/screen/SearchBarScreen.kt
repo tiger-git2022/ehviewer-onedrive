@@ -134,6 +134,8 @@ fun SearchBarScreen(
     localSearch: Boolean = true,
     searchBarOffsetY: () -> Int = { 0 },
     trailingIcon: @Composable () -> Unit = {},
+    // Fork: at the start of the collapsed search bar (the OneDrive sync state), where the menu button was
+    leadingIcon: (@Composable () -> Unit)? = null,
     // Fork: clears the search from the collapsed search bar, without opening the keyboard; null without a search
     onClearSearch: (() -> Unit)? = null,
     // Fork: before the clear button of the expanded search bar
@@ -331,8 +333,8 @@ fun SearchBarScreen(
                         val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
                         Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
                     },
-                    // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; the room goes to
-                    // the buttons on the right
+                    // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; its place goes to
+                    // the screen's leading icon (the OneDrive sync state)
                     leadingIcon = if (expanded) {
                         {
                             IconButton(onClick = { hideSearchView() }, shapes = IconButtonDefaults.shapes()) {
@@ -340,7 +342,7 @@ fun SearchBarScreen(
                             }
                         }
                     } else {
-                        null
+                        leadingIcon
                     },
                     trailingIcon = {
                         if (expanded) {

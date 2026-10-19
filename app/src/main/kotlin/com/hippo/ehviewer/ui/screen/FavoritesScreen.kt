@@ -82,7 +82,7 @@ import com.hippo.ehviewer.ui.main.AvatarIcon
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.GalleryInfoListItem
 import com.hippo.ehviewer.ui.main.GalleryList
-import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
+import com.hippo.ehviewer.ui.main.oneDriveSyncLeadingIcon
 import com.hippo.ehviewer.ui.startDownload
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
@@ -200,9 +200,9 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         } else {
             null
         },
+        // Fork: OneDrive sync state at the start of the bar; a sync from here reloads the local favorites it merged
+        leadingIcon = oneDriveSyncLeadingIcon(onSynced = { if (urlBuilder.isLocal) refresh() }),
         trailingIcon = {
-            // Fork: OneDrive sync state; a sync from here reloads the local favorites it merged
-            OneDriveSyncIcon(onSynced = { if (urlBuilder.isLocal) refresh() })
             val sheetState = LocalSideSheetState.current
             IconButton(onClick = { launch { sheetState.open() } }, shapes = IconButtonDefaults.shapes()) {
                 Icon(imageVector = Icons.Outlined.FolderSpecial, contentDescription = null)
