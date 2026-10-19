@@ -782,4 +782,5 @@
     <string name="auto_local_favorite">Add opened galleries to local favorites</string>
     <string name="auto_local_favorite_summary">A gallery opened that is in no favorites (cloud or local) goes to the local favorites</string>
     <string name="hide_favorited">Hide favorited</string>
+    <string name="moved_to_local_favorites">Removed from the cloud favorites, kept in the local favorites</string>
 </resources>

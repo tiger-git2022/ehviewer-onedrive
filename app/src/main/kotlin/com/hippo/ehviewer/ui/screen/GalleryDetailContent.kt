@@ -79,6 +79,7 @@ import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.GalleryComment
 import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryInfo
+import com.ehviewer.core.model.GalleryInfo.Companion.LOCAL_FAVORITED
 import com.ehviewer.core.model.GalleryInfo.Companion.NOT_FAVORITED
 import com.ehviewer.core.model.GalleryPreview
 import com.ehviewer.core.model.GalleryTagGroup
@@ -123,6 +124,7 @@ import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.confirmRemoveDownload
+import com.hippo.ehviewer.ui.cycleFavorite
 import com.hippo.ehviewer.ui.destinations.GalleryCommentsScreenDestination
 import com.hippo.ehviewer.ui.getFavoriteIcon
 import com.hippo.ehviewer.ui.jumpToReaderByPage
@@ -496,13 +498,17 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             val addSucceed = stringResource(R.string.add_to_favorite_success)
             // val removeFailed = stringResource(R.string.remove_from_favorite_failure)
             val addFailed = stringResource(R.string.add_to_favorite_failure)
+            val movedToLocal = stringResource(R.string.moved_to_local_favorites)
             fun toggleFavorite(choose: Boolean) = launchIO {
                 favoritesLock.mutate {
                     runSuspendCatching {
-                        modifyFavorites(galleryDetail, choose)
+                        // Fork: a tap moves between the local and the cloud favorites, a long press asks as before
+                        if (choose) modifyFavorites(galleryDetail, true) else cycleFavorite(galleryDetail)
                     }.onSuccess { add ->
                         if (add) {
                             snackbar(addSucceed)
+                        } else if (galleryDetail.favoriteSlot == LOCAL_FAVORITED) {
+                            snackbar(movedToLocal)
                         } else {
                             snackbar(removeSucceed)
                         }
@@ -512,7 +518,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     }
                 }
             }
-            // Fork: a tap uses the default collection, a long press asks for one
+            // Fork: a tap moves between the local and the default cloud collection (see cycleFavorite), a long press asks
             FavoriteToggleButton(
                 checked = favSlot != NOT_FAVORITED,
                 onClick = { toggleFavorite(choose = false) },
