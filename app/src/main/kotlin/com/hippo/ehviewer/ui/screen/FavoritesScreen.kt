@@ -39,7 +39,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -89,7 +88,6 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
 import moe.tarsin.coroutines.runSwallowingWithUI
 import moe.tarsin.navigate
 
@@ -132,10 +130,14 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         data.refresh()
     }
 
-    // Fork: "汉" (the language filter shared with the gallery list) filters the favorites, which reload once it is
-    // stored: the pager reads it
+    // Fork: "汉" (the language filter shared with the gallery list) filters the favorites, which reload when the ones
+    // shown used the other setting: toggled here, or on the gallery list meanwhile. The state reads the setting once
+    // stored, as the pager does
     val languageFilter by Settings.languageFilter.collectAsState()
-    LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { refresh() } }
+    LaunchedEffect(languageFilter) {
+        val applied = viewModel.chineseOnlyApplied
+        if (applied != null && applied != (languageFilter == CHINESE_LANGUAGE_FILTER)) refresh()
+    }
 
     ProvideSideSheetContent { sheetState ->
         val localFavCount by viewModel.localFavCount.collectAsState(0)

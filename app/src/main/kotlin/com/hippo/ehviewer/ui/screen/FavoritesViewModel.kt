@@ -40,6 +40,12 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
 
     val localFavCount = EhDB.localFavCount
 
+    // Fork: whether the favorites shown last were Chinese only; the screen reloads when "汉" differs, also when it
+    // changed on the gallery list while the favorites were in the back stack
+    @Volatile
+    var chineseOnlyApplied: Boolean? = null
+        private set
+
     val data = snapshotFlow { urlBuilder.value.isLocal }.flatMapLatest { isLocalFav ->
         if (isLocalFav) {
             Pager(PagingConfig(20, jumpThreshold = 40)) {
@@ -52,6 +58,7 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
             }.flow.map { data ->
                 // Fork: "汉" on the search bar shows the Chinese galleries only
                 val chineseOnly = Settings.languageFilter.value == CHINESE_LANGUAGE_FILTER
+                chineseOnlyApplied = chineseOnly
                 data.map<_, BaseGalleryInfo> { it }.filter { !chineseOnly || it.isChinese() }
             }
         } else {
@@ -87,6 +94,7 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                 val gidSet = MutableLongSet(DEFAULT_PAGE_SIZE)
                 // Fork: "汉" on the search bar shows the Chinese galleries only
                 val chineseOnly = Settings.languageFilter.value == CHINESE_LANGUAGE_FILTER
+                chineseOnlyApplied = chineseOnly
                 data.filter { gidSet.add(it.gid) && (!chineseOnly || it.isChinese()) }
             }
         }

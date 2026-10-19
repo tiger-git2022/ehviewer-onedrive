@@ -30,6 +30,12 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
         mutableStateOf(lub.withLanguageFilter())
     }
 
+    // Fork: whether the pages loaded last hid the favorited galleries; the screen reloads when the setting differs, also
+    // when it changed on another list while this one was in the back stack
+    @Volatile
+    var hideFavoritedApplied: Boolean? = null
+        private set
+
     // Use a smaller prefetch distance to avoid prepending an additional page after jumping
     val data = Pager(PagingConfig(25, prefetchDistance = 20)) {
         object : PagingSource<String, BaseGalleryInfo>() {
@@ -50,7 +56,9 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                         var result = EhEngine.getGalleryList(url)
                         // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
                         // (before it when prepending), as an empty page ended the list
-                        if (Settings.hideFavoritedInLists.value) {
+                        val hide = Settings.hideFavoritedInLists.value
+                        hideFavoritedApplied = hide
+                        if (hide) {
                             val forward = params !is LoadParams.Prepend
                             var skipped = 0
                             var shown = result.withoutFavorited()
@@ -91,7 +99,9 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                         var result = EhEngine.getGalleryList(url)
                         // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
                         // (before it when prepending), as an empty page ended the list
-                        if (Settings.hideFavoritedInLists.value) {
+                        val hide = Settings.hideFavoritedInLists.value
+                        hideFavoritedApplied = hide
+                        if (hide) {
                             val forward = params !is LoadParams.Prepend
                             var skipped = 0
                             var shown = result.withoutFavorited()

@@ -216,10 +216,12 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     LaunchedEffect(languageSetting) { languageFilter = languageSetting }
     LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { Settings.languageFilter.value = it } }
     // Fork: hiding the favorited galleries (the crossed-out heart on the search bar) reloads the list from the first
-    // page, once the setting is stored: the pager reads it
+    // page when the pages loaded used the other setting: toggled here, or on another list meanwhile. The state reads
+    // the setting once stored, as the pager does
     val hideFavorited by Settings.hideFavoritedInLists.collectAsState()
-    LaunchedEffect(Unit) {
-        snapshotFlow { hideFavorited }.drop(1).collect {
+    LaunchedEffect(hideFavorited) {
+        val applied = viewModel.hideFavoritedApplied
+        if (applied != null && applied != hideFavorited) {
             urlBuilder.setRange(0)
             data.refresh()
         }
