@@ -42,7 +42,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ImageSearch
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -85,7 +84,6 @@ import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.SyncCategory
-import com.hippo.ehviewer.ui.LocalNavDrawerState
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
 import com.hippo.ehviewer.ui.glassContent
@@ -333,17 +331,16 @@ fun SearchBarScreen(
                         val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
                         Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
                     },
-                    leadingIcon = {
-                        if (expanded) {
+                    // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; the room goes to
+                    // the buttons on the right
+                    leadingIcon = if (expanded) {
+                        {
                             IconButton(onClick = { hideSearchView() }, shapes = IconButtonDefaults.shapes()) {
                                 Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = null)
                             }
-                        } else {
-                            val drawerState = LocalNavDrawerState.current
-                            IconButton(onClick = { scope.launch { drawerState.open() } }, shapes = IconButtonDefaults.shapes()) {
-                                Icon(Icons.Default.Menu, contentDescription = null)
-                            }
                         }
+                    } else {
+                        null
                     },
                     trailingIcon = {
                         if (expanded) {
