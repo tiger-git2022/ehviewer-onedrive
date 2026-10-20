@@ -125,7 +125,7 @@ private fun Background(
 
 @Destination<RootGraph>
 @Composable
-fun AnimatedVisibilityScope.ReaderScreen(args: ReaderScreenArgs, navigator: DestinationsNavigator) = Screen(navigator) {
+fun AnimatedVisibilityScope.ReaderScreen(args: ReaderScreenArgs, navigator: DestinationsNavigator) = Screen(navigator, recordsGlass = true) {
     val bgColor by collectBackgroundColorAsState()
     val uiController = rememberSystemUiController()
     DisposableEffect(uiController) {

@@ -162,7 +162,7 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     lub: ListUrlBuilder,
     navigator: DestinationsNavigator,
     viewModel: GalleryListViewModel = viewModel { GalleryListViewModel(lub, createSavedStateHandle()) },
-) = Screen(navigator) {
+) = Screen(navigator, recordsGlass = true) {
     val searchFieldState = rememberTextFieldState()
     var urlBuilder by viewModel.urlBuilder
     var searchBarExpanded by rememberSaveable { mutableStateOf(false) }
