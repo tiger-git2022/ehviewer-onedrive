@@ -182,9 +182,9 @@ fun GalleryInfoListItem(
                             softWrap = false,
                         )
                     }
-                    // The rest of the line, at its end; on a narrow card with a long read progress the date gives way
+                    // The rest of the line, at its end, with the time; on a narrow card with a long read progress the date gives way
                     Text(
-                        text = info.posted.orEmpty().substringBefore(' '),
+                        text = info.posted.orEmpty(),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.labelSmall,
                         textAlign = TextAlign.End,

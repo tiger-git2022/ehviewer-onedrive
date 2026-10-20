@@ -6,8 +6,8 @@ import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.client.EhUtils
 
 /**
- * Fork: the short name on the category tag of the list items and the downloads, four characters in Chinese (同人本子, 商业漫画…),
- * so the tag leaves room for the language, the pages and the date.
+ * Fork: the short name on the category tag of the list items and the downloads, two characters in Chinese (同人, 漫画, CG…),
+ * so the tag leaves room for the language, the pages and the posted time.
  */
 @Composable
 fun categoryShortName(category: Int): String = when (category) {
