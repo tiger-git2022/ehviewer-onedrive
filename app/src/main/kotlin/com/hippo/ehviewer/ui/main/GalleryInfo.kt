@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,11 +87,19 @@ fun GalleryInfoListItem(
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                // Fork: the rating, the favorite and its folder, the language and the pages; the folder name gives way, the
-                // language and the pages never. The uploader is on the line below
+                // Fork: the uploader, the favorite and its folder, the language and the pages; the uploader shows
+                // in full when it fits and gives way first, the folder name next, the language and the pages
+                // never. The rating is on the line below
                 MetaRow(
-                    start = { RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp) },
-                    uploader = {},
+                    start = {},
+                    uploader = {
+                        Text(
+                            text = info.uploader.orEmpty(),
+                            modifier = Modifier.alpha(if (info.disowned) 0.5f else 1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
                     favorite = {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -156,30 +165,30 @@ fun GalleryInfoListItem(
                             }
                         }
                     },
+                    uploaderMin = 32.dp,
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a short category tag (同人, 漫画, CG…), the uploader and the posted time in smaller type; the uploader gives way
+            // Fork: always one line, a short category tag (同人, 漫画, CG…), the rating and the posted time in
+            // smaller type; were it ever too narrow, the stars are cut rather than the time
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val categoryColor = EhUtils.getCategoryColor(info.category)
-                    Text(
-                        text = categoryShortName(info.category),
-                        modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
-                        color = EhUtils.getCategoryTextColor(categoryColor),
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                    Text(
-                        text = info.uploader.orEmpty(),
-                        modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f).clipToBounds(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val categoryColor = EhUtils.getCategoryColor(info.category)
+                        Text(
+                            text = categoryShortName(info.category),
+                            modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
+                            color = EhUtils.getCategoryTextColor(categoryColor),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = info.posted.orEmpty(),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),

@@ -9,8 +9,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Fork: the rating, uploader and details line of a gallery list item, laid out as
- * [start] [uploader] … [favorite] [details].
+ * Fork: the uploader and details line of a gallery list item, laid out as
+ * [start] [uploader] … [favorite] [details]; an empty [start] takes no room.
  *
  * [start] and [details] (download mark, language, pages) always keep their full width. The uploader then keeps up to
  * [uploaderMin] (its whole name when shorter), so it never shrinks to a lone "…"; [favorite] (heart and folder name)
@@ -37,7 +37,9 @@ fun MetaRow(
     fun upTo(width: Int) = if (constraints.hasBoundedWidth) loose.copy(maxWidth = width) else loose
 
     val startPlaceables = startMeasurables.map { it.measure(loose) }
-    var left = (maxWidth - startPlaceables.width() - gap).coerceAtLeast(0)
+    val startWidth = startPlaceables.width()
+    val startGap = if (startWidth > 0) gap else 0
+    var left = (maxWidth - startWidth - startGap).coerceAtLeast(0)
     val detailsPlaceables = detailsMeasurables.map { it.measure(upTo(left)) }
     val detailsWidth = detailsPlaceables.width()
     if (detailsWidth > 0) left = (left - detailsWidth - gap).coerceAtLeast(0)
@@ -58,7 +60,7 @@ fun MetaRow(
     val width = if (constraints.hasBoundedWidth) {
         maxWidth
     } else {
-        all.width() + 3 * gap
+        all.width() + 2 * gap + startGap
     }
     layout(width, height) {
         var x = 0
@@ -67,7 +69,7 @@ fun MetaRow(
             x += it.width
         }
         place(startPlaceables)
-        x += gap
+        x += startGap
         place(uploaderPlaceables)
         x = width - detailsWidth - if (favoriteWidth > 0) favoriteWidth + gap else 0
         place(favoritePlaceables)

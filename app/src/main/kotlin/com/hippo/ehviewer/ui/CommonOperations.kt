@@ -360,9 +360,17 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     if (downloaded) {
         action(Icons.AutoMirrored.Default.DriveFileMove, R.string.download_move_dialog_title) { showMoveDownloadLabel(info) }
     }
-    // Fork: the default collection last
+    // Fork: last, the local favorites, like opening the gallery does (AutoLocalFavorite); the cloud collections are in
+    // the item above
     if (!favorited) {
-        action(Icons.Default.Favorite, R.string.add_to_favourites) { addToFavorites(choose = false) }
+        action(Icons.Default.Favorite, R.string.add_to_favourites) {
+            runSuspendCatching {
+                if (!EhDB.containLocalFavorites(info.gid)) doModifyFavorites(info, LOCAL_FAVORITED, localFavorited = false)
+                tip(R.string.add_to_favorite_success)
+            }.onFailure {
+                tip(R.string.add_to_favorite_failure)
+            }
+        }
     }
     val selected = awaitSelectItemWithIcon(actions.map { it.icon to it.text }, EhUtils.getSuitableTitle(info))
     actions[selected].run()
