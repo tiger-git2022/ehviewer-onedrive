@@ -97,7 +97,7 @@ fun GalleryInfoListItem(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    end = {
+                    favorite = {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -130,6 +130,13 @@ fun GalleryInfoListItem(
                                     }
                                 }
                             }
+                        }
+                    },
+                    details = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             val downloaded by DownloadManager.collectContainDownloadInfo(info.gid)
                             if (downloaded) {
                                 Icon(
