@@ -159,7 +159,7 @@ fun GalleryInfoListItem(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a short category tag (同人, 漫画, CG…), the uploader and the posted time; the uploader gives way
+            // Fork: a short category tag (同人, 漫画, CG…), the uploader and the posted time in smaller type; the uploader gives way
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -176,12 +176,13 @@ fun GalleryInfoListItem(
                     Text(
                         text = info.uploader.orEmpty(),
                         modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
+                        style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = info.posted.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         maxLines = 1,
                         softWrap = false,
                     )
