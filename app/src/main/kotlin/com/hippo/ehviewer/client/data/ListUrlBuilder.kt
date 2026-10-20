@@ -152,10 +152,10 @@ data class ListUrlBuilder(
      * Fork: this list with the language filter of the search options when it has none, so a tag opened from a gallery
      * follows "汉" next to the search bar too. Taken once when the list opens: the pages loaded later keep it.
      */
-    fun withLanguageFilter(): ListUrlBuilder = when {
+    fun withLanguageFilter(filter: Int = Settings.languageFilter.value): ListUrlBuilder = when {
         language != -1 -> this
         mode == MODE_NORMAL || mode == MODE_SUBSCRIPTION || mode == MODE_TAG || mode == MODE_UPLOADER ->
-            copy(language = Settings.languageFilter.value)
+            copy(language = filter)
         else -> this
     }
 

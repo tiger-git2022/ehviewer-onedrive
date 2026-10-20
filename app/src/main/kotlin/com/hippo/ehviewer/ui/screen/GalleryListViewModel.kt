@@ -22,12 +22,16 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import moe.tarsin.coroutines.runSuspendCatching
 
-class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHandle) : ViewModel() {
+class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedStateHandle: SavedStateHandle) : ViewModel() {
     private val mutex = Mutex()
+
+    // Fork: a list opened from a gallery has its own filters, see Settings.linkedLanguageFilter
+    private val languagePref = if (fromGallery) Settings.linkedLanguageFilter else Settings.languageFilter
+    private val hideFavoritedPref = if (fromGallery) Settings.linkedHideFavorited else Settings.hideFavoritedInLists
 
     val urlBuilder by savedStateHandle.saved(MutableStateSerializer()) {
         // Fork: the language filter ("汉") of when the list opened
-        mutableStateOf(lub.withLanguageFilter())
+        mutableStateOf(lub.withLanguageFilter(languagePref.value))
     }
 
     // Fork: whether the pages loaded last hid the favorited galleries; the screen reloads when the setting differs, also
@@ -56,7 +60,7 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                         var result = EhEngine.getGalleryList(url)
                         // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
                         // (before it when prepending), as an empty page ended the list
-                        val hide = Settings.hideFavoritedInLists.value
+                        val hide = hideFavoritedPref.value
                         hideFavoritedApplied = hide
                         if (hide) {
                             val forward = params !is LoadParams.Prepend
@@ -99,7 +103,7 @@ class GalleryListViewModel(lub: ListUrlBuilder, savedStateHandle: SavedStateHand
                         var result = EhEngine.getGalleryList(url)
                         // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
                         // (before it when prepending), as an empty page ended the list
-                        val hide = Settings.hideFavoritedInLists.value
+                        val hide = hideFavoritedPref.value
                         hideFavoritedApplied = hide
                         if (hide) {
                             val forward = params !is LoadParams.Prepend

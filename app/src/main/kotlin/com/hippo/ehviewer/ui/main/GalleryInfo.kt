@@ -86,17 +86,11 @@ fun GalleryInfoListItem(
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first
+                // Fork: the rating, the favorite and its folder, the language and the pages; the folder name gives way, the
+                // language and the pages never. The uploader is on the line below
                 MetaRow(
                     start = { RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp) },
-                    uploader = {
-                        Text(
-                            text = info.uploader.orEmpty(),
-                            modifier = Modifier.alpha(if (info.disowned) 0.5f else 1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
+                    uploader = {},
                     favorite = {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -165,21 +159,30 @@ fun GalleryInfoListItem(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a smaller category tag and date, so the whole date and time fit on one line
+            // Fork: a short category tag (同人, 漫画, CG…), the uploader and the posted time in smaller type; the uploader gives way
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     val categoryColor = EhUtils.getCategoryColor(info.category)
-                    val categoryText = EhUtils.getCategory(info.category).uppercase()
                     Text(
-                        text = categoryText,
+                        text = categoryShortName(info.category),
                         modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
                         color = EhUtils.getCategoryTextColor(categoryColor),
                         maxLines = 1,
+                        softWrap = false,
                     )
-                    Spacer(modifier = Modifier.weight(1f).widthIn(min = 4.dp))
+                    Text(
+                        text = info.uploader.orEmpty(),
+                        modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(
                         text = info.posted.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         maxLines = 1,
                         softWrap = false,
                     )

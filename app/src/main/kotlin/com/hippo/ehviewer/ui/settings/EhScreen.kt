@@ -209,10 +209,12 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                         summary = stringResource(id = R.string.sheet_glass_tint_summary),
                         pref = Settings.sheetGlassTint,
                     )
-                    SwitchPreference(
+                    IntSliderPreference(
+                        maxValue = 100,
+                        step = 19,
                         title = stringResource(id = R.string.sheet_glass_aberration),
                         summary = stringResource(id = R.string.sheet_glass_aberration_summary),
-                        state = Settings.sheetGlassAberration.asMutableState(),
+                        pref = Settings.sheetGlassFringe,
                     )
                 }
             }

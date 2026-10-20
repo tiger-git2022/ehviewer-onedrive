@@ -162,9 +162,9 @@ fun DownloadCard(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val categoryColor = EhUtils.getCategoryColor(info.category)
-                val categoryText = EhUtils.getCategory(info.category).uppercase()
+                // Fork: the short name, as in the list items
                 Text(
-                    text = categoryText,
+                    text = categoryShortName(info.category),
                     modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
                     color = EhUtils.getCategoryTextColor(categoryColor),
                     style = MaterialTheme.typography.labelMedium,

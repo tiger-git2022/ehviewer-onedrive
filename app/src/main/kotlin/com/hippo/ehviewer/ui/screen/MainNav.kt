@@ -41,3 +41,6 @@ infix fun Long.asDstPageTo(page: Int) = this to page
 infix fun Pair<Long, Int>.with(token: String) = GalleryDetailScreenDestination(TokenArgs(first, token, second))
 
 fun ListUrlBuilder.asDst() = GalleryListScreenDestination(this)
+
+/** Fork: a list opened from a gallery, with the filters of those lists, see Settings.linkedLanguageFilter. */
+fun ListUrlBuilder.asGalleryLinkDst() = GalleryListScreenDestination(this, fromGallery = true)

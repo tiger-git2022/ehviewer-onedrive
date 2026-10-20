@@ -211,7 +211,7 @@ fun GalleryDetailContent(
         if (category == EhUtils.NONE || category == EhUtils.PRIVATE || category == EhUtils.UNKNOWN) {
             return
         }
-        navigate(ListUrlBuilder(category = category).asDst())
+        navigate(ListUrlBuilder(category = category).asGalleryLinkDst())
     }
     fun onUploaderChipClick(galleryInfo: GalleryInfo) {
         val uploader = galleryInfo.uploader
@@ -219,7 +219,7 @@ fun GalleryDetailContent(
         if (uploader.isNullOrEmpty() || disowned) {
             return
         }
-        navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_UPLOADER, keyword = uploader).asDst())
+        navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_UPLOADER, keyword = uploader).asGalleryLinkDst())
     }
 
     fun onGalleryInfoCardClick() {
@@ -543,21 +543,21 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_NORMAL,
                             keyword = "\"" + keyword + "\"",
-                        ).asDst(),
+                        ).asGalleryLinkDst(),
                     )
                 } else if (artistTag != null) {
                     navigate(
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_TAG,
                             keyword = artistTag,
-                        ).asDst(),
+                        ).asGalleryLinkDst(),
                     )
                 } else if (null != galleryDetail.uploader) {
                     navigate(
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_UPLOADER,
                             keyword = galleryDetail.uploader,
-                        ).asDst(),
+                        ).asGalleryLinkDst(),
                     )
                 }
             },
@@ -735,7 +735,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val downTag = stringResource(R.string.tag_vote_down)
         val withDraw = stringResource(R.string.tag_vote_withdraw)
         val mihonNotInstalled = stringResource(R.string.mihon_not_installed)
-        fun search(tag: String) = navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_TAG, keyword = tag).asDst())
+        fun search(tag: String) = navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_TAG, keyword = tag).asGalleryLinkDst())
         GalleryTags(
             tagGroups = tags,
             onTagClick = ::search,
