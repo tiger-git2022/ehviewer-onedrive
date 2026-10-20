@@ -140,6 +140,8 @@ class EhApplication : Application(), SingletonImageLoader.Factory {
                 FileUtils.cleanupDirectory(AppConfig.externalParseErrorDir)
             }
             launch { cleanupDownload() }
+            // Fork: the fringe switch of v1.15.0-t64 to the strength slider
+            launch { Settings.migrateSheetGlassFringe() }
             if (Settings.requestNews.value) {
                 launch { checkDawn() }
             }
