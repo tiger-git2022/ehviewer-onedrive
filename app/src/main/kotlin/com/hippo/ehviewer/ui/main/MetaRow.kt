@@ -33,10 +33,12 @@ fun MetaRow(
     val maxWidth = constraints.maxWidth
     val loose = constraints.copy(minWidth = 0, minHeight = 0)
     fun List<Placeable>.width() = sumOf { it.width }
+    // Not expected in a list item, but an unbounded row simply gives everything its natural width
+    fun upTo(width: Int) = if (constraints.hasBoundedWidth) loose.copy(maxWidth = width) else loose
 
     val startPlaceables = startMeasurables.map { it.measure(loose) }
     var left = (maxWidth - startPlaceables.width() - gap).coerceAtLeast(0)
-    val detailsPlaceables = detailsMeasurables.map { it.measure(loose.copy(maxWidth = left)) }
+    val detailsPlaceables = detailsMeasurables.map { it.measure(upTo(left)) }
     val detailsWidth = detailsPlaceables.width()
     if (detailsWidth > 0) left = (left - detailsWidth - gap).coerceAtLeast(0)
     // Keep room for the whole uploader name when it is short, else for uploaderMin of it
@@ -44,10 +46,12 @@ fun MetaRow(
         .coerceAtMost(uploaderMin.roundToPx())
         .coerceAtMost(left)
     val favoriteMax = (left - uploaderNeed - gap).coerceAtLeast(0)
-    val favoritePlaceables = favoriteMeasurables.map { it.measure(loose.copy(maxWidth = favoriteMax)) }
+    val favoritePlaceables = favoriteMeasurables.map { it.measure(upTo(favoriteMax)) }
     val favoriteWidth = favoritePlaceables.width()
     if (favoriteWidth > 0) left = (left - favoriteWidth - gap).coerceAtLeast(0)
-    val uploaderPlaceables = uploaderMeasurables.map { it.measure(loose.copy(minWidth = left, maxWidth = left)) }
+    val uploaderPlaceables = uploaderMeasurables.map {
+        it.measure(if (constraints.hasBoundedWidth) loose.copy(minWidth = left, maxWidth = left) else loose)
+    }
 
     val all = startPlaceables + uploaderPlaceables + favoritePlaceables + detailsPlaceables
     val height = (all.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
