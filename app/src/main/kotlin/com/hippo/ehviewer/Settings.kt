@@ -91,6 +91,9 @@ object Settings : DataStorePreferences(null) {
     // Fork: the blur (in tenths of a dp) and the tint (in percent) of the drawers and the dialogs over liquid glass
     val sheetGlassBlur = intPref("sheet_glass_blur", 25)
     val sheetGlassTint = intPref("sheet_glass_tint", 40)
+
+    // Fork: the color fringes at the bent edge of the drawers and the dialogs over liquid glass
+    val sheetGlassAberration = boolPref("sheet_glass_aberration", true)
     val launchPage = intPref("launch_page_2", 0)
     val listMode = intPref("list_mode_2", 0)
     val listThumbSize = intPref("list_tile_size", 40)

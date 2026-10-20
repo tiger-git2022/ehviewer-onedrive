@@ -25,6 +25,8 @@ import kotlinx.coroutines.CoroutineScope
 context(scope: AnimatedVisibilityScope)
 inline fun <R> Screen(
     navigator: DestinationsNavigator,
+    // Fork: true for a page recording its own list for its floating glass with glassContent(LocalPageBackdrop.current)
+    recordsGlass: Boolean = false,
     crossinline block: @Composable context(MainActivity, SnackbarHostState, DialogState, SharedTransitionScope, TransitionsVisibilityScope, DestinationsNavigator, CoroutineScope)
     () -> R,
 ) = Box(modifier = Modifier.fillMaxSize()) {
@@ -34,15 +36,21 @@ inline fun <R> Screen(
     CompositionLocalProvider(LocalPageBackdrop provides backdrop, LocalFabGlass provides rememberLiquidGlass(backdrop)) {
         with(NoopTransitionsVisibilityScope) {
             togetherWith(scope) {
-                block(
-                    with(LocalContext.current) { remember { findActivity() } },
-                    LocalSnackBarHostState.current,
-                    dialogState,
-                    LocalSharedTransitionScope.current,
-                    this,
-                    navigator,
-                    rememberCoroutineScope(),
-                )
+                val visibility = this
+                val page: @Composable () -> Unit = {
+                    block(
+                        with(LocalContext.current) { remember { findActivity() } },
+                        LocalSnackBarHostState.current,
+                        dialogState,
+                        LocalSharedTransitionScope.current,
+                        visibility,
+                        navigator,
+                        rememberCoroutineScope(),
+                    )
+                }
+                // Fork: a page without floating glass (the settings) is recorded whole, so its dialogs refract it:
+                // with nothing recorded they were only a gray tint over the sharp page
+                if (recordsGlass) page() else Box(Modifier.fillMaxSize().glassContent(backdrop)) { page() }
                 dialogState.Place()
             }
         }

@@ -131,7 +131,7 @@ data class TokenArgs(
 
 @Destination<RootGraph>
 @Composable
-fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, navigator: DestinationsNavigator) = Screen(navigator) {
+fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, navigator: DestinationsNavigator) = Screen(navigator, recordsGlass = true) {
     val (gid, token) = remember(args) {
         when (args) {
             is GalleryInfoArgs -> with(args.galleryInfo) { gid to token }

@@ -451,6 +451,8 @@
     <string name="sheet_glass_blur">侧边栏和弹窗的模糊度</string>
     <string name="sheet_glass_blur_summary">数值除以 10 是模糊半径（dp）：0 不模糊，默认 25。模糊需要 Android 12 以上</string>
     <string name="sheet_glass_tint">侧边栏和弹窗的不透明度</string>
+    <string name="sheet_glass_aberration">侧边栏和弹窗边缘色差</string>
+    <string name="sheet_glass_aberration_summary">玻璃边缘折射处把颜色稍微分开，像真实的玻璃边。需要 Android 13 以上</string>
     <string name="sheet_glass_tint_summary">玻璃上底色的百分比：越大越不透明、越容易看清文字，默认 40</string>
     <string name="harmonize_category_color">类别颜色适配动态配色</string>
     <string name="backup_before_update">更新前备份数据</string>
