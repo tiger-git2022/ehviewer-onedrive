@@ -55,12 +55,12 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.DrawerDefaults
-import androidx.compose.material3.DrawerState
+import androidx.compose.material3.DrawerState2
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalSideDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
@@ -70,7 +70,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.contentColorFor
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberDrawerState2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -81,31 +80,23 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -160,7 +151,6 @@ import com.hippo.ehviewer.ui.tools.awaitInputText
 import com.hippo.ehviewer.updater.AppUpdater
 import com.hippo.ehviewer.util.AppConfig
 import com.hippo.ehviewer.util.addTextToClipboard
-import com.hippo.ehviewer.util.calculateFraction
 import com.hippo.ehviewer.util.displayString
 import com.hippo.ehviewer.util.getParcelableExtraCompat
 import com.hippo.ehviewer.util.getUrlFromClipboard
@@ -232,7 +222,7 @@ class MainActivity : AppCompatActivity() {
         setMD3Content {
             val globalDialogState = this
             val configuration = LocalConfiguration.current
-            val navDrawerState = rememberDrawerState(DrawerValue.Closed)
+            val navDrawerState = rememberDrawerState2(DrawerValue.Closed)
             val sideSheetState = rememberDrawerState2(DrawerValue.Closed)
             val snackbarState = remember { SnackbarHostState() }
             val scope = rememberCoroutineScope()
@@ -415,9 +405,6 @@ class MainActivity : AppCompatActivity() {
                         )
                     },
                 ) {
-                    var minOffset by remember {
-                        mutableFloatStateOf(-with(density) { DrawerDefaults.MaximumDrawerWidth.toPx() })
-                    }
                     // Fork: both drawers as liquid glass refracting the pages, see LiquidGlass.kt
                     val pagesBackdrop = rememberGlassBackdrop()
                     SideEffect { globalDialogState.backdrop = pagesBackdrop }
@@ -425,12 +412,12 @@ class MainActivity : AppCompatActivity() {
                     val drawerColor = DrawerDefaults.modalContainerColor
                     // Fork: rounded toward the page; with glass, the side along the screen border melts into the screen
                     val drawerShape = if (drawerGlass != null) RoundedCornerShape(topEnd = GLASS_SHEET_CORNER, bottomEnd = GLASS_SHEET_CORNER) else DrawerDefaults.shape
-                    ModalNavigationDrawer(
+                    // Fork: the same drawer as the one at the end, mirrored, so the two take a drag the same way and neither
+                    // takes the other's, see ModalSideDrawer
+                    ModalSideDrawer(
                         drawerContent = {
                             ModalDrawerSheet(
-                                drawerState = navDrawerState,
                                 modifier = Modifier.widthIn(max = (configuration.screenWidthDp - 56).dp)
-                                    .onSizeChanged { minOffset = -it.width.toFloat() }
                                     .edgeGlass(drawerGlass, GlassEdge.End, drawerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
                                 drawerShape = drawerShape,
                                 drawerContainerColor = if (drawerGlass != null) Color.Transparent else drawerColor,
@@ -472,24 +459,16 @@ class MainActivity : AppCompatActivity() {
                         },
                         drawerState = navDrawerState,
                         gesturesEnabled = drawerEnabled && sideSheetState.isClosed || navDrawerState.isOpen,
+                        atStart = true,
+                        paneTitle = stringResource(R.string.drawer_navigation_menu),
+                        closeDescription = stringResource(R.string.drawer_close),
                     ) {
-                        val radius by remember {
-                            snapshotFlow {
-                                val step = calculateFraction(minOffset, 0f, navDrawerState.currentOffset)
-                                with(density) { lerp(0, 10, step).dp.toPx() }
-                            }
-                        }.collectAsState(0f)
                         CompositionLocalProvider(LocalSideSheetGlass provides drawerGlass) {
                             MutableSideSheet(
                                 drawerState = sideSheetState,
-                                modifier = Modifier.graphicsLayer {
-                                    if (radius != 0f) {
-                                        renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
-                                        shape = RectangleShape
-                                        clip = true
-                                    }
-                                },
+                                modifier = Modifier,
                                 enabled = drawerEnabled,
+                                closeDescription = stringResource(R.string.drawer_close),
                             ) {
                                 SharedTransitionLayout(modifier = Modifier.glassContent(pagesBackdrop)) {
                                     CompositionLocalProvider(LocalSharedTransitionScope provides this) {
@@ -582,7 +561,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-val LocalNavDrawerState = compositionLocalOf<DrawerState> { error("CompositionLocal LocalNavDrawerState not present!") }
+val LocalNavDrawerState = compositionLocalOf<DrawerState2> { error("CompositionLocal LocalNavDrawerState not present!") }
 
 val LocalDrawerHandle = compositionLocalOf<SnapshotStateList<Long>> { error("CompositionLocal LocalDrawerHandle not present!") }
 val LocalSnackBarHostState = compositionLocalOf<SnackbarHostState> { error("CompositionLocal LocalSnackBarHostState not present!") }

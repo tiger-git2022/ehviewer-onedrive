@@ -782,4 +782,6 @@
     <string name="auto_local_favorite_summary">打开一本不在任何收藏夹（云端或本地）里的漫画时，自动把它加入本地收藏</string>
     <string name="hide_favorited">隐藏已收藏</string>
     <string name="moved_to_local_favorites">已移出云端收藏，保留在本地收藏</string>
+    <string name="drawer_navigation_menu">导航菜单</string>
+    <string name="drawer_close">关闭侧边栏</string>
 </resources>
