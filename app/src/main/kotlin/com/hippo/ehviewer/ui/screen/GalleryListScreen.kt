@@ -161,8 +161,12 @@ fun AnimatedVisibilityScope.ToplistScreen(navigator: DestinationsNavigator) = Ga
 fun AnimatedVisibilityScope.GalleryListScreen(
     lub: ListUrlBuilder,
     navigator: DestinationsNavigator,
-    viewModel: GalleryListViewModel = viewModel { GalleryListViewModel(lub, createSavedStateHandle()) },
+    // Fork: opened from a gallery (a tag, the uploader, the same title…): the second set of filters, see Settings
+    fromGallery: Boolean = false,
+    viewModel: GalleryListViewModel = viewModel { GalleryListViewModel(lub, fromGallery, createSavedStateHandle()) },
 ) = Screen(navigator, recordsGlass = true) {
+    val languagePref = if (fromGallery) Settings.linkedLanguageFilter else Settings.languageFilter
+    val hideFavoritedPref = if (fromGallery) Settings.linkedHideFavorited else Settings.hideFavoritedInLists
     val searchFieldState = rememberTextFieldState()
     var urlBuilder by viewModel.urlBuilder
     var searchBarExpanded by rememberSaveable { mutableStateOf(false) }
@@ -211,14 +215,14 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     var saveProgress by Settings.qSSaveProgress.asMutableState()
     // Fork: the language filter changes at once and is stored after: DataStore stores a change a moment later, and a
     // search right after tapping "汉" took the language from before
-    val languageSetting by Settings.languageFilter.collectAsState()
+    val languageSetting by languagePref.collectAsState()
     var languageFilter by remember { mutableIntStateOf(languageSetting) }
     LaunchedEffect(languageSetting) { languageFilter = languageSetting }
-    LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { Settings.languageFilter.value = it } }
+    LaunchedEffect(Unit) { snapshotFlow { languageFilter }.drop(1).collect { languagePref.value = it } }
     // Fork: hiding the favorited galleries (the crossed-out heart on the search bar) reloads the list from the first
     // page when the pages loaded used the other setting: toggled here, or on another list meanwhile. The state reads
     // the setting once stored, as the pager does
-    val hideFavorited by Settings.hideFavoritedInLists.collectAsState()
+    val hideFavorited by hideFavoritedPref.collectAsState()
     LaunchedEffect(hideFavorited) {
         val applied = viewModel.hideFavoritedApplied
         if (applied != null && applied != hideFavorited) {
@@ -546,7 +550,7 @@ fun AnimatedVisibilityScope.GalleryListScreen(
             // Fork: hide the favorited galleries, the list reloads once the setting is stored (see above)
             HideFavoritedButton(
                 checked = hideFavorited,
-                onCheckedChange = { Settings.hideFavoritedInLists.value = it },
+                onCheckedChange = { hideFavoritedPref.value = it },
             )
             // Fork: Chinese only, refreshing the list; the image limits moved to Settings → EH
             val filterable = urlBuilder.mode.let { it == MODE_NORMAL || it == MODE_SUBSCRIPTION || it == MODE_TAG || it == MODE_UPLOADER }

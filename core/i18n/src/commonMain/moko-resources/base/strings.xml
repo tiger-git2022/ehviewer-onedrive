@@ -29,6 +29,16 @@
     <string name="cosplay" translatable="false">COSPLAY</string>
     <string name="asian_porn" translatable="false">ASIAN PORN</string>
     <string name="misc" translatable="false">MISC</string>
+    <string name="category_short_doujinshi">DOUJ</string>
+    <string name="category_short_manga">MANG</string>
+    <string name="category_short_artist_cg">ARCG</string>
+    <string name="category_short_game_cg">GMCG</string>
+    <string name="category_short_western">WEST</string>
+    <string name="category_short_non_h">NONH</string>
+    <string name="category_short_image_set">IMGS</string>
+    <string name="category_short_cosplay">COSP</string>
+    <string name="category_short_asian_porn">ASIA</string>
+    <string name="category_short_misc">MISC</string>
     <string name="homepage">Homepage</string>
     <string name="subscription">Subscription</string>
     <string name="whats_hot">What\'s hot</string>
@@ -474,7 +484,7 @@
     <string name="sheet_glass_blur_summary">The value over 10 is the blur radius in dp: 0 is no blur, 25 the default. Blur needs Android 12</string>
     <string name="sheet_glass_tint">Drawer and dialog opacity</string>
     <string name="sheet_glass_aberration">Drawer and dialog edge fringes</string>
-    <string name="sheet_glass_aberration_summary">Splits the colors a little where the edge of the glass bends the content, like a real glass edge. Needs Android 13</string>
+    <string name="sheet_glass_aberration_summary">How far red, green and blue split at the edge of the glass, like a real glass edge: 0 is none, 50 the default. Needs Android 13</string>
     <string name="sheet_glass_tint_summary">The percent of color over the glass: higher is less see-through, 40 the default</string>
     <string name="harmonize_category_color">Harmonize category color for Dynamic Color</string>
     <string name="sort_by">Sort by</string>

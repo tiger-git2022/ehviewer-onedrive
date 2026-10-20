@@ -415,7 +415,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                                 ListUrlBuilder(
                                     mode = ListUrlBuilder.MODE_UPLOADER,
                                     keyword = item.user,
-                                ).asDst(),
+                                ).asGalleryLinkDst(),
                             )
                         },
                         onCardClick = { launch { doCommentAction(item) } },

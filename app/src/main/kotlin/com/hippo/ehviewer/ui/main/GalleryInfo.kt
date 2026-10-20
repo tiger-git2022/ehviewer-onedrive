@@ -86,7 +86,8 @@ fun GalleryInfoListItem(
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first
+                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first. The language and
+                // the pages are on the line below
                 MetaRow(
                     start = { RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp) },
                     uploader = {
@@ -145,40 +146,44 @@ fun GalleryInfoListItem(
                                     modifier = Modifier.size(14.dp),
                                 )
                             }
-                            info.simpleLanguage?.let {
-                                Text(text = it, maxLines = 1, softWrap = false)
-                            }
-                            if (info.pages != 0 && showPages) {
-                                val readProgress = if (showProgress) {
-                                    remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
-                                } else {
-                                    0
-                                }
-                                Text(
-                                    text = if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                )
-                            }
                         }
                     },
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a smaller category tag and date, so the whole date and time fit on one line
+            // Fork: a short category tag (同人, 漫画…), the language and the pages, and the date without the time, so the
+            // line above keeps room for the uploader and the favorite folder
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     val categoryColor = EhUtils.getCategoryColor(info.category)
-                    val categoryText = EhUtils.getCategory(info.category).uppercase()
                     Text(
-                        text = categoryText,
+                        text = categoryShortName(info.category),
                         modifier = Modifier.clip(ShapeDefaults.Small).background(categoryColor).padding(vertical = 1.dp, horizontal = 6.dp),
                         color = EhUtils.getCategoryTextColor(categoryColor),
                         maxLines = 1,
+                        softWrap = false,
                     )
-                    Spacer(modifier = Modifier.weight(1f).widthIn(min = 4.dp))
+                    info.simpleLanguage?.let {
+                        Text(text = it, maxLines = 1, softWrap = false)
+                    }
+                    if (info.pages != 0 && showPages) {
+                        val readProgress = if (showProgress) {
+                            remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
+                        } else {
+                            0
+                        }
+                        Text(
+                            text = if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P",
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = info.posted.orEmpty(),
+                        text = info.posted.orEmpty().substringBefore(' '),
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                         softWrap = false,

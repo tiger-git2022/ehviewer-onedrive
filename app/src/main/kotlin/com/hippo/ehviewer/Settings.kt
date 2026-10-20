@@ -92,8 +92,13 @@ object Settings : DataStorePreferences(null) {
     val sheetGlassBlur = intPref("sheet_glass_blur", 25)
     val sheetGlassTint = intPref("sheet_glass_tint", 40)
 
-    // Fork: the color fringes at the bent edge of the drawers and the dialogs over liquid glass
-    val sheetGlassAberration = boolPref("sheet_glass_aberration", true)
+    // Fork: the color fringes at the edge of the drawers and the dialogs over liquid glass, 0 (none) to 100, see GlassFringe.kt
+    val sheetGlassFringe = intPref("sheet_glass_fringe", 50)
+
+    // Fork: the filters ("汉", hiding the favorited) of the lists opened from a gallery (a tag, the uploader, the same
+    // title…), apart from the ones of the home lists and off unless changed there, see GalleryListScreen
+    val linkedLanguageFilter = intPref("linked_language_filter", -1)
+    val linkedHideFavorited = boolPref("linked_hide_favorited", false)
     val launchPage = intPref("launch_page_2", 0)
     val listMode = intPref("list_mode_2", 0)
     val listThumbSize = intPref("list_tile_size", 40)
