@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.ui
 
+import android.os.Build
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.ui.unit.LayoutDirection
 import com.kyant.backdrop.BackdropEffectScope
@@ -12,7 +13,8 @@ import com.kyant.backdrop.effects.runtimeShaderEffect
  * taken a little apart across the edge, by [spread] at the edge, fading over [band] into the glass.
  */
 fun BackdropEffectScope.edgeFringe(band: Float, spread: Float) {
-    if (band <= 0f || spread <= 0f) return
+    // RuntimeShader is Android 13+; below that the glass keeps its blur and lens without fringes
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || band <= 0f || spread <= 0f) return
     val radii = cornerRadii() ?: return
     runtimeShaderEffect("EdgeFringe", EdgeFringeShader, "content") {
         setFloatUniform("size", size.width, size.height)
