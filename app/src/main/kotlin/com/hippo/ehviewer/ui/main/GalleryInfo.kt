@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -151,7 +152,7 @@ fun GalleryInfoListItem(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a short category tag (同人, 漫画…), the language and the pages, and the date without the time, so the
+            // Fork: a short category tag (同人本子, 商业漫画…), the language and the pages, and the date without the time, so the
             // line above keeps room for the uploader and the favorite folder
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
                 Row(
@@ -181,12 +182,14 @@ fun GalleryInfoListItem(
                             softWrap = false,
                         )
                     }
-                    Spacer(modifier = Modifier.weight(1f))
+                    // The rest of the line, at its end; on a narrow card with a long read progress the date gives way
                     Text(
                         text = info.posted.orEmpty().substringBefore(' '),
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.labelSmall,
+                        textAlign = TextAlign.End,
                         maxLines = 1,
-                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
