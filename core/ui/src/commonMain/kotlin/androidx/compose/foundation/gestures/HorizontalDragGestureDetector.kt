@@ -133,11 +133,10 @@ internal suspend fun PointerInputScope.detectHorizontalDragGestures(
 }
 
 /**
- * Fork: a mouse over a drawer, decided like the Material drawer around it decides: by its first step sideways, not after
- * a finger's slop. The Material drawer takes any sideways step of a mouse (its slop is a fraction of a pixel), so
- * waiting for a finger's slop here lost every slow drag to it and this drawer opened only by a quick flick. A first step
- * the way this opens takes the drag, up or down too; a step the other way is left to the drawer around. Null when given
- * up, or when something under it (the list scrolled by a mouse) took the press first.
+ * Fork: a mouse over a closed drawer, decided by its first step sideways, not after a finger's slop: a mouse passes its
+ * slop after a pixel or two, too soon to tell a slow drag from a wobble. A first step the way this opens takes the drag,
+ * up or down too; a step the other way is left to the drawer on the other side. Null when given up, or when something
+ * under it (the list scrolled by a mouse) took the press first.
  */
 private suspend fun AwaitPointerEventScope.awaitMouseSideways(
     down: PointerInputChange,

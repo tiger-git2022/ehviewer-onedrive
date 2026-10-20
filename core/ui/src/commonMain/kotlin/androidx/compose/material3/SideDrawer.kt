@@ -219,6 +219,13 @@ fun rememberDrawerState2(
     DrawerState2(initialValue)
 }
 
+/**
+ * A drawer at the end of the screen, or with [atStart] at the start.
+ *
+ * Fork: the navigation drawer uses this too, mirrored, instead of the Material one. Both then take a drag the same way:
+ * closed, only one that goes the way they open; the Material drawer took a closed drag either way (going nowhere the
+ * wrong way) and picked up any drag given up below it, so the drawer at the end lost the drag to it.
+ */
 @Composable
 fun ModalSideDrawer(
     drawerContent: @Composable () -> Unit,
@@ -226,11 +233,14 @@ fun ModalSideDrawer(
     drawerState: DrawerState2 = rememberDrawerState2(DrawerValue.Closed),
     gesturesEnabled: Boolean = true,
     scrimColor: Color = DrawerDefaults.scrimColor,
+    atStart: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    var maxValue by remember { mutableFloatStateOf(with(density) { DrawerDefaults.MaximumDrawerWidth.toPx() }) }
+    var drawerWidth by remember { mutableFloatStateOf(with(density) { DrawerDefaults.MaximumDrawerWidth.toPx() }) }
+    // Fork: closed, the drawer lies off the screen past its own side
+    val maxValue = if (atStart) -drawerWidth else drawerWidth
     val minValue = 0f
 
     SideEffect {
@@ -246,21 +256,21 @@ fun ModalSideDrawer(
     Box(
         modifier.fillMaxSize().anchoredHorizontalDraggable(
             state = drawerState.anchoredDraggableState,
-            enableDragFromStartToEnd = drawerState.isOpen,
-            enableDragFromEndToStart = drawerState.isClosed,
+            enableDragFromStartToEnd = if (atStart) drawerState.isClosed else drawerState.isOpen,
+            enableDragFromEndToStart = if (atStart) drawerState.isOpen else drawerState.isClosed,
             enabled = gesturesEnabled,
             flingBehavior = AnchoredDraggableDefaults.flingBehavior(
                 state = drawerState.anchoredDraggableState,
                 animationSpec = AnimationSpec,
             ),
-            // Fork: closed, a mouse decides at once like the Material drawer around (see awaitMouseSideways); open, that
-            // drawer is off and a mouse waits like a finger, so a click in the sheet that slips a pixel stays a click
+            // Fork: closed, a mouse decides by its first step sideways (see awaitMouseSideways); open, a mouse waits like
+            // a finger, so a click in the sheet that slips a pixel stays a click
             takesAnyMouseMove = drawerState.isClosed,
         ),
     ) {
         val radius by remember {
             snapshotFlow {
-                val step = calculateFraction(maxValue, minValue, drawerState.currentOffset)
+                val step = calculateFraction(if (atStart) -drawerWidth else drawerWidth, minValue, drawerState.currentOffset)
                 lerp(0, 10, step).dp
             }
         }.collectAsState(0.dp)
@@ -290,39 +300,46 @@ fun ModalSideDrawer(
             drawerState.close()
         }
         val absoluteElevation = LocalAbsoluteTonalElevation.current + DrawerDefaults.ModalDrawerElevation
+        // Fork: positive from the edge across the screen, negative from the drawer's own edge
+        val predictiveAway = if (atStart) -predictiveState else predictiveState
         val predictiveModifier = if (drawerState.isOpen) {
-            if (predictiveState < 0) {
+            if (predictiveAway < 0) {
                 Modifier.layout { measurable, constraints ->
                     val placeable = measurable.measure(constraints)
-                    val multiplierX = lerp(1f, 1.05f, -predictiveState)
-                    val multiplierY = lerp(1f, 0.95f, -predictiveState)
+                    val multiplierX = lerp(1f, 1.05f, -predictiveAway)
+                    val multiplierY = lerp(1f, 0.95f, -predictiveAway)
                     val scaledWidth = (multiplierX * placeable.width).roundToInt()
                     val scaledHeight = (multiplierY * placeable.height).roundToInt()
                     val reMeasured = measurable.measure(Constraints.fixed(scaledWidth, scaledHeight))
                     layout(scaledWidth, scaledHeight) {
-                        reMeasured.placeRelative(placeable.width - scaledWidth, 0)
+                        // Fork: stretched toward the page
+                        reMeasured.placeRelative(if (atStart) 0 else placeable.width - scaledWidth, 0)
                     }
                 }.background(
                     color = MaterialTheme.colorScheme.surfaceColorAtElevation(absoluteElevation),
-                    shape = ShapeDefaults.Large.copy(topEnd = CornerSize(0), bottomEnd = CornerSize(0)),
+                    shape = if (atStart) {
+                        ShapeDefaults.Large.copy(topStart = CornerSize(0), bottomStart = CornerSize(0))
+                    } else {
+                        ShapeDefaults.Large.copy(topEnd = CornerSize(0), bottomEnd = CornerSize(0))
+                    },
                 )
             } else {
                 Modifier.graphicsLayer {
-                    val scale = lerp(1f, 0.95f, predictiveState)
+                    val scale = lerp(1f, 0.95f, predictiveAway)
                     scaleX = scale
                     scaleY = scale
                 }.offset {
-                    IntOffset(lerp(0f, maxValue * 0.05f, predictiveState).roundToInt(), 0)
+                    IntOffset(lerp(0f, maxValue * 0.05f, predictiveAway).roundToInt(), 0)
                 }
             }
         } else {
             Modifier.onSizeChanged {
                 val width = it.width
                 if (width != 0) {
-                    maxValue = width.toFloat()
+                    drawerWidth = width.toFloat()
                     drawerState.anchoredDraggableState.updateAnchors(
                         DraggableAnchors {
-                            DrawerValue.Closed at maxValue
+                            DrawerValue.Closed at if (atStart) -drawerWidth else drawerWidth
                             DrawerValue.Open at minValue
                         },
                     )
@@ -332,8 +349,8 @@ fun ModalSideDrawer(
         Box(
             modifier = Modifier.offset {
                 IntOffset(drawerState.requireOffset().roundToInt(), 0)
-            }.align(Alignment.CenterEnd) then predictiveModifier,
-            contentAlignment = Alignment.CenterStart,
+            }.align(if (atStart) Alignment.CenterStart else Alignment.CenterEnd) then predictiveModifier,
+            contentAlignment = if (atStart) Alignment.CenterEnd else Alignment.CenterStart,
         ) {
             drawerContent()
         }
