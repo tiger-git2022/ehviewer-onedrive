@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,18 +86,11 @@ fun GalleryInfoListItem(
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first, the pages never. The
-                // language is on the line below
+                // Fork: the rating, the favorite and its folder, the language and the pages; the folder name gives way, the
+                // language and the pages never. The uploader is on the line below
                 MetaRow(
                     start = { RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp) },
-                    uploader = {
-                        Text(
-                            text = info.uploader.orEmpty(),
-                            modifier = Modifier.alpha(if (info.disowned) 0.5f else 1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
+                    uploader = {},
                     favorite = {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -147,6 +139,9 @@ fun GalleryInfoListItem(
                                     modifier = Modifier.size(14.dp),
                                 )
                             }
+                            info.simpleLanguage?.let {
+                                Text(text = it, maxLines = 1, softWrap = false)
+                            }
                             if (info.pages != 0 && showPages) {
                                 val readProgress = if (showProgress) {
                                     remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
@@ -164,8 +159,7 @@ fun GalleryInfoListItem(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a short category tag (同人, 漫画, CG…), the language and the posted time, so the line above keeps room for
-            // the uploader, the favorite folder and the pages
+            // Fork: a short category tag (同人, 漫画, CG…), the uploader and the posted time; the uploader gives way
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -179,17 +173,17 @@ fun GalleryInfoListItem(
                         maxLines = 1,
                         softWrap = false,
                     )
-                    info.simpleLanguage?.let {
-                        Text(text = it, maxLines = 1, softWrap = false)
-                    }
-                    // The rest of the line, at its end, with the time
                     Text(
-                        text = info.posted.orEmpty(),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
-                        textAlign = TextAlign.End,
+                        text = info.uploader.orEmpty(),
+                        modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = info.posted.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
             }
