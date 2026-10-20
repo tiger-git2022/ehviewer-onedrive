@@ -87,8 +87,8 @@ fun GalleryInfoListItem(
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first. The language and
-                // the pages are on the line below
+                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first, the language never.
+                // The pages are on the line below
                 MetaRow(
                     start = { RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp) },
                     uploader = {
@@ -147,13 +147,16 @@ fun GalleryInfoListItem(
                                     modifier = Modifier.size(14.dp),
                                 )
                             }
+                            info.simpleLanguage?.let {
+                                Text(text = it, maxLines = 1, softWrap = false)
+                            }
                         }
                     },
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            // Fork: a short category tag (同人本子, 商业漫画…), the language and the pages, and the date without the time, so the
-            // line above keeps room for the uploader and the favorite folder
+            // Fork: a short category tag (同人, 漫画, CG…), the pages and the posted time, so the line above keeps room for the
+            // uploader, the favorite folder and the language
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -167,9 +170,6 @@ fun GalleryInfoListItem(
                         maxLines = 1,
                         softWrap = false,
                     )
-                    info.simpleLanguage?.let {
-                        Text(text = it, maxLines = 1, softWrap = false)
-                    }
                     if (info.pages != 0 && showPages) {
                         val readProgress = if (showProgress) {
                             remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
