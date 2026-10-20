@@ -86,65 +86,76 @@ fun GalleryInfoListItem(
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
             )
             ProvideTextStyle(MaterialTheme.typography.labelMedium) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp)
-                    Text(
-                        text = info.uploader.orEmpty(),
-                        modifier = Modifier.weight(1f).alpha(if (info.disowned) 0.5f else 1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (isInFavScene) {
-                        info.favoriteNote?.let {
-                            Text(
-                                text = it,
-                                modifier = Modifier.widthIn(max = 96.dp),
-                                fontStyle = FontStyle.Italic,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    } else {
-                        val showFav by FavouriteStatusRouter.collectAsState(info) { it != NOT_FAVORITED }
-                        if (showFav) {
-                            Icon(
-                                Icons.Default.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                            )
-                            info.favoriteName?.let {
+                // Fork: MetaRow keeps a few characters of the uploader; the favorite name gives way first
+                MetaRow(
+                    start = { RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp) },
+                    uploader = {
+                        Text(
+                            text = info.uploader.orEmpty(),
+                            modifier = Modifier.alpha(if (info.disowned) 0.5f else 1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    end = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (isInFavScene) {
+                                info.favoriteNote?.let {
+                                    Text(
+                                        text = it,
+                                        modifier = Modifier.weight(1f, fill = false).widthIn(max = 96.dp),
+                                        fontStyle = FontStyle.Italic,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            } else {
+                                val showFav by FavouriteStatusRouter.collectAsState(info) { it != NOT_FAVORITED }
+                                if (showFav) {
+                                    Icon(
+                                        Icons.Default.Favorite,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    info.favoriteName?.let {
+                                        Text(
+                                            text = it,
+                                            modifier = Modifier.weight(1f, fill = false).widthIn(max = 72.dp),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                            val downloaded by DownloadManager.collectContainDownloadInfo(info.gid)
+                            if (downloaded) {
+                                Icon(
+                                    Icons.Default.Download,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                            info.simpleLanguage?.let {
+                                Text(text = it, maxLines = 1, softWrap = false)
+                            }
+                            if (info.pages != 0 && showPages) {
+                                val readProgress = if (showProgress) {
+                                    remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
+                                } else {
+                                    0
+                                }
                                 Text(
-                                    text = it,
-                                    modifier = Modifier.widthIn(max = 72.dp),
+                                    text = if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P",
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    softWrap = false,
                                 )
                             }
                         }
-                    }
-                    val downloaded by DownloadManager.collectContainDownloadInfo(info.gid)
-                    if (downloaded) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                    info.simpleLanguage?.let {
-                        Text(text = it, maxLines = 1)
-                    }
-                    if (info.pages != 0 && showPages) {
-                        val readProgress = if (showProgress) {
-                            remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
-                        } else {
-                            0
-                        }
-                        Text(text = if (readProgress > 0) "${readProgress + 1}/${info.pages}P" else "${info.pages}P", maxLines = 1)
-                    }
-                }
+                    },
+                )
             }
             Spacer(modifier = Modifier.height(4.dp))
             // Fork: a smaller category tag and date, so the whole date and time fit on one line
