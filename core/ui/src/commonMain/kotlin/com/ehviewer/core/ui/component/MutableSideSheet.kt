@@ -43,7 +43,13 @@ fun ProvideSideSheetContent(content: Sheet) {
 }
 
 @Composable
-fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boolean, content: @Composable () -> Unit) {
+fun MutableSideSheet(
+    drawerState: DrawerState2,
+    modifier: Modifier,
+    enabled: Boolean,
+    closeDescription: String? = null,
+    content: @Composable () -> Unit,
+) {
     val sheet = remember { mutableStateListOf<Sheet>() }
     val f = sheet.firstOrNull()
     val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
@@ -71,6 +77,7 @@ fun MutableSideSheet(drawerState: DrawerState2, modifier: Modifier, enabled: Boo
             modifier = modifier,
             drawerState = drawerState,
             gesturesEnabled = f != null && enabled,
+            closeDescription = closeDescription,
             content = content,
         )
     }

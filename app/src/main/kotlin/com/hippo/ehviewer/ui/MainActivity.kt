@@ -460,12 +460,15 @@ class MainActivity : AppCompatActivity() {
                         drawerState = navDrawerState,
                         gesturesEnabled = drawerEnabled && sideSheetState.isClosed || navDrawerState.isOpen,
                         atStart = true,
+                        paneTitle = stringResource(R.string.drawer_navigation_menu),
+                        closeDescription = stringResource(R.string.drawer_close),
                     ) {
                         CompositionLocalProvider(LocalSideSheetGlass provides drawerGlass) {
                             MutableSideSheet(
                                 drawerState = sideSheetState,
                                 modifier = Modifier,
                                 enabled = drawerEnabled,
+                                closeDescription = stringResource(R.string.drawer_close),
                             ) {
                                 SharedTransitionLayout(modifier = Modifier.glassContent(pagesBackdrop)) {
                                     CompositionLocalProvider(LocalSharedTransitionScope provides this) {

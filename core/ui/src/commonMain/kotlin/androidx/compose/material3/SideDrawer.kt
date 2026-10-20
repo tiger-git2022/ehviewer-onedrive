@@ -42,6 +42,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.dismiss
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
@@ -234,6 +239,9 @@ fun ModalSideDrawer(
     gesturesEnabled: Boolean = true,
     scrimColor: Color = DrawerDefaults.scrimColor,
     atStart: Boolean = false,
+    // Fork: what accessibility services announce for the drawer and for the scrim that closes it, like the Material drawer
+    paneTitle: String? = null,
+    closeDescription: String? = null,
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -295,6 +303,7 @@ fun ModalSideDrawer(
                 calculateFraction(maxValue, minValue, drawerState.requireOffset())
             },
             color = scrimColor,
+            closeDescription = closeDescription,
         )
         val predictiveState by animateFloatMergeOneWayPredictiveBackAsState(drawerState.isOpen) {
             drawerState.close()
@@ -349,6 +358,14 @@ fun ModalSideDrawer(
         Box(
             modifier = Modifier.offset {
                 IntOffset(drawerState.requireOffset().roundToInt(), 0)
+            }.semantics {
+                paneTitle?.let { this.paneTitle = it }
+                if (drawerState.isOpen) {
+                    dismiss {
+                        if (gesturesEnabled) scope.launch { drawerState.close() }
+                        true
+                    }
+                }
             }.align(if (atStart) Alignment.CenterStart else Alignment.CenterEnd) then predictiveModifier,
             contentAlignment = if (atStart) Alignment.CenterEnd else Alignment.CenterStart,
         ) {
@@ -361,9 +378,15 @@ fun ModalSideDrawer(
 private fun calculateFraction(a: Float, b: Float, pos: Float) = ((pos - a) / (b - a)).coerceIn(0f, 1f)
 
 @Composable
-private fun Scrim(open: Boolean, onClose: () -> Unit, fraction: () -> Float, color: Color) {
+private fun Scrim(open: Boolean, onClose: () -> Unit, fraction: () -> Float, color: Color, closeDescription: String?) {
     val dismissDrawer = if (open) {
-        Modifier.pointerInput(onClose) { detectTapGestures { onClose() } }
+        Modifier.pointerInput(onClose) { detectTapGestures { onClose() } }.semantics(mergeDescendants = true) {
+            closeDescription?.let { contentDescription = it }
+            onClick {
+                onClose()
+                true
+            }
+        }
     } else {
         Modifier
     }
