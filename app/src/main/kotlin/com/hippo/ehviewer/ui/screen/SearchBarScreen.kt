@@ -326,6 +326,21 @@ fun SearchBarScreen(
                     modifier = Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
                         // Fork: the field is the glass while the search bar is collapsed
                         .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) },
+                    // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
+                    // and black by day: the paler Material color got lost over the list showing through
+                    colors = if (glass != null) {
+                        val onGlass = MaterialTheme.colorScheme.onSurface
+                        SearchBarDefaults.inputFieldColors(
+                            focusedLeadingIconColor = onGlass,
+                            unfocusedLeadingIconColor = onGlass,
+                            focusedTrailingIconColor = onGlass,
+                            unfocusedTrailingIconColor = onGlass,
+                            focusedPlaceholderColor = onGlass,
+                            unfocusedPlaceholderColor = onGlass,
+                        )
+                    } else {
+                        SearchBarDefaults.inputFieldColors()
+                    },
                     placeholder = {
                         val contentActive by activeState.state
                         val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
