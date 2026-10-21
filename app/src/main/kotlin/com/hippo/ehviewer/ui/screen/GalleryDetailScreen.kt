@@ -219,7 +219,17 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
             MediumFlexibleTopAppBar(
                 // Fork: only its bottom edge shows, the top and the sides melt into the screen
                 modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
-                colors = if (backdrop != null) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent) else TopAppBarDefaults.topAppBarColors(),
+                // Fork: over the glass, the buttons in the color of the title, white at night and black by day: the paler
+                // color of the Material buttons got lost over the pages showing through
+                colors = if (backdrop != null) {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                } else {
+                    TopAppBarDefaults.topAppBarColors()
+                },
                 title = {
                     galleryInfo?.let {
                         Text(
