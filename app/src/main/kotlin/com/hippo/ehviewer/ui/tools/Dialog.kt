@@ -25,17 +25,21 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -636,13 +640,15 @@ internal fun BoxScope.GlassDialog(
             },
         )
     }
-    Box(Modifier.matchParentSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
+    // Kept off the screen edges and no wider than a Material dialog, like a dialog window: a dialog that fills its
+    // width would otherwise cover a whole tablet in landscape
+    Box(Modifier.matchParentSize().safeDrawingPadding().padding(GlassDialogMargin), contentAlignment = Alignment.Center) {
         AnimatedVisibility(visibleState = shown, enter = fadeIn() + scaleIn(initialScale = 0.9f)) {
             // The list items keep the glass visible instead of covering it
             val colors = MaterialTheme.colorScheme
             MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
                 Surface(
-                    modifier = modifier.floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
+                    modifier = modifier.widthIn(max = GlassDialogMaxWidth).floatingGlass(glass, AlertDialogDefaults.shape, AlertDialogDefaults.containerColor.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet),
                     shape = AlertDialogDefaults.shape,
                     color = Color.Transparent,
                     contentColor = colors.onSurface,
@@ -714,7 +720,11 @@ fun BoxScope.EhModalBottomSheet(
             }
         }
     }
-    Box(Modifier.matchParentSize().then(modifier), contentAlignment = Alignment.BottomCenter) {
+    // As the Material sheet: no wider than its maximum, so it does not span a tablet in landscape, and below the status bar
+    Box(
+        Modifier.matchParentSize().then(modifier).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
         AnimatedVisibility(visibleState = shown, enter = slideInVertically { it }) {
             val colors = MaterialTheme.colorScheme
             MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
@@ -723,7 +733,7 @@ fun BoxScope.EhModalBottomSheet(
                         .onSizeChanged { sheetHeight = it.height }
                         .nestedScroll(scrollConnection)
                         .draggable(dragState, Orientation.Vertical, onDragStopped = { settle(it) })
-                        .fillMaxWidth().edgeGlass(glass, GlassEdge.Top, colors.surfaceContainerLow.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
+                        .widthIn(max = BottomSheetDefaults.SheetMaxWidth).fillMaxWidth().edgeGlass(glass, GlassEdge.Top, colors.surfaceContainerLow.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
                     shape = GlassBottomSheetShape,
                     color = Color.Transparent,
                     contentColor = colors.onSurface,
@@ -822,7 +832,8 @@ suspend fun awaitSelectTime(
     val glass = rememberLiquidGlass(LocalPageBackdrop.current)
     if (glass != null) {
         GlassDialog(glass, onDismissRequest = { cont.cancel() }, modifier = Modifier) {
-            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Fork: scrolls on a screen too short for it, a phone in landscape
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 titleText()
                 TimePicker(state = state)
                 Row(
@@ -976,7 +987,9 @@ suspend fun awaitSelectItemWithIconInCircle(
     items: List<Pair<ImageVector, String>>,
     @StringRes title: Int,
 ): Int = showNoButton(false) {
-    Column {
+    // Fork: the circle as wide as the screen, but no larger than a phone's: in landscape its height took the whole
+    // screen of a tablet
+    Column(modifier = Modifier.widthIn(max = FavoriteCircleMaxSize)) {
         Text(text = stringResource(id = title), modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
         CircularLayout(modifier = Modifier.fillMaxWidth().aspectRatio(1F)) {
             items.forEachIndexed { index, (icon, text) ->
@@ -1019,6 +1032,9 @@ private fun CheckableItem(text: String, checked: Boolean, modifier: Modifier = M
 
 private val IconWithTextCorner = RoundedCornerShape(8.dp)
 private val GlassDialogScrim = Color.Black.copy(alpha = 0.32f)
+private val GlassDialogMargin = 16.dp
+private val GlassDialogMaxWidth = 560.dp
+private val FavoriteCircleMaxSize = 420.dp
 private val SheetFlingToClose = 1000.dp
 private val GlassBottomSheetShape = RoundedCornerShape(topStart = GLASS_SHEET_CORNER, topEnd = GLASS_SHEET_CORNER)
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
