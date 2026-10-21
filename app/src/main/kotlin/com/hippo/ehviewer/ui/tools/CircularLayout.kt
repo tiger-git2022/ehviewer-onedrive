@@ -6,11 +6,15 @@ import androidx.compose.foundation.gestures.draggable2D
 import androidx.compose.foundation.gestures.rememberDraggable2DState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -35,6 +39,7 @@ fun CircularLayout(
     content: @Composable () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
+    var size by remember { mutableStateOf(IntSize(1000, 1000)) }
     var delta by rememberMutableStateInDataStore("FavDialogTheta") { 0F }
     val state = rememberDraggable2DState {
         val prevOfs = currentOfs
@@ -49,11 +54,12 @@ fun CircularLayout(
         }
     }
     Layout(
-        modifier = modifier.draggable2D(
+        modifier = modifier.onSizeChanged { size = it }.draggable2D(
             state = state,
             onDragStarted = {
                 // Get relative offset to center
-                val ofs = it - Offset(500f, 500f)
+                // Fork: from the middle of the circle, whatever its size
+                val ofs = it - Offset(size.width / 2f, size.height / 2f)
                 animJob?.cancel()
                 currentOfs = ofs
                 currentTheta = atan2(ofs.y, ofs.x)
