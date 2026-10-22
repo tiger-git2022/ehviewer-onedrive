@@ -315,10 +315,12 @@ object ProgressSection : SyncSection<List<SyncProgress>>(
         // Fork: carried over, unchanged in the cloud, and the gallery is here now: written unless read further here
         val arrived = merged.filter { it.gid in carried && it.gid in galleries && localByGid[it.gid]?.page == it.page }
         val delete = local.filter { it.gid !in mergedGids }.map { it.gid }
-        PendingProgress.replace(merged.filter { it.gid !in galleries }.associate { it.gid to it.page })
         EhDB.putSyncedProgressIfUnread(arrived.map { ProgressInfo(it.gid, it.page) })
-        if (upsert.isEmpty() && delete.isEmpty()) return SyncCounts(added = arrived.size)
-        EhDB.applySyncedProgress(upsert.map { ProgressInfo(it.gid, it.page) }, delete)
+        if (upsert.isNotEmpty() || delete.isNotEmpty()) {
+            EhDB.applySyncedProgress(upsert.map { ProgressInfo(it.gid, it.page) }, delete)
+        }
+        // Fork: only once written, so an interrupted sync never leaves progress that is neither here nor pending
+        PendingProgress.replace(merged.filter { it.gid !in galleries }.associate { it.gid to it.page })
         val added = upsert.count { it.gid !in localByGid }
         return SyncCounts(added = added + arrived.size, updated = upsert.size - added, removed = delete.size)
     }
