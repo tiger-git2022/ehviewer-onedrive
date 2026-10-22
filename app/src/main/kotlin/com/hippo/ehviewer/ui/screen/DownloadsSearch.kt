@@ -38,7 +38,7 @@ class DownloadsSearch private constructor(private val terms: List<Term>) {
             val found = if (term.namespace != null) {
                 tags.any { it.namespace == term.namespace && term.fits(it.name) }
             } else {
-                title.has(term.text) || titleJpn.has(term.text) || tags.any { term.fits(it.name) || it.raw.has(term.text) }
+                title.has(term.text) || titleJpn.has(term.text) || tags.any { term.fits(it.name) || !term.exact && it.raw.has(term.text) }
             }
             found != term.exclude
         }
