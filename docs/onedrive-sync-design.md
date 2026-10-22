@@ -86,6 +86,18 @@
   ```
 
 - 这样拆分的目的是：只改了一个设置时，只需要上传几 KB 的 settings 文件，不用重新传上万条收藏。详见第 10 节「性能与缓存」。
+- Fork：收藏和历史后来改成按 gid 分片（`ShardedSections.kt`），改一条只传它所在的那一片：
+
+  ```
+  ehviewer/v1/favorites.manifest.json         // 分片清单 SectionManifest：{version, updatedAt, deviceId, count, shards: [{hash, minGid, count, size}]}
+  ehviewer/v1/favorites/shard-<hash>.json.gz  // 一个 gid 区间的记录 {version, items}，按内容命名，内容相同的分片不会重复上传
+  ehviewer/v1/history.manifest.json
+  ehviewer/v1/history/shard-<hash>.json.gz
+  ```
+
+  - 分片区间沿用上一次的边界（`GidShards`），没改到的分片内容不变、文件名不变。先传分片再传清单，清单用 ETag 防并发；别的设备只下载本地没有的分片。
+  - 旧的 `favorites.json.gz` / `history.json.gz` 在没有清单时读一次（合并进分片），然后换成 version = 2、没有条目的占位文件。旧版应用读到它会提示「由更新的版本写入」，不会把旧文件写回去。所以所有设备都要更新到新版本。
+  - 清单不再列出的分片，超过 1 小时后删除（给同时在读旧清单的设备留时间）。
 
 **HTTP 客户端**
 - 可以用现有的 Ktor（`EhApplication.ktorClient`，底层是 OkHttp 或 Cronet），也可以单独建一个 OkHttp。
