@@ -447,9 +447,15 @@ object EhDB {
      */
     suspend fun putSyncedProgressIfUnread(progress: List<ProgressInfo>) {
         if (progress.isEmpty()) return
-        val read = db.progressDao().list().filter { it.page > 0 }.mapTo(HashSet()) { it.gid }
-        val write = progress.filter { it.gid !in read }
-        if (write.isNotEmpty()) db.progressDao().upsert(write)
+        // One transaction: the reader saving a page in between is never written over
+        db.useWriterConnection { conn ->
+            conn.immediateTransaction {
+                val dao = db.progressDao()
+                val read = dao.list().filter { it.page > 0 }.mapTo(HashSet()) { it.gid }
+                val write = progress.filter { it.gid !in read }
+                if (write.isNotEmpty()) dao.upsert(write)
+            }
+        }
     }
 
     suspend fun applySyncedProgress(upsert: List<ProgressInfo>, delete: List<Long>) = db.useWriterConnection { conn ->
