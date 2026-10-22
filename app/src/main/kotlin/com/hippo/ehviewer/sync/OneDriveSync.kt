@@ -928,6 +928,9 @@ object OneDriveSync {
                         remote = again[sharded.manifestName]
                         legacy = again[category.fileName]
                         if (remote?.eTag != current.eTag) continue
+                        // Without a copy of its own, written over it would drop the records of the missing shards, which
+                        // other devices would then delete: left to a device that synced before
+                        if (cachedManifest == null) throw OneDriveException("$category on OneDrive is missing shards: sync a device that synced before, or clear the cloud data")
                         logcat(TAG) { "$category: shards missing on OneDrive, written again" }
                         cloud = withContext(Dispatchers.IO) { cache.readRecovering(manifest, cachedManifest) }
                     } else {
@@ -1044,11 +1047,15 @@ object OneDriveSync {
         }
     }
 
-    /** Fork: downloads the shards of [manifest] not cached yet. False when one of them is gone. */
+    /**
+     * Fork: downloads the shards of [manifest] not cached yet. False when one of them is gone; the others are downloaded
+     * all the same, see [ShardCache.readRecovering].
+     */
     private suspend fun downloadShards(folder: String, manifest: SectionManifest, cache: ShardCache<*>): Boolean {
         val missing = manifest.shards.distinctBy { it.hash }.filterNot { cache.shardFile(it.hash).exists() }
         val total = missing.sumOf { it.size }
         var done = 0L
+        var complete = true
         for (shard in missing) {
             val file = cache.shardFile(shard.hash)
             val temp = File(file.parentFile, "${file.name}.download")
@@ -1056,7 +1063,10 @@ object OneDriveSync {
                 val found = OneDriveClient.download("$folder/${file.name}", temp) { read, _ ->
                     phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD, done + read, total, bytes = true)
                 }
-                if (!found) return false
+                if (!found) {
+                    complete = false
+                    continue
+                }
                 done += temp.length()
                 if (!temp.renameTo(file)) {
                     temp.copyTo(file, overwrite = true)
@@ -1065,7 +1075,7 @@ object OneDriveSync {
                 temp.delete()
             }
         }
-        return true
+        return complete
     }
 
     /**
