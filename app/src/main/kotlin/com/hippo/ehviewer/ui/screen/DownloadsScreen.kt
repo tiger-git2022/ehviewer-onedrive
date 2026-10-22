@@ -186,8 +186,10 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
     val hint = stringResource(R.string.search_bar_hint, title)
     val list = if (DownloadManager.isInitialized) {
         remember(filterState, invalidateKey) {
+            // Fork: the keyword is read like the main search box reads it
+            val search = DownloadsSearch.parse(filterState.keyword)
             DownloadManager.downloadInfoList.filterTo(mutableStateListOf()) { info ->
-                filterState.take(info)
+                filterState.take(info, search)
             }.also {
                 launch {
                     delay(200)
@@ -496,6 +498,8 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
             }
         },
         searchBarOffsetY = { searchBarOffsetY },
+        // Fork: a tag suggestion goes in as on the main search box (`f:"big breasts$"`)
+        localSearch = false,
         // Fork
         showSyncProgress = true,
         onClearSearch = if (filterState.keyword.isNotEmpty()) {

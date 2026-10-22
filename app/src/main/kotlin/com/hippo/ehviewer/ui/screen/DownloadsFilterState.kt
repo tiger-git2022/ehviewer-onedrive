@@ -1,7 +1,6 @@
 package com.hippo.ehviewer.ui.screen
 
 import com.ehviewer.core.database.model.DownloadInfo
-import com.ehviewer.core.util.containsIgnoreCase
 import com.hippo.ehviewer.download.DownloadsFilterMode
 import kotlinx.serialization.Serializable
 
@@ -13,10 +12,7 @@ data class DownloadsFilterState(
     val keyword: String = "",
 )
 
-fun DownloadsFilterState.take(info: DownloadInfo) = mode.take(info, label) &&
+// Fork: the keyword is matched by DownloadsSearch (several words, `f:` namespaces, quotes and `$`)
+fun DownloadsFilterState.take(info: DownloadInfo, search: DownloadsSearch) = mode.take(info, label) &&
     (state == -1 || info.state == state) &&
-    with(info) {
-        title.containsIgnoreCase(keyword) ||
-            titleJpn.containsIgnoreCase(keyword) ||
-            simpleTags?.any { it.containsIgnoreCase(keyword) } == true
-    }
+    with(info) { search.matches(title, titleJpn, simpleTags) }
