@@ -27,6 +27,8 @@ import java.util.zip.GZIPOutputStream
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -120,6 +122,9 @@ object OneDriveSync {
     private const val RESULT_TAKEN_TIMEOUT_MILLIS = 1_000L
     private const val CHANGED_AT_PERSIST_INTERVAL = 60_000L
 
+    /** Fork: a shard no manifest lists is deleted once it is this old, see removeOldShards. */
+    private val SHARD_GRACE = 1.hours
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
 
@@ -162,6 +167,9 @@ object OneDriveSync {
 
     private val syncDir get() = File(appCtx.filesDir, "onedrive_sync")
     private val cacheDir get() = File(syncDir, "cache")
+
+    // Fork: the shards of the categories kept in shards, see ShardedCategory
+    private val shardsDir get() = File(syncDir, "shards")
     private val deviceCacheDir get() = File(syncDir, "devices")
     private val ownDeviceCache get() = File(syncDir, "own_device.json.gz")
     private val ownSettingsCache get() = File(syncDir, "own_settings.json.gz")
@@ -222,6 +230,14 @@ object OneDriveSync {
 
     /** Version of the favorites changes, taken before building the index a sync uploads. */
     fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
+
+    /**
+     * Fork: the version of the favorites changes when no change waits for the index, null when one does. Read under the
+     * lock of [markFavoritesIndexChanged], which counts a change and sets the flag one after the other.
+     */
+    suspend fun favoritesIndexCleanVersion(): Long? = favoritesIndexDirtyMutex.withLock {
+        if (OneDriveSyncState.favoritesIndexDirty.value) null else favoritesIndexVersion.get()
+    }
 
     /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
     suspend fun favoritesIndexSynced(version: Long) {
@@ -534,7 +550,11 @@ object OneDriveSync {
             syncDir.deleteRecursively()
         }
         OneDriveSyncState.withMutableSnapshot {
-            SyncCategory.entries.forEach { category -> it[OneDriveSyncState.eTag(category)] = null }
+            SyncCategory.entries.forEach { category ->
+                it[OneDriveSyncState.eTag(category)] = null
+                it[OneDriveSyncState.shardedETag(category)] = null
+                it[OneDriveSyncState.stubETag(category)] = null
+            }
             it[OneDriveSyncState.deviceFileETag] = null
             it[OneDriveSyncState.remoteDeviceETags] = "{}"
             it[OneDriveSyncState.subscriptions] = "{}"
@@ -646,11 +666,23 @@ object OneDriveSync {
         val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
         updateAccount(account)
         val deviceId = ensureDeviceId()
+        // Fork: the E-Hentai check of the cloud favorites runs beside the sync, not in its index step
+        if (!FavoritesIndexSync.working.value) FavoritesIndexSync.startEhCheck()
         val listing = OneDriveClient.list(SHARED_FOLDER)
         val results = sections.mapIndexed { index, section ->
             mutableProgress.value = SyncRunProgress(categoryTitle(section.category), index + 2, steps)
             // Fork: settings are per device, uploaded to its own file and never merged
-            if (section === SettingsSection) uploadOwnSettings(deviceId) else syncSection(section, listing[section.category.fileName], deviceId)
+            val sharded = ShardedCategory.of(section.category)
+            val result = when {
+                section === SettingsSection -> uploadOwnSettings(deviceId)
+                // Fork: favorites and history are kept in shards, see ShardedCategory
+                sharded != null -> syncShardedCategory(section, sharded, listing, deviceId)
+                else -> syncSection(section, listing[section.category.fileName], deviceId)
+            }
+            // Fork: local favorites the sync itself wrote do not mark the index (writes of the sync are not changes),
+            // which is no longer built again at every sync. Marked at once, so a later step failing cannot lose it
+            if (result.category == SyncCategory.FAVORITES && !result.counts.isEmpty) markFavoritesIndexChanged()
+            result
         }
         var imported = 0
         val devicesError = if (manual) {
@@ -687,7 +719,7 @@ object OneDriveSync {
                 mutex.withLock {
                     val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
                     updateAccount(account)
-                    FavoritesIndexSync.sync(ensureDeviceId(), deviceName, fromWork = true)
+                    FavoritesIndexSync.sync(ensureDeviceId(), deviceName)
                 }
             }
         } catch (e: CancellationException) {
@@ -806,6 +838,312 @@ object OneDriveSync {
         throw OneDrivePreconditionException()
     }
 
+    /**
+     * Fork: [syncSection] for a category kept in shards (see [ShardedCategory]). Downloads the manifest and only the
+     * shards not cached yet, merges like [syncSection] and uploads only the shards the merge changed, then the manifest.
+     * The single file of before is read when no manifest is there yet, and replaced by a stub older builds refuse.
+     */
+    // Both categories kept in shards (favorites and history) are lists of SyncGalleryRecord
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun syncShardedCategory(
+        section: SyncSection<*>,
+        sharded: ShardedCategory<*>,
+        listing: Map<String, RemoteItem>,
+        deviceId: String,
+    ): CategoryResult = syncShardedSection(section as SyncSection<List<SyncGalleryRecord>>, sharded as ShardedCategory<SyncGalleryRecord>, listing, deviceId)
+
+    private suspend fun syncShardedSection(
+        section: SyncSection<List<SyncGalleryRecord>>,
+        sharded: ShardedCategory<SyncGalleryRecord>,
+        listing: Map<String, RemoteItem>,
+        deviceId: String,
+    ): CategoryResult {
+        val category = section.category
+        val start = SystemClock.elapsedRealtime()
+        val folder = "$SHARED_FOLDER/${sharded.folderName}"
+        val manifestPath = "$SHARED_FOLDER/${sharded.manifestName}"
+        val cache = ShardCache(File(shardsDir, sharded.name), json, sharded)
+        val cachedETag = OneDriveSyncState.shardedETag(category).value
+        val version = dirtyVersions.getValue(category).get()
+        val dirty = OneDriveSyncState.dirty(category).value
+        val cachedManifest = withContext(Dispatchers.IO) { cache.manifest()?.takeIf { cachedETag != null && cache.hasAll(it) } }
+
+        var remote = listing[sharded.manifestName]
+        var legacy = listing[category.fileName]
+        // Skipped only once the single file of before is the stub this device knows, see ensureStub
+        val stubbed = legacy != null && legacy.eTag == OneDriveSyncState.stubETag(category).value
+        if (remote != null && cachedManifest != null && remote.eTag == cachedETag && !dirty && stubbed) {
+            logcat(TAG) { "$category: skipped (${SystemClock.elapsedRealtime() - start} ms)" }
+            return CategoryResult(category, SyncAction.SKIPPED, SyncCounts())
+        }
+
+        var action = SyncAction.UPLOADED
+        for (attempt in 0 until MAX_ATTEMPTS) {
+            val current = remote
+            var cloudManifest: SectionManifest? = null
+            var baseline: List<SyncGalleryRecord>? = null
+            var cloud: List<SyncGalleryRecord>?
+            // The single file of before, unless it is the stub this device knows: its records (format 1, written before
+            // the shards or by an older build since) are merged in, then it is replaced by the stub
+            val legacyItem = legacy
+            var legacyRecords: List<SyncGalleryRecord>? = null
+            var legacyStub = false
+            if (legacyItem != null && legacyItem.eTag != OneDriveSyncState.stubETag(category).value) {
+                phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD)
+                val download = File(syncDir, "${category.fileName}.download")
+                val file = try {
+                    if (OneDriveClient.download("$SHARED_FOLDER/${category.fileName}", download)) readSectionUnchecked(download, section.serializer) else null
+                } finally {
+                    download.delete()
+                }
+                when {
+                    // Gone since the listing
+                    file == null -> legacy = null
+                    file.version <= SYNC_FORMAT_VERSION -> legacyRecords = file.items
+                    // The stub, written by another device
+                    else -> legacyStub = true
+                }
+            }
+            when {
+                current != null && cachedManifest != null && current.eTag == cachedETag -> {
+                    // Unchanged in the cloud: the cached copy is the cloud copy and the baseline
+                    cloudManifest = cachedManifest
+                    cloud = withContext(Dispatchers.IO) { cache.read(cachedManifest) }
+                    baseline = cloud
+                }
+                current != null -> {
+                    action = SyncAction.MERGED
+                    phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD)
+                    val manifest = downloadManifest(manifestPath)
+                    if (manifest == null) {
+                        // Deleted since the listing: handle it as a missing manifest
+                        remote = null
+                        continue
+                    }
+                    if (!downloadShards(folder, manifest, cache)) {
+                        // A shard is gone: replaced by a newer manifest, or deleted for good. The same manifest listed
+                        // again is unreadable for everyone: written over with a merge without baseline of the shards
+                        // still there, and of what this device last synced in the place of the missing ones
+                        val again = OneDriveClient.list(SHARED_FOLDER)
+                        remote = again[sharded.manifestName]
+                        legacy = again[category.fileName]
+                        if (remote?.eTag != current.eTag) continue
+                        // Without a copy of its own, written over it would drop the records of the missing shards, which
+                        // other devices would then delete: left to a device that synced before
+                        if (cachedManifest == null) throw OneDriveException("$category on OneDrive is missing shards: sync a device that synced before, or clear the cloud data")
+                        logcat(TAG) { "$category: shards missing on OneDrive, written again" }
+                        cloud = withContext(Dispatchers.IO) { cache.readRecovering(manifest, cachedManifest) }
+                    } else {
+                        cloudManifest = manifest
+                        cloud = withContext(Dispatchers.IO) { cache.read(manifest) }
+                        baseline = if (cachedManifest != null) readShardedBaseline(cache, cachedManifest) else legacyBaseline(section)
+                    }
+                }
+                legacyRecords != null -> {
+                    // No manifest yet: the single file is the cloud copy, the first merge with the shards
+                    action = SyncAction.MERGED
+                    cloud = legacyRecords
+                    baseline = legacyBaseline(section)
+                    legacyRecords = null
+                }
+                // Nothing in the cloud, or only the stub of a manifest deleted since: nothing deleted
+                else -> cloud = section.empty
+            }
+            // Records an older build wrote to the single file next to the manifest: taken as added in the cloud
+            val cloudInput = legacyRecords?.let { section.merge(it, cloud!!, null) } ?: cloud!!
+            if (legacyRecords != null) action = SyncAction.MERGED
+            phase(R.string.onedrive_sync_phase_read_local, StepProgress.READ_LOCAL)
+            val local = section.collect(baseline, localChangedAt(category))
+            phase(R.string.onedrive_sync_phase_merge, StepProgress.MERGE)
+            val merged = section.merge(local, cloudInput, baseline)
+            val cloudChanged = cloudManifest == null || merged != cloud
+            baseline = null
+            cloud = null
+            val manifest: SectionManifest
+            val newETag: String?
+            if (cloudChanged) {
+                manifest = withContext(Dispatchers.IO) {
+                    cache.build(merged, cloudManifest?.shards?.map { it.minGid }.orEmpty(), now(), deviceId)
+                }
+                // Shards first: whoever reads the new manifest finds all of its shards. A shard is named by its content,
+                // one the cloud manifest lists is there already
+                val there = cloudManifest?.hashes.orEmpty()
+                val missing = manifest.shards.filter { it.hash !in there }.distinctBy { it.hash }
+                val total = missing.sumOf { it.size }
+                var done = 0L
+                phase(R.string.onedrive_sync_phase_upload, StepProgress.UPLOAD_SECTION, 0, total, bytes = true)
+                for (shard in missing) {
+                    val name = GidShards.fileName(ShardCache.SHARD_PREFIX, shard.hash)
+                    try {
+                        OneDriveClient.upload("$folder/$name", cache.shardFile(shard.hash), eTag = null) { sent, _ ->
+                            phase(R.string.onedrive_sync_phase_upload, StepProgress.UPLOAD_SECTION, done + sent, total, bytes = true)
+                        }
+                    } catch (_: OneDrivePreconditionException) {
+                        // Uploaded before, by this device or another one: the same content
+                    }
+                    done += shard.size
+                }
+                val output = File(syncDir, "${sharded.manifestName}.upload")
+                output.writeText(json.encodeToString(SectionManifest.serializer(), manifest))
+                newETag = try {
+                    OneDriveClient.upload(manifestPath, output, current?.eTag)
+                } catch (e: OneDrivePreconditionException) {
+                    if (attempt == MAX_ATTEMPTS - 1) throw e
+                    logcat(TAG) { "$category: changed on another device during the sync, retrying" }
+                    val again = OneDriveClient.list(SHARED_FOLDER)
+                    remote = again[sharded.manifestName]
+                    legacy = again[category.fileName]
+                    action = SyncAction.MERGED
+                    continue
+                } finally {
+                    output.delete()
+                }
+            } else {
+                manifest = cloudManifest!!
+                newETag = current!!.eTag
+            }
+            // Only after the cloud has the merged copy: write the difference back
+            phase(R.string.onedrive_sync_phase_apply, StepProgress.APPLY)
+            val counts = section.apply(local, merged)
+            withContext(Dispatchers.IO) {
+                cache.saveManifest(manifest)
+                cache.cleanUp(manifest.hashes)
+            }
+            val clean = dirtyVersions.getValue(category).get() == version
+            OneDriveSyncState.withMutableSnapshot {
+                it[OneDriveSyncState.shardedETag(category)] = newETag
+                if (clean) it[OneDriveSyncState.dirty(category)] = false
+            }
+            if (clean) changedAt.remove(category)
+            ensureStub(category, legacy, legacyStub, deviceId)
+            // The copy of the single file of before is no baseline any more
+            if (OneDriveSyncState.eTag(category).value != null || File(cacheDir, category.fileName).exists()) {
+                File(cacheDir, category.fileName).delete()
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.eTag(category)] = null }
+            }
+            if (cloudChanged && cloudManifest != null) removeOldShards(folder, manifest, cloudManifest)
+            logcat(TAG) {
+                "$category: ${if (action == SyncAction.MERGED) "downloaded and merged" else "uploaded only"}, " +
+                    "${manifest.shards.size} shards, +${counts.added} ~${counts.updated} -${counts.removed} " +
+                    "(${SystemClock.elapsedRealtime() - start} ms)"
+            }
+            return CategoryResult(category, action, counts)
+        }
+        throw OneDrivePreconditionException()
+    }
+
+    /** Fork: the manifest at [path], null when it is gone. */
+    private suspend fun downloadManifest(path: String): SectionManifest? {
+        val download = File(syncDir, "manifest.download")
+        try {
+            if (!OneDriveClient.download(path, download)) return null
+            val manifest = json.decodeFromString(SectionManifest.serializer(), download.readText())
+            OneDriveSyncMerger.checkVersion(manifest.version)
+            // The hashes name files here: a manifest with anything else is not taken
+            if (!manifest.shards.all { FavoritesExportCache.isValidHash(it.hash) }) throw OneDriveException("Invalid shard names in $path")
+            return manifest
+        } finally {
+            download.delete()
+        }
+    }
+
+    /**
+     * Fork: downloads the shards of [manifest] not cached yet. False when one of them is gone; the others are downloaded
+     * all the same, see [ShardCache.readRecovering].
+     */
+    private suspend fun downloadShards(folder: String, manifest: SectionManifest, cache: ShardCache<*>): Boolean {
+        val missing = manifest.shards.distinctBy { it.hash }.filterNot { cache.shardFile(it.hash).exists() }
+        val total = missing.sumOf { it.size }
+        var done = 0L
+        var complete = true
+        for (shard in missing) {
+            val file = cache.shardFile(shard.hash)
+            val temp = File(file.parentFile, "${file.name}.download")
+            try {
+                val found = OneDriveClient.download("$folder/${file.name}", temp) { read, _ ->
+                    phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD, done + read, total, bytes = true)
+                }
+                if (!found) {
+                    complete = false
+                    continue
+                }
+                done += temp.length()
+                if (!temp.renameTo(file)) {
+                    temp.copyTo(file, overwrite = true)
+                }
+            } finally {
+                temp.delete()
+            }
+        }
+        return complete
+    }
+
+    /**
+     * Fork: the last synced copy of the single file of before, the baseline of the first merge with the shards (written
+     * by this device, or by another one that moved first): deletions made since the last sync are not undone.
+     */
+    private fun legacyBaseline(section: SyncSection<List<SyncGalleryRecord>>): List<SyncGalleryRecord>? {
+        val cacheFile = File(cacheDir, section.category.fileName)
+        if (OneDriveSyncState.eTag(section.category).value == null || !cacheFile.exists()) return null
+        return readBaselineOrNull(section, cacheFile)
+    }
+
+    /** Fork: the baseline of a merge with a changed cloud copy, only the gid and time of each record, see [readBaselineOrNull]. */
+    private fun readShardedBaseline(cache: ShardCache<SyncGalleryRecord>, manifest: SectionManifest): List<SyncGalleryRecord>? = runCatching {
+        cache.read(manifest, SyncGalleryStamp.serializer()).map { SyncGalleryRecord(it.gid, it.time, BaselineGallery) }
+    }.onFailure { logcat(TAG, it) }.getOrNull()
+
+    /**
+     * Fork: puts the stub in place of the single file of before ([legacy], merged by this sync; null when there is none):
+     * a newer format with no items, which older builds stop at (written by a newer version) instead of writing records
+     * there that the shards never see. [isStub]: it is the stub already, written by another device. Changed meanwhile
+     * (an older build wrote it), it is left for the next sync, which merges it and tries again.
+     */
+    private suspend fun ensureStub(category: SyncCategory, legacy: RemoteItem?, isStub: Boolean, deviceId: String) {
+        val known = OneDriveSyncState.stubETag(category)
+        if (legacy != null && legacy.eTag == known.value) return
+        try {
+            val eTag = if (isStub && legacy != null) {
+                legacy.eTag
+            } else {
+                val output = File(syncDir, "${category.fileName}.stub")
+                writeSection(output, ListSerializer(SyncGalleryRecord.serializer()), SectionFile(version = SHARDED_STUB_VERSION, updatedAt = now(), deviceId = deviceId, items = emptyList()))
+                try {
+                    OneDriveClient.upload("$SHARED_FOLDER/${category.fileName}", output, legacy?.eTag)
+                } finally {
+                    output.delete()
+                }
+            }
+            OneDriveSyncState.withMutableSnapshot { it[known] = eTag }
+            logcat(TAG) { "$category: single file replaced by the stub" }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+        }
+    }
+
+    /**
+     * Fork: deletes the shards neither [manifest] nor the one it replaced lists. Only those unchanged for an hour: another
+     * device syncing at the same time may have just uploaded one for its manifest to come. A failure leaves them to the
+     * next upload.
+     */
+    private suspend fun removeOldShards(folder: String, manifest: SectionManifest, replaced: SectionManifest) {
+        try {
+            val keep = manifest.hashes + replaced.hashes
+            val oldBefore = Clock.System.now() - SHARD_GRACE
+            OneDriveClient.list(folder).values.forEach { item ->
+                val hash = ShardCache.hashOf(item.name) ?: return@forEach
+                val modified = item.lastModified?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return@forEach
+                if (hash !in keep && modified < oldBefore) OneDriveClient.delete("$folder/${item.name}")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            logcat(TAG, e)
+        }
+    }
+
     private fun <T> readSection(file: File, serializer: KSerializer<T>): SectionFile<T> {
         val section = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(SectionFile.serializer(serializer), it) }
         OneDriveSyncMerger.checkVersion(section.version)
@@ -813,6 +1151,9 @@ object OneDriveSync {
     }
 
     private fun <T> readSectionOrNull(file: File, serializer: KSerializer<T>): SectionFile<T>? = runCatching { readSection(file, serializer) }.getOrNull()
+
+    /** Fork: [readSection] without the version check, for the stub of a category kept in shards. */
+    private fun <T> readSectionUnchecked(file: File, serializer: KSerializer<T>): SectionFile<T> = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(SectionFile.serializer(serializer), it) }
 
     /**
      * Fork: the baseline of a merge with a changed cloud copy. Favorites and history take only the gid and the time of

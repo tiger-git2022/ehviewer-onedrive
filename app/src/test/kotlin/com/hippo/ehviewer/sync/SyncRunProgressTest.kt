@@ -31,11 +31,11 @@ class SyncRunProgressTest {
     @Test
     fun subStepsOfTheLastStepOnlyMoveForward() {
         val step = SyncRunProgress(title = 0, step = 4, steps = 4, favoritesIndex = true)
-        val checked = step.withDetail(StepProgress(1, 10, 10, StepProgress.CHECK)).fraction
-        val titlesStart = step.withDetail(StepProgress(2, 0, 50, StepProgress.TITLES)).fraction
-        val upload = step.withDetail(StepProgress(3, part = StepProgress.UPLOAD)).fraction
-        assertEquals(titlesStart, checked)
-        assertTrue(upload >= titlesStart)
-        assertTrue(checked < 1f)
+        val built = step.withDetail(StepProgress(1, 10, 10, StepProgress.BUILD)).fraction
+        val uploadStart = step.withDetail(StepProgress(2, 0, 50, StepProgress.UPLOAD)).fraction
+        val uploaded = step.withDetail(StepProgress(2, 50, 50, StepProgress.UPLOAD)).fraction
+        assertEquals(uploadStart, built)
+        assertTrue(uploaded >= uploadStart)
+        assertTrue(built < 1f)
     }
 }

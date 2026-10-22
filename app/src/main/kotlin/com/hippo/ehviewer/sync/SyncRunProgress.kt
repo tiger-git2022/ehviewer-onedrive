@@ -66,9 +66,10 @@ data class StepProgress(
         val UPLOAD_SECTION = 0.55f..0.8f
         val APPLY = 0.8f..1f
 
-        // Shares of the favorites index step: the newest pages of the cloud favorites, then a few Japanese titles
-        val CHECK = 0f..0.5f
-        val TITLES = 0.5f..0.9f
-        val UPLOAD = 0.9f..1f
+        // Shares of the favorites index step: reading the local and cloud favorites and building the index, then the
+        // upload. Fork: the check of the cloud favorites and the title lookups run beside the sync, see
+        // FavoritesIndexSync.startEhCheck
+        val BUILD = 0f..0.5f
+        val UPLOAD = 0.5f..1f
     }
 }
