@@ -646,12 +646,17 @@ object OneDriveSync {
         val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
         updateAccount(account)
         val deviceId = ensureDeviceId()
+        // Fork: the E-Hentai check of the cloud favorites runs beside the sync, not in its index step
+        if (!FavoritesIndexSync.working.value) FavoritesIndexSync.startEhCheck()
         val listing = OneDriveClient.list(SHARED_FOLDER)
         val results = sections.mapIndexed { index, section ->
             mutableProgress.value = SyncRunProgress(categoryTitle(section.category), index + 2, steps)
             // Fork: settings are per device, uploaded to its own file and never merged
             if (section === SettingsSection) uploadOwnSettings(deviceId) else syncSection(section, listing[section.category.fileName], deviceId)
         }
+        // Fork: local favorites the sync itself wrote do not mark the index (writes of the sync are not changes), which
+        // is no longer built again at every sync
+        if (results.any { it.category == SyncCategory.FAVORITES && !it.counts.isEmpty }) markFavoritesIndexChanged()
         var imported = 0
         val devicesError = if (manual) {
             mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_devices, steps - 1, steps)
@@ -687,7 +692,7 @@ object OneDriveSync {
                 mutex.withLock {
                     val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
                     updateAccount(account)
-                    FavoritesIndexSync.sync(ensureDeviceId(), deviceName, fromWork = true)
+                    FavoritesIndexSync.sync(ensureDeviceId(), deviceName)
                 }
             }
         } catch (e: CancellationException) {

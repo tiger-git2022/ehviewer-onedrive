@@ -23,6 +23,7 @@ import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -47,6 +48,10 @@ import splitties.init.appCtx
  * differ (favorites changed on the website), the newest pages of "all" add the favorites added there, and only the
  * slots whose counts still differ are read again page by page. Reading pages (all of them the first time) and looking
  * up Japanese titles take long with many favorites: [CloudFavoritesWork] does it in the background, not the sync.
+ *
+ * Fork: the count check and the few title lookups of a sync run beside it ([startEhCheck]), never in its way: what
+ * they find goes up with the next sync, which they schedule. A sync with nothing changed since the index it last
+ * uploaded does not build the index again, see [skipUnchanged].
  */
 object FavoritesIndexSync {
     private const val TAG = "FavoritesIndex"
@@ -61,6 +66,9 @@ object FavoritesIndexSync {
     /** A shard no manifest lists is deleted once it is this old, see [syncIndex]. */
     private val SHARD_GRACE = 1.hours
     private const val CHECK_INTERVAL_MILLIS = 60 * 60_000L
+
+    /** Fork: an index found unchanged is built again after this long anyway, for the gallery details it holds. */
+    private const val REBUILD_INTERVAL_MILLIS = 6 * 60 * 60_000L
 
     // Fork: with auto download on, new favorites are looked for at every sync and when the app comes to the front (see
     // checkForAutoDownload), one page each; this only keeps the two from reading it twice in a row
@@ -129,6 +137,19 @@ object FavoritesIndexSync {
         set(value) {
             cacheRef = value?.let(::SoftReference)
         }
+
+    /** Fork: the E-Hentai check of the last sync, see [startEhCheck]. */
+    @Volatile
+    private var ehCheckJob: Job? = null
+
+    /**
+     * Fork: what the index this process last uploaded (or found unchanged) was built from, see [skipUnchanged].
+     * [at] is in [SystemClock.elapsedRealtime] time.
+     */
+    private data class BuiltIndex(val at: Long, val user: String?, val signedIn: Boolean, val deviceId: String, val deviceName: String, val eTag: String?)
+
+    @Volatile
+    private var lastBuilt: BuiltIndex? = null
 
     /** [SystemClock.elapsedRealtime] of the last count check, 0 before the first one. */
     @Volatile
@@ -682,7 +703,6 @@ object FavoritesIndexSync {
                 enqueueCloudFavoritesWork(appCtx)
                 return
             }
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, pageCount, CHECK_MAX_PAGES, StepProgress.CHECK)
             delay(PAGE_INTERVAL_MILLIS)
             page = EhEngine.getFavoritesPage(FavListUrlBuilder().apply { setIndex(cursor, isNext = true) }.build())
             if (userKey() != user) return
@@ -699,9 +719,35 @@ object FavoritesIndexSync {
         if (!Settings.hasSignedIn.value || !AutoDownload.isOn) return
         val before = current()
         runEhStep { checkCloudFavorites() }
-        // Left for the next step when a sync runs
-        if (!OneDriveSync.running.value) mutableProgress.value = null
         if (current() != before && enabled) OneDriveSync.scheduleFavoritesIndexSync()
+    }
+
+    /**
+     * Fork: the E-Hentai part of a sync, started with it and run beside it: the count check, then the Japanese titles of
+     * the favorites just added. They used to run inside the index step, and the sync waited for the website (pages a
+     * second apart, a pause of 5 s between lookups). A change they find is uploaded by the next sync, scheduled here.
+     */
+    fun startEhCheck() {
+        if (!enabled || !Settings.hasSignedIn.value) return
+        if (ehCheckJob?.isActive == true) return
+        ehCheckJob = scope.launch {
+            val version = OneDriveSync.favoritesIndexVersion()
+            runEhStep { checkCloudFavorites() }
+            runEhStep {
+                // Not shown: the sync shows its own steps
+                val progress = MutableStateFlow<StepProgress?>(null)
+                lookUpJapaneseTitles(currentIndex(), TITLE_LOOKUPS_PER_SYNC, progress)
+                // Many favorites without a Japanese title (the first sync of a large list): the work looks them up
+                val index = currentIndex()
+                val cloud = current()
+                if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1, cloud.defaultTitles).isNotEmpty() ||
+                    FavoritesIndexMerger.missingPandaTitles(index, cloud).isNotEmpty()
+                ) {
+                    enqueueCloudFavoritesWork(appCtx)
+                }
+            }
+            if (OneDriveSync.favoritesIndexVersion() != version && enabled) OneDriveSync.scheduleFavoritesIndexSync()
+        }
     }
 
     /** Reads the cloud favorites and looks up every missing Japanese title again in the background. */
@@ -827,12 +873,12 @@ object FavoritesIndexSync {
     // region OneDrive
 
     /**
-     * Uploads the index if it changed. Runs inside [OneDriveSync.sync]; a failure of the E-Hentai part does not stop
-     * the upload of what is known. [fromWork]: an upload of [CloudFavoritesWork], which checks and looks up itself.
+     * Uploads the index if it changed. Runs inside [OneDriveSync.sync], and for [CloudFavoritesWork] through
+     * [OneDriveSync.uploadFavoritesIndex].
      */
-    suspend fun sync(deviceId: String, deviceName: String, fromWork: Boolean = false) {
+    suspend fun sync(deviceId: String, deviceName: String) {
         try {
-            val version = syncIndex(deviceId, deviceName, fromWork)
+            val version = syncIndex(deviceId, deviceName)
             OneDriveSync.favoritesIndexSynced(version)
         } finally {
             mutableProgress.value = null
@@ -840,19 +886,24 @@ object FavoritesIndexSync {
     }
 
     /** Returns the version of the cloud favorites changes the uploaded index includes. */
-    private suspend fun syncIndex(deviceId: String, deviceName: String, fromWork: Boolean): Long {
+    private suspend fun syncIndex(deviceId: String, deviceName: String): Long {
         if (!OneDriveSyncState.exportFavoritesIndex.value) {
             val version = OneDriveSync.favoritesIndexVersion()
             removeExport()
             return version
         }
         // Fork: the manifest and the shards are listed at once, shards already there are not uploaded again
+        mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.BUILD)
         var listing = adoptLatest(OneDriveClient.list(SHARDS_FOLDER))
         var remote = listing[FavoritesExportCache.MANIFEST_FILE]
         val signedIn = Settings.hasSignedIn.value
-        if (signedIn && !fromWork) {
-            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, part = StepProgress.CHECK)
-            runEhStep { checkCloudFavorites() }
+        val buildState = BuiltIndex(SystemClock.elapsedRealtime(), userKey(), signedIn, deviceId, deviceName, remote?.eTag)
+        // Fork: taken before looking at what changed, so a change from now on keeps the index waiting
+        val unchangedVersion = OneDriveSync.favoritesIndexVersion()
+        if (skipUnchanged(buildState, listing)) {
+            logcat(TAG) { "Index unchanged since the last upload, not built again" }
+            removeLegacyIndex()
+            return unchangedVersion
         }
         var version = 0L
         val build = suspend {
@@ -865,17 +916,6 @@ object FavoritesIndexSync {
         }
         var index = build()
         if (signedIn) {
-            if (!fromWork) {
-                runEhStep { lookUpJapaneseTitles(index, TITLE_LOOKUPS_PER_SYNC, mutableProgress, StepProgress.TITLES) }
-                index = build()
-                // Many favorites without a Japanese title (the first sync of a large list): the work looks them up
-                val cloud = current()
-                if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1, cloud.defaultTitles).isNotEmpty() ||
-                    FavoritesIndexMerger.missingPandaTitles(index, cloud).isNotEmpty()
-                ) {
-                    enqueueCloudFavoritesWork(appCtx)
-                }
-            }
             val listed = index
             // Titles of galleries the index no longer lists: nothing to upload
             update(markChanged = false) { cloud -> FavoritesIndexMerger.pruneTitles(cloud, listed) }
@@ -891,6 +931,7 @@ object FavoritesIndexSync {
             val uploaded = listing.keys.mapNotNullTo(HashSet()) { FavoritesExportCache.hashOf(it) }
             if (remote != null && remote.eTag == storedETag && last != null && last.sameContent(manifest) && manifest.shards.all { it.hash in uploaded }) {
                 logcat(TAG) { "Index unchanged" }
+                lastBuilt = buildState.copy(eTag = remote.eTag)
                 removeLegacyIndex()
                 return version
             }
@@ -924,6 +965,7 @@ object FavoritesIndexSync {
                 it[OneDriveSyncState.favoritesIndexETag] = eTag
                 it[OneDriveSyncState.favoritesIndexRemoved] = false
             }
+            lastBuilt = buildState.copy(eTag = eTag)
             // Shards neither this manifest nor the one it replaced lists: a reader of that one may still be downloading
             // its shards, they go with the next upload. Only shards unchanged for a while: another device syncing at
             // the same time may have just uploaded one for its manifest to come. A shard a manifest lists that is gone
@@ -945,6 +987,24 @@ object FavoritesIndexSync {
             return version
         }
         throw OneDrivePreconditionException()
+    }
+
+    /**
+     * Fork: true when the index on OneDrive is the one this process last built and nothing it is made of changed since:
+     * no change of the local or cloud favorites waits ([OneDriveSyncState.favoritesIndexDirty]), no other device wrote
+     * it, its shards are all there, and the same accounts and device name. Building it reads every favorite and writes
+     * the shards again, long with many. Built again after [REBUILD_INTERVAL_MILLIS] anyway: the gallery details of the
+     * local favorites (titles, for one) change without counting as a change of the favorites.
+     */
+    private suspend fun skipUnchanged(now: BuiltIndex, listing: Map<String, RemoteItem>): Boolean {
+        val last = lastBuilt ?: return false
+        if (OneDriveSyncState.favoritesIndexDirty.value) return false
+        if (now.at - last.at !in 0 until REBUILD_INTERVAL_MILLIS) return false
+        if (now.copy(at = 0) != last.copy(at = 0)) return false
+        if (now.eTag == null || now.eTag != OneDriveSyncState.favoritesIndexETag.value) return false
+        val manifest = withContext(Dispatchers.IO) { exportCache.manifest() } ?: return false
+        val uploaded = listing.keys.mapNotNullTo(HashSet()) { FavoritesExportCache.hashOf(it) }
+        return manifest.shards.all { it.hash in uploaded }
     }
 
     /**
@@ -1058,6 +1118,7 @@ object FavoritesIndexSync {
 
     /** The OneDrive account changed: the index of the new account is unknown. */
     fun onCloudStateReset() {
+        lastBuilt = null
         lastCheck = 0L
         lastCheckUser = null
         // The other account may hold a single file of format 1 too
