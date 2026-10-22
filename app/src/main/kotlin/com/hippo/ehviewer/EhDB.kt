@@ -42,6 +42,7 @@ import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.sync.OneDriveSync
+import com.hippo.ehviewer.sync.PendingProgress
 import com.hippo.ehviewer.sync.SyncCategory
 import kotlinx.coroutines.flow.Flow
 import okio.Path
@@ -54,6 +55,8 @@ object EhDB {
 
     suspend fun putGalleryInfo(galleryInfo: GalleryEntity) {
         db.galleryDao().upsert(galleryInfo)
+        // Fork: reading progress synced before this device had the gallery
+        PendingProgress.onGalleryAdded(galleryInfo.gid)
     }
 
     private suspend fun deleteGalleryInfo(galleryInfo: GalleryEntity) {
@@ -436,6 +439,23 @@ object EhDB {
         val dao = db.galleryDao()
         if (insert.isNotEmpty()) dao.insertOrIgnore(insert)
         if (update.isNotEmpty()) dao.update(update)
+    }
+
+    /**
+     * Fork: synced progress of galleries this device just got, where it has none or only the first page (the reader
+     * opened and closed again), never over a page read further here.
+     */
+    suspend fun putSyncedProgressIfUnread(progress: List<ProgressInfo>) {
+        if (progress.isEmpty()) return
+        // One transaction: the reader saving a page in between is never written over
+        db.useWriterConnection { conn ->
+            conn.immediateTransaction {
+                val dao = db.progressDao()
+                val read = dao.list().filter { it.page > 0 }.mapTo(HashSet()) { it.gid }
+                val write = progress.filter { it.gid !in read }
+                if (write.isNotEmpty()) dao.upsert(write)
+            }
+        }
     }
 
     suspend fun applySyncedProgress(upsert: List<ProgressInfo>, delete: List<Long>) = db.useWriterConnection { conn ->
