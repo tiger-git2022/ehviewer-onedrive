@@ -101,6 +101,19 @@ class ShardCacheTest {
     }
 
     @Test
+    fun aMissingShardIsFilledFromTheLastSyncedCopy() {
+        val list = records(1L..2_500L)
+        val synced = cache.build(list, emptyList(), updatedAt = 1, deviceId = "a")
+        // Another device changed the middle shard, whose file then went missing
+        val changed = list.map { if (it.gid == 1_500L) record(1_500L, time = 99_999) else it }
+        val cloud = cache.build(changed, synced.shards.map { it.minGid }, updatedAt = 2, deviceId = "b")
+        cache.shardFile(cloud.shards[1].hash).delete()
+        assertEquals(list, cache.readRecovering(cloud, synced))
+        // Without a copy of its own, the other shards are still read
+        assertEquals(list.filter { it.gid !in 1_001L..2_000L }, cache.readRecovering(cloud, null))
+    }
+
+    @Test
     fun namesOfOtherFilesAreNoShards() {
         assertNull(ShardCache.hashOf("manifest.json"))
         assertNull(ShardCache.hashOf("shard-../x.json.gz"))

@@ -922,13 +922,14 @@ object OneDriveSync {
                     }
                     if (!downloadShards(folder, manifest, cache)) {
                         // A shard is gone: replaced by a newer manifest, or deleted for good. The same manifest listed
-                        // again is unreadable for everyone: written over with a merge without baseline
+                        // again is unreadable for everyone: written over with a merge without baseline of the shards
+                        // still there, and of what this device last synced in the place of the missing ones
                         val again = OneDriveClient.list(SHARED_FOLDER)
                         remote = again[sharded.manifestName]
                         legacy = again[category.fileName]
                         if (remote?.eTag != current.eTag) continue
                         logcat(TAG) { "$category: shards missing on OneDrive, written again" }
-                        cloud = section.empty
+                        cloud = withContext(Dispatchers.IO) { cache.readRecovering(manifest, cachedManifest) }
                     } else {
                         cloudManifest = manifest
                         cloud = withContext(Dispatchers.IO) { cache.read(manifest) }

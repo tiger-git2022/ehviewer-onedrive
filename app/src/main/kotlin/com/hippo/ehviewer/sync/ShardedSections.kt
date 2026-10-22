@@ -97,6 +97,29 @@ class ShardCache<R>(private val dir: File, private val json: Json, private val s
     fun read(manifest: SectionManifest): List<R> = read(manifest, sharded.serializer)
 
     /**
+     * The records of [manifest] when some of its shards are gone for good: those of the shards here, and for the gid
+     * ranges of the missing ones the records of [fallback] (the copy last synced, all of its shards here), so a shard
+     * deleted by hand does not make the records of every other shard look deleted.
+     */
+    fun readRecovering(manifest: SectionManifest, fallback: SectionManifest?): List<R> {
+        val shards = manifest.shards.sortedBy { it.minGid }
+        val result = ArrayList<R>(manifest.count)
+        val missing = ArrayList<LongRange>()
+        shards.forEachIndexed { i, shard ->
+            if (shardFile(shard.hash).exists()) {
+                result += read(SectionManifest(shards = listOf(shard)))
+            } else {
+                val upper = shards.getOrNull(i + 1)?.minGid ?: Long.MAX_VALUE
+                missing += shard.minGid until upper
+            }
+        }
+        if (missing.isNotEmpty() && fallback != null) {
+            read(fallback).filterTo(result) { record -> missing.any { sharded.gidOf(record) in it } }
+        }
+        return result.distinctBy(sharded.gidOf).sortedBy(sharded.gidOf)
+    }
+
+    /**
      * The manifest of [records] (sorted by gid, one per gid), written in shards here: in the ranges of [bounds] (the min
      * gids of the cloud manifest), so the shards the change does not touch come out the same and need no upload.
      */
