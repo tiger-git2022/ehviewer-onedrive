@@ -549,6 +549,8 @@ object OneDriveSync {
         withContext(Dispatchers.IO) {
             syncDir.deleteRecursively()
         }
+        // Fork: its file was in the sync folder
+        PendingProgress.forget()
         OneDriveSyncState.withMutableSnapshot {
             SyncCategory.entries.forEach { category ->
                 it[OneDriveSyncState.eTag(category)] = null
@@ -683,6 +685,10 @@ object OneDriveSync {
             // which is no longer built again at every sync. Marked at once, so a later step failing cannot lose it
             if (result.category == SyncCategory.FAVORITES && !result.counts.isEmpty) markFavoritesIndexChanged()
             result
+        }
+        // Fork: progress synced before this device had the gallery, which a step may have brought, see PendingProgress
+        if (OneDriveSyncState.isEnabled(SyncCategory.PROGRESS)) {
+            runCatching { applyPendingProgress() }.onFailure { if (it is CancellationException) throw it else logcat(TAG, it) }
         }
         var imported = 0
         val devicesError = if (manual) {
@@ -1148,6 +1154,21 @@ object OneDriveSync {
         val section = GZIPInputStream(file.inputStream().buffered()).use { json.decodeFromStream(SectionFile.serializer(serializer), it) }
         OneDriveSyncMerger.checkVersion(section.version)
         return section
+    }
+
+    /**
+     * Fork: writes the pending progress of galleries this device got since. The first time, the pending progress is
+     * that of the baseline without a row here: so far it waited only there.
+     */
+    private suspend fun applyPendingProgress() {
+        if (PendingProgress.get() == null) {
+            val baseline = withContext(Dispatchers.IO) {
+                readSectionOrNull(File(cacheDir, SyncCategory.PROGRESS.fileName), ProgressSection.serializer)
+            }?.items ?: return
+            val rows = EhDB.getAllReadProgress().mapTo(HashSet()) { it.gid }
+            PendingProgress.replace(baseline.filter { it.gid !in rows }.associate { it.gid to it.page })
+        }
+        PendingProgress.applyAdded()
     }
 
     private fun <T> readSectionOrNull(file: File, serializer: KSerializer<T>): SectionFile<T>? = runCatching { readSection(file, serializer) }.getOrNull()

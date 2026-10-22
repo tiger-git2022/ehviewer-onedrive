@@ -42,6 +42,7 @@ import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.sync.OneDriveSync
+import com.hippo.ehviewer.sync.PendingProgress
 import com.hippo.ehviewer.sync.SyncCategory
 import kotlinx.coroutines.flow.Flow
 import okio.Path
@@ -54,6 +55,8 @@ object EhDB {
 
     suspend fun putGalleryInfo(galleryInfo: GalleryEntity) {
         db.galleryDao().upsert(galleryInfo)
+        // Fork: reading progress synced before this device had the gallery
+        PendingProgress.onGalleryAdded(galleryInfo.gid)
     }
 
     private suspend fun deleteGalleryInfo(galleryInfo: GalleryEntity) {
@@ -436,6 +439,11 @@ object EhDB {
         val dao = db.galleryDao()
         if (insert.isNotEmpty()) dao.insertOrIgnore(insert)
         if (update.isNotEmpty()) dao.update(update)
+    }
+
+    /** Fork: synced progress of galleries this device just got, never over a page read here meanwhile. */
+    suspend fun insertSyncedProgressIfAbsent(progress: List<ProgressInfo>) {
+        if (progress.isNotEmpty()) db.progressDao().insertOrIgnore(progress)
     }
 
     suspend fun applySyncedProgress(upsert: List<ProgressInfo>, delete: List<Long>) = db.useWriterConnection { conn ->
