@@ -22,6 +22,7 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.sync.FavoritesIndexSync
+import com.hippo.ehviewer.sync.PendingProgress
 import com.hippo.ehviewer.ui.main.CHINESE_LANGUAGE_FILTER
 import com.hippo.ehviewer.ui.main.isChinese
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
@@ -84,6 +85,8 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                             Settings.favCloudCount = result.countArray.sum()
                             // The slot and account of this request: the user may have switched either meanwhile
                             FavoritesIndexSync.onPageLoaded(favCat, result, user)
+                            // Fork: reading progress synced from another device for galleries never opened here
+                            runSuspendCatching { PendingProgress.onListed(result.galleryInfoList) }
                             LoadResult.Page(result.galleryInfoList, result.prev, result.next)
                         }
                     }

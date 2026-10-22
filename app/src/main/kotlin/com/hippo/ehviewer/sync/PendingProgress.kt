@@ -1,6 +1,8 @@
 package com.hippo.ehviewer.sync
 
+import com.ehviewer.core.data.model.asEntity
 import com.ehviewer.core.database.model.ProgressInfo
+import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.EhDB
 import java.io.File
@@ -48,6 +50,19 @@ object PendingProgress {
             EhDB.putSyncedProgressIfUnread(listOf(ProgressInfo(gid, page)))
             mutex.withLock { pending?.let { saveLocked(it - gid) } }
         }.onFailure { logcat("PendingProgress", it) }
+    }
+
+    /**
+     * Galleries a list just showed (the cloud favorites): those with pending progress and no row here get their row,
+     * which writes the progress ([onGalleryAdded]), so the list shows it without opening each of them first.
+     */
+    suspend fun onListed(infos: List<GalleryInfo>) {
+        val current = get() ?: return
+        if (current.isEmpty()) return
+        val waiting = infos.filter { it.gid in current }
+        if (waiting.isEmpty()) return
+        val known = EhDB.existingGalleryGids(waiting.map { it.gid })
+        waiting.filter { it.gid !in known }.forEach { EhDB.putGalleryInfo(it.asEntity()) }
     }
 
     /** Writes the pending progress of the galleries added since, by any way. */
