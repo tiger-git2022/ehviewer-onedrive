@@ -77,6 +77,10 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     // Fork: ETag of the manifest of a category kept in shards (see ShardedCategory), cached in files/onedrive_sync/shards
     private val shardedETags = SyncCategory.entries.associateWith { stringOrNullPref("sharded_etag_${it.name.lowercase()}") }
     fun shardedETag(category: SyncCategory) = shardedETags.getValue(category)
+
+    // Fork: ETag of the stub this device wrote or saw in place of the single file of before, see OneDriveSync.ensureStub
+    private val stubETags = SyncCategory.entries.associateWith { stringOrNullPref("stub_etag_${it.name.lowercase()}") }
+    fun stubETag(category: SyncCategory) = stubETags.getValue(category)
     fun dirty(category: SyncCategory) = dirty.getValue(category)
     fun changedAt(category: SyncCategory) = changedAt.getValue(category)
 

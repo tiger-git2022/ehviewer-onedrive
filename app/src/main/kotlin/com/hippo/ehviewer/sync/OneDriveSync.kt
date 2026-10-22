@@ -553,6 +553,7 @@ object OneDriveSync {
             SyncCategory.entries.forEach { category ->
                 it[OneDriveSyncState.eTag(category)] = null
                 it[OneDriveSyncState.shardedETag(category)] = null
+                it[OneDriveSyncState.stubETag(category)] = null
             }
             it[OneDriveSyncState.deviceFileETag] = null
             it[OneDriveSyncState.remoteDeviceETags] = "{}"
@@ -869,7 +870,9 @@ object OneDriveSync {
 
         var remote = listing[sharded.manifestName]
         var legacy = listing[category.fileName]
-        if (remote != null && cachedManifest != null && remote.eTag == cachedETag && !dirty) {
+        // Skipped only once the single file of before is the stub this device knows, see ensureStub
+        val stubbed = legacy != null && legacy.eTag == OneDriveSyncState.stubETag(category).value
+        if (remote != null && cachedManifest != null && remote.eTag == cachedETag && !dirty && stubbed) {
             logcat(TAG) { "$category: skipped (${SystemClock.elapsedRealtime() - start} ms)" }
             return CategoryResult(category, SyncAction.SKIPPED, SyncCounts())
         }
@@ -878,10 +881,29 @@ object OneDriveSync {
         for (attempt in 0 until MAX_ATTEMPTS) {
             val current = remote
             var cloudManifest: SectionManifest? = null
-            // The single file of before, read when no manifest is there yet: replaced by the stub once merged
-            var migrated: RemoteItem? = null
             var baseline: List<SyncGalleryRecord>? = null
             var cloud: List<SyncGalleryRecord>?
+            // The single file of before, unless it is the stub this device knows: its records (format 1, written before
+            // the shards or by an older build since) are merged in, then it is replaced by the stub
+            val legacyItem = legacy
+            var legacyRecords: List<SyncGalleryRecord>? = null
+            var legacyStub = false
+            if (legacyItem != null && legacyItem.eTag != OneDriveSyncState.stubETag(category).value) {
+                phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD)
+                val download = File(syncDir, "${category.fileName}.download")
+                val file = try {
+                    if (OneDriveClient.download("$SHARED_FOLDER/${category.fileName}", download)) readSectionUnchecked(download, section.serializer) else null
+                } finally {
+                    download.delete()
+                }
+                when {
+                    // Gone since the listing
+                    file == null -> legacy = null
+                    file.version <= SYNC_FORMAT_VERSION -> legacyRecords = file.items
+                    // The stub, written by another device
+                    else -> legacyStub = true
+                }
+            }
             when {
                 current != null && cachedManifest != null && current.eTag == cachedETag -> {
                     // Unchanged in the cloud: the cached copy is the cloud copy and the baseline
@@ -913,30 +935,23 @@ object OneDriveSync {
                         baseline = if (cachedManifest != null) readShardedBaseline(cache, cachedManifest) else legacyBaseline(section)
                     }
                 }
-                legacy != null -> {
+                legacyRecords != null -> {
+                    // No manifest yet: the single file is the cloud copy, the first merge with the shards
                     action = SyncAction.MERGED
-                    phase(R.string.onedrive_sync_phase_download, StepProgress.DOWNLOAD)
-                    val download = File(syncDir, "${category.fileName}.download")
-                    val file = try {
-                        if (OneDriveClient.download("$SHARED_FOLDER/${category.fileName}", download)) readSectionUnchecked(download, section.serializer) else null
-                    } finally {
-                        download.delete()
-                    }
-                    if (file != null && file.version <= SYNC_FORMAT_VERSION) {
-                        migrated = legacy
-                        cloud = file.items
-                        baseline = legacyBaseline(section)
-                    } else {
-                        // Gone, or the stub of a manifest deleted since: nothing to merge, nothing deleted
-                        cloud = section.empty
-                    }
+                    cloud = legacyRecords
+                    baseline = legacyBaseline(section)
+                    legacyRecords = null
                 }
+                // Nothing in the cloud, or only the stub of a manifest deleted since: nothing deleted
                 else -> cloud = section.empty
             }
+            // Records an older build wrote to the single file next to the manifest: taken as added in the cloud
+            val cloudInput = legacyRecords?.let { section.merge(it, cloud!!, null) } ?: cloud!!
+            if (legacyRecords != null) action = SyncAction.MERGED
             phase(R.string.onedrive_sync_phase_read_local, StepProgress.READ_LOCAL)
             val local = section.collect(baseline, localChangedAt(category))
             phase(R.string.onedrive_sync_phase_merge, StepProgress.MERGE)
-            val merged = section.merge(local, cloud!!, baseline)
+            val merged = section.merge(local, cloudInput, baseline)
             val cloudChanged = cloudManifest == null || merged != cloud
             baseline = null
             cloud = null
@@ -996,7 +1011,7 @@ object OneDriveSync {
                 if (clean) it[OneDriveSyncState.dirty(category)] = false
             }
             if (clean) changedAt.remove(category)
-            migrated?.let { replaceWithStub(category, it, deviceId) }
+            ensureStub(category, legacy, legacyStub, deviceId)
             // The copy of the single file of before is no baseline any more
             if (OneDriveSyncState.eTag(category).value != null || File(cacheDir, category.fileName).exists()) {
                 File(cacheDir, category.fileName).delete()
@@ -1068,20 +1083,28 @@ object OneDriveSync {
     }.onFailure { logcat(TAG, it) }.getOrNull()
 
     /**
-     * Fork: the single file of before is replaced by a stub of a newer format with no items: older builds stop at it
-     * (written by a newer version) instead of writing it over. Changed meanwhile (an older build wrote it), it is left
-     * for the next sync, which finds the manifest and replaces it then.
+     * Fork: puts the stub in place of the single file of before ([legacy], merged by this sync; null when there is none):
+     * a newer format with no items, which older builds stop at (written by a newer version) instead of writing records
+     * there that the shards never see. [isStub]: it is the stub already, written by another device. Changed meanwhile
+     * (an older build wrote it), it is left for the next sync, which merges it and tries again.
      */
-    private suspend fun replaceWithStub(category: SyncCategory, legacy: RemoteItem, deviceId: String) {
+    private suspend fun ensureStub(category: SyncCategory, legacy: RemoteItem?, isStub: Boolean, deviceId: String) {
+        val known = OneDriveSyncState.stubETag(category)
+        if (legacy != null && legacy.eTag == known.value) return
         try {
-            val output = File(syncDir, "${category.fileName}.stub")
-            writeSection(output, ListSerializer(SyncGalleryRecord.serializer()), SectionFile(version = SHARDED_STUB_VERSION, updatedAt = now(), deviceId = deviceId, items = emptyList()))
-            try {
-                OneDriveClient.upload("$SHARED_FOLDER/${category.fileName}", output, legacy.eTag)
-            } finally {
-                output.delete()
+            val eTag = if (isStub && legacy != null) {
+                legacy.eTag
+            } else {
+                val output = File(syncDir, "${category.fileName}.stub")
+                writeSection(output, ListSerializer(SyncGalleryRecord.serializer()), SectionFile(version = SHARDED_STUB_VERSION, updatedAt = now(), deviceId = deviceId, items = emptyList()))
+                try {
+                    OneDriveClient.upload("$SHARED_FOLDER/${category.fileName}", output, legacy?.eTag)
+                } finally {
+                    output.delete()
+                }
             }
-            logcat(TAG) { "$category: single file replaced by the shards" }
+            OneDriveSyncState.withMutableSnapshot { it[known] = eTag }
+            logcat(TAG) { "$category: single file replaced by the stub" }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
