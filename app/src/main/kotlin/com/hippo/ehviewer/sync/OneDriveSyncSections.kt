@@ -271,21 +271,33 @@ object ProgressSection : SyncSection<List<SyncProgress>>(
         carried = emptySet()
         val baselineByGid = baseline.orEmpty().associateBy { it.gid }
         val rows = EhDB.getAllReadProgress()
-        val local = rows.map { row ->
+        val missing = missingProgress(baselineByGid.values, rows.associate { it.gid to it.page })
+        val kept = if (missing.isEmpty()) {
+            emptySet()
+        } else {
+            carriedProgress(missing, EhDB.existingGalleryGids(missing), PendingProgress.get()?.keys).toSet()
+        }
+        carried = kept
+        val local = rows.filter { it.gid !in kept }.map { row ->
             val base = baselineByGid[row.gid]
             SyncProgress(row.gid, row.page, if (base != null && base.page == row.page) base.modifiedAt else changedAt)
         }
-        val rowGids = rows.mapTo(HashSet()) { it.gid }
-        val unknown = baselineByGid.keys.filter { it !in rowGids }
-        if (unknown.isEmpty()) return local
-        val known = EhDB.existingGalleryGids(unknown)
-        val kept = carriedProgress(unknown, known, PendingProgress.get()?.keys)
-        carried = kept.toSet()
         return local + kept.map { baselineByGid.getValue(it) }
     }
 
     /**
-     * Fork: of the progress the baseline has and this device has no row for ([missing]), the progress to carry over
+     * Fork: the gids of the [baseline] progress this device has no row for, or one at the first page where the baseline
+     * went further ([pageByGid], the rows here): opening the reader writes that, so if the progress was still pending,
+     * it is no progress of this device.
+     */
+    internal fun missingProgress(baseline: Collection<SyncProgress>, pageByGid: Map<Long, Int>): List<Long> = baseline.filter { base ->
+        val page = pageByGid[base.gid]
+        page == null || page == 0 && base.page > 0
+    }.map { it.gid }
+
+    /**
+     * Fork: of the progress the baseline has and this device has no row for, or one at the first page ([missing]), the
+     * progress to carry over
      * instead of taking it for a deletion: that of galleries this device does not have, and progress still pending,
      * never written here (all of it before the first sync that kept the pending progress, [pending] null).
      */
@@ -300,11 +312,11 @@ object ProgressSection : SyncSection<List<SyncProgress>>(
         // Fork: all galleries of the progress, to keep what waits for its gallery
         val galleries = EhDB.existingGalleryGids(mergedGids)
         val upsert = changed.filter { it.gid in galleries }
-        // Fork: carried over, unchanged in the cloud, and the gallery is here now: written unless read here meanwhile
+        // Fork: carried over, unchanged in the cloud, and the gallery is here now: written unless read further here
         val arrived = merged.filter { it.gid in carried && it.gid in galleries && localByGid[it.gid]?.page == it.page }
         val delete = local.filter { it.gid !in mergedGids }.map { it.gid }
         PendingProgress.replace(merged.filter { it.gid !in galleries }.associate { it.gid to it.page })
-        EhDB.insertSyncedProgressIfAbsent(arrived.map { ProgressInfo(it.gid, it.page) })
+        EhDB.putSyncedProgressIfUnread(arrived.map { ProgressInfo(it.gid, it.page) })
         if (upsert.isEmpty() && delete.isEmpty()) return SyncCounts(added = arrived.size)
         EhDB.applySyncedProgress(upsert.map { ProgressInfo(it.gid, it.page) }, delete)
         val added = upsert.count { it.gid !in localByGid }

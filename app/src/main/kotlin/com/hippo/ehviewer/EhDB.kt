@@ -441,9 +441,15 @@ object EhDB {
         if (update.isNotEmpty()) dao.update(update)
     }
 
-    /** Fork: synced progress of galleries this device just got, never over a page read here meanwhile. */
-    suspend fun insertSyncedProgressIfAbsent(progress: List<ProgressInfo>) {
-        if (progress.isNotEmpty()) db.progressDao().insertOrIgnore(progress)
+    /**
+     * Fork: synced progress of galleries this device just got, where it has none or only the first page (the reader
+     * opened and closed again), never over a page read further here.
+     */
+    suspend fun putSyncedProgressIfUnread(progress: List<ProgressInfo>) {
+        if (progress.isEmpty()) return
+        val read = db.progressDao().list().filter { it.page > 0 }.mapTo(HashSet()) { it.gid }
+        val write = progress.filter { it.gid !in read }
+        if (write.isNotEmpty()) db.progressDao().upsert(write)
     }
 
     suspend fun applySyncedProgress(upsert: List<ProgressInfo>, delete: List<Long>) = db.useWriterConnection { conn ->

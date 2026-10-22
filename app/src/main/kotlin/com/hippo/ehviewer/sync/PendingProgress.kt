@@ -45,7 +45,7 @@ object PendingProgress {
         val page = mutex.withLock { loadLocked()?.get(gid) } ?: return
         runCatching {
             // Never over a page this device read meanwhile
-            EhDB.insertSyncedProgressIfAbsent(listOf(ProgressInfo(gid, page)))
+            EhDB.putSyncedProgressIfUnread(listOf(ProgressInfo(gid, page)))
             mutex.withLock { pending?.let { saveLocked(it - gid) } }
         }.onFailure { logcat("PendingProgress", it) }
     }
@@ -56,7 +56,7 @@ object PendingProgress {
         if (current.isEmpty()) return
         val added = EhDB.existingGalleryGids(current.keys)
         if (added.isEmpty()) return
-        EhDB.insertSyncedProgressIfAbsent(added.map { ProgressInfo(it, current.getValue(it)) })
+        EhDB.putSyncedProgressIfUnread(added.map { ProgressInfo(it, current.getValue(it)) })
         mutex.withLock { pending?.let { saveLocked(it - added) } }
     }
 

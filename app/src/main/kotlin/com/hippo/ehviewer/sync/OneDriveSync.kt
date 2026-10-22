@@ -1158,15 +1158,15 @@ object OneDriveSync {
 
     /**
      * Fork: writes the pending progress of galleries this device got since. The first time, the pending progress is
-     * that of the baseline without a row here: so far it waited only there.
+     * that of the baseline without a row here (or one at the first page): so far it waited only there.
      */
     private suspend fun applyPendingProgress() {
         if (PendingProgress.get() == null) {
             val baseline = withContext(Dispatchers.IO) {
                 readSectionOrNull(File(cacheDir, SyncCategory.PROGRESS.fileName), ProgressSection.serializer)
             }?.items ?: return
-            val rows = EhDB.getAllReadProgress().mapTo(HashSet()) { it.gid }
-            PendingProgress.replace(baseline.filter { it.gid !in rows }.associate { it.gid to it.page })
+            val missing = ProgressSection.missingProgress(baseline, EhDB.getAllReadProgress().associate { it.gid to it.page }).toSet()
+            PendingProgress.replace(baseline.filter { it.gid in missing }.associate { it.gid to it.page })
         }
         PendingProgress.applyAdded()
     }
