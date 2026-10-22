@@ -898,12 +898,12 @@ object FavoritesIndexSync {
         var remote = listing[FavoritesExportCache.MANIFEST_FILE]
         val signedIn = Settings.hasSignedIn.value
         val buildState = BuiltIndex(SystemClock.elapsedRealtime(), userKey(), signedIn, deviceId, deviceName, remote?.eTag)
-        // Fork: taken before looking at what changed, so a change from now on keeps the index waiting
-        val unchangedVersion = OneDriveSync.favoritesIndexVersion()
-        if (skipUnchanged(buildState, listing)) {
+        // Fork: the version and the flag read together, so a change counted from now on keeps the index waiting
+        val cleanVersion = OneDriveSync.favoritesIndexCleanVersion()
+        if (cleanVersion != null && skipUnchanged(buildState, listing)) {
             logcat(TAG) { "Index unchanged since the last upload, not built again" }
             removeLegacyIndex()
-            return unchangedVersion
+            return cleanVersion
         }
         var version = 0L
         val build = suspend {
@@ -990,15 +990,14 @@ object FavoritesIndexSync {
     }
 
     /**
-     * Fork: true when the index on OneDrive is the one this process last built and nothing it is made of changed since:
-     * no change of the local or cloud favorites waits ([OneDriveSyncState.favoritesIndexDirty]), no other device wrote
-     * it, its shards are all there, and the same accounts and device name. Building it reads every favorite and writes
+     * Fork: true when the index on OneDrive is the one this process last built and nothing it is made of changed since,
+     * when no change of the local or cloud favorites waits ([OneDriveSync.favoritesIndexCleanVersion], checked by the
+     * caller): no other device wrote it, its shards are all there, and the same accounts and device name. Building it reads every favorite and writes
      * the shards again, long with many. Built again after [REBUILD_INTERVAL_MILLIS] anyway: the gallery details of the
      * local favorites (titles, for one) change without counting as a change of the favorites.
      */
     private suspend fun skipUnchanged(now: BuiltIndex, listing: Map<String, RemoteItem>): Boolean {
         val last = lastBuilt ?: return false
-        if (OneDriveSyncState.favoritesIndexDirty.value) return false
         if (now.at - last.at !in 0 until REBUILD_INTERVAL_MILLIS) return false
         if (now.copy(at = 0) != last.copy(at = 0)) return false
         if (now.eTag == null || now.eTag != OneDriveSyncState.favoritesIndexETag.value) return false

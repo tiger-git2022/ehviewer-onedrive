@@ -231,6 +231,14 @@ object OneDriveSync {
     /** Version of the favorites changes, taken before building the index a sync uploads. */
     fun favoritesIndexVersion(): Long = favoritesIndexVersion.get()
 
+    /**
+     * Fork: the version of the favorites changes when no change waits for the index, null when one does. Read under the
+     * lock of [markFavoritesIndexChanged], which counts a change and sets the flag one after the other.
+     */
+    suspend fun favoritesIndexCleanVersion(): Long? = favoritesIndexDirtyMutex.withLock {
+        if (OneDriveSyncState.favoritesIndexDirty.value) null else favoritesIndexVersion.get()
+    }
+
     /** The index of the changes up to [version] is on OneDrive (or sharing is off): no change waits any more. */
     suspend fun favoritesIndexSynced(version: Long) {
         favoritesIndexDirtyMutex.withLock {
@@ -664,16 +672,17 @@ object OneDriveSync {
             mutableProgress.value = SyncRunProgress(categoryTitle(section.category), index + 2, steps)
             // Fork: settings are per device, uploaded to its own file and never merged
             val sharded = ShardedCategory.of(section.category)
-            when {
+            val result = when {
                 section === SettingsSection -> uploadOwnSettings(deviceId)
                 // Fork: favorites and history are kept in shards, see ShardedCategory
                 sharded != null -> syncShardedCategory(section, sharded, listing, deviceId)
                 else -> syncSection(section, listing[section.category.fileName], deviceId)
             }
+            // Fork: local favorites the sync itself wrote do not mark the index (writes of the sync are not changes),
+            // which is no longer built again at every sync. Marked at once, so a later step failing cannot lose it
+            if (result.category == SyncCategory.FAVORITES && !result.counts.isEmpty) markFavoritesIndexChanged()
+            result
         }
-        // Fork: local favorites the sync itself wrote do not mark the index (writes of the sync are not changes), which
-        // is no longer built again at every sync
-        if (results.any { it.category == SyncCategory.FAVORITES && !it.counts.isEmpty }) markFavoritesIndexChanged()
         var imported = 0
         val devicesError = if (manual) {
             mutableProgress.value = SyncRunProgress(R.string.onedrive_sync_step_devices, steps - 1, steps)
