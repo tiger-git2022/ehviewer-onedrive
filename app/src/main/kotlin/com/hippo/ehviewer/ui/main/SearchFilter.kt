@@ -15,7 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -36,6 +35,7 @@ import arrow.core.raise.ensure
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.GalleryInfo.Companion.S_LANG_TAGS
 import com.ehviewer.core.ui.component.DropdownFilterChip
+import com.ehviewer.core.ui.component.GlassFilterChip
 import com.ehviewer.core.ui.util.thenIf
 import com.ehviewer.core.util.launch
 import com.ehviewer.core.util.toIntOrDefault
@@ -82,7 +82,8 @@ fun SearchFilter(
         // https://github.com/Calvin-LL/Reorderable/issues/4#issuecomment-1853131769
         item {}
         items(categories, { it.first }) {
-            FilterChip(
+            // Fork: a glass in the expanded search, see GlassFilterChip
+            GlassFilterChip(
                 selected = isCategoryChecked(it.first),
                 onClick = { onCategoryChange(category xor it.first) },
                 label = { Text(text = stringResource(id = it.second)) },
@@ -145,7 +146,7 @@ fun SearchFilter(
                 }
             }
         }
-        FilterChip(
+        GlassFilterChip(
             selected = advancedOption.fromPage != 0 || advancedOption.toPage != 0,
             onClick = {
                 launch {
@@ -215,28 +216,28 @@ fun SearchFilter(
         )
         fun checked(bit: Int) = advancedOption.advanceSearch and bit != 0
         fun AdvancedSearchOption.inv(bit: Int) = onAdvancedOptionChange(copy(advanceSearch = advanceSearch xor bit))
-        FilterChip(
+        GlassFilterChip(
             selected = checked(AdvanceTable.SH),
             onClick = { advancedOption.inv(AdvanceTable.SH) },
             label = { Text(text = stringResource(id = R.string.search_sh)) },
         )
-        FilterChip(
+        GlassFilterChip(
             selected = checked(AdvanceTable.STO),
             onClick = { advancedOption.inv(AdvanceTable.STO) },
             label = { Text(text = stringResource(id = R.string.search_sto)) },
         )
         val disableFilter = stringResource(id = R.string.search_sf)
-        FilterChip(
+        GlassFilterChip(
             selected = checked(AdvanceTable.SFL),
             onClick = { advancedOption.inv(AdvanceTable.SFL) },
             label = { Text(text = disableFilter + stringResource(id = R.string.search_sfl)) },
         )
-        FilterChip(
+        GlassFilterChip(
             selected = checked(AdvanceTable.SFU),
             onClick = { advancedOption.inv(AdvanceTable.SFU) },
             label = { Text(text = disableFilter + stringResource(id = R.string.search_sfu)) },
         )
-        FilterChip(
+        GlassFilterChip(
             selected = checked(AdvanceTable.SFT),
             onClick = { advancedOption.inv(AdvanceTable.SFT) },
             label = { Text(text = disableFilter + stringResource(id = R.string.search_sft)) },

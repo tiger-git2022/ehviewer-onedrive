@@ -24,6 +24,12 @@ enum class GlassStyle {
 
     /** A whole screen in front of the content (the expanded search): a heavy blur, no bending edges. */
     Backdrop,
+
+    /**
+     * A card or a chip on the blurred glass of the expanded search, refracting that glass: no blur of its own (what it
+     * refracts is blurred already), only its edge bends and lights up, with a faint shadow.
+     */
+    Tile,
 }
 
 /**
@@ -40,6 +46,9 @@ val LocalFabGlass = compositionLocalOf<FloatingGlass?> { null }
 
 /** The glass of the sheet of [MutableSideSheet]. */
 val LocalSideSheetGlass = compositionLocalOf<FloatingGlass?> { null }
+
+/** The glass of the cards and the chips of the expanded search ([GlassStyle.Tile]), see [GlassFilterChip]. */
+val LocalTileGlass = compositionLocalOf<FloatingGlass?> { null }
 
 /** [glass] drawn behind the part, nothing without one. */
 fun Modifier.floatingGlass(glass: FloatingGlass?, shape: Shape, tint: Color, style: GlassStyle = GlassStyle.Control): Modifier = if (glass == null) this else then(glass.surface(shape, tint, style))
