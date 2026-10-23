@@ -174,7 +174,8 @@ fun SearchBarScreen(
                 query.lastIndexOf(' ') to
                     "${keyword.substringAfter(':')} "
             } else {
-                query.lastIndexOfAny(TagTerminators) to
+                // Fork: typing in an open quote, the suggestion takes the place of the whole tag, see SearchQuery.kt
+                tagSuggestionIndex(query) to
                     if (keyword.endsWith(':')) keyword else "${wrapTagKeyword(keyword)} "
             }
             val keywords = if (index == -1) {
@@ -230,7 +231,8 @@ fun SearchBarScreen(
 
     fun onApplySearch() {
         // May have invalid whitespaces if pasted from clipboard, replace them with spaces
-        val query = searchFieldState.text.trim().replace(WhitespaceRegex, " ")
+        // Fork: with its quoted tags closed, see SearchQuery.kt
+        val query = closeTagQuotes(searchFieldState.text.trim().replace(WhitespaceRegex, " "))
         if (query.isNotEmpty()) {
             scope.launch {
                 mSearchDatabase.deleteQuery(query)
