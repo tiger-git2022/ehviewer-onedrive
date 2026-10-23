@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -173,7 +174,8 @@ fun SearchBarScreen(
                 query.lastIndexOf(' ') to
                     "${keyword.substringAfter(':')} "
             } else {
-                query.lastIndexOfAny(TagTerminators) to
+                // Fork: typing in an open quote, the suggestion takes the place of the whole tag, see SearchQuery.kt
+                tagSuggestionIndex(query) to
                     if (keyword.endsWith(':')) keyword else "${wrapTagKeyword(keyword)} "
             }
             val keywords = if (index == -1) {
@@ -229,7 +231,8 @@ fun SearchBarScreen(
 
     fun onApplySearch() {
         // May have invalid whitespaces if pasted from clipboard, replace them with spaces
-        val query = searchFieldState.text.trim().replace(WhitespaceRegex, " ")
+        // Fork: with its quoted tags closed, see SearchQuery.kt
+        val query = closeTagQuotes(searchFieldState.text.trim().replace(WhitespaceRegex, " "))
         if (query.isNotEmpty()) {
             scope.launch {
                 mSearchDatabase.deleteQuery(query)
@@ -266,6 +269,9 @@ fun SearchBarScreen(
     LaunchedEffect(expanded) {
         expandProgress.animateTo(if (expanded) 1f else 0f, if (expanded) ExpandSpec else CollapseSpec)
     }
+    // Closing, the field takes its glass once the blurred glass has shrunk back into it: while it shrank, the outline
+    // of the field showed already where the glass was still coming back
+    val shrunkBack by remember { derivedStateOf { expandProgress.value == 0f } }
     // The blurred glass of the expanded search, for its cards and chips to refract
     val frostedBackdrop = rememberLayerBackdrop()
     val tileGlass = rememberLiquidGlass(frostedBackdrop.takeIf { glass != null })
@@ -356,7 +362,7 @@ fun SearchBarScreen(
                     onExpandedChange = onExpandedChange,
                     modifier = Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
                         // Fork: the field is the glass while the search bar is collapsed
-                        .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) },
+                        .thenIf(!expanded && shrunkBack) { floatingGlass(glass, glassShape, glassTint) },
                     // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
                     // and black by day: the paler Material color got lost over the list showing through
                     colors = if (glass != null) {

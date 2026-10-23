@@ -66,7 +66,7 @@ fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == 
 @Composable
 fun rememberLiquidGlass(backdrop: Backdrop?): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    // Fork: the drawers and the dialogs as set in Settings → EH
+    // Fork: the drawers, the dialogs and the expanded search as set in Settings → EH
     val sheetBlur by Settings.sheetGlassBlur.collectAsState()
     val sheetTint by Settings.sheetGlassTint.collectAsState()
     val sheetFringe by Settings.sheetGlassFringe.collectAsState()
@@ -130,8 +130,9 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, she
                     lens(25f.dp.toPx(), 10f.dp.toPx())
                     edgeFringe(24f.dp.toPx(), sheetFringe * 12f.dp.toPx())
                 }
-                // A light blur, chosen in the search glass tuner: the list stays visible behind the search
-                GlassStyle.Backdrop -> blur(10f.dp.toPx())
+                // The blur of the drawers and the dialogs, set in the settings (none at 0): the list stays visible
+                // behind the search
+                GlassStyle.Backdrop -> if (sheetBlur > 0f) blur(sheetBlur.dp.toPx())
                 // Refracting the blurred glass of the expanded search, so no blur: only the edge bends, over less
                 // of the small chips than of the cards
                 GlassStyle.Tile -> {

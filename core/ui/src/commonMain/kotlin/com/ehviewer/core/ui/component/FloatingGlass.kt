@@ -22,7 +22,7 @@ enum class GlassStyle {
     /** A drawer or a dialog: a blurred glass, bending gently over a wide band at its edge, with a deeper shadow. */
     Sheet,
 
-    /** A whole screen in front of the content (the expanded search): a heavy blur, no bending edges. */
+    /** A whole screen in front of the content (the expanded search): the blur of the sheets, no bending edges. */
     Backdrop,
 
     /**

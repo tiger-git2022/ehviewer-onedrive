@@ -1,11 +1,17 @@
 package com.ehviewer.core.ui.component
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /**
  * Fork: a [FilterChip] of the expanded search, a small glass while [LocalTileGlass] provides one. Its text and icons
@@ -28,23 +34,30 @@ fun GlassFilterChip(
     val scheme = MaterialTheme.colorScheme
     val onGlass = scheme.onSurface
     val shape = FilterChipDefaults.shape
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = label,
-        modifier = modifier.floatingGlass(glass, shape, scheme.surfaceBright.copy(alpha = GLASS_TILE_TINT), GlassStyle.Tile),
-        trailingIcon = trailingIcon,
-        shape = shape,
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = Color.Transparent,
-            labelColor = onGlass,
-            iconColor = onGlass,
-            selectedLabelColor = onGlass,
-            selectedLeadingIconColor = onGlass,
-            selectedTrailingIconColor = onGlass,
-        ),
-        border = null,
-    )
+    // The chip is 32 dp tall in a 48 dp touch target: the glass goes on the chip, not on the target around it, or it
+    // stood out above and below the chip and its selected light. The box keeps the room of the target, a touch near
+    // the chip still reaches it
+    Box(modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+            FilterChip(
+                selected = selected,
+                onClick = onClick,
+                label = label,
+                modifier = Modifier.floatingGlass(glass, shape, scheme.surfaceBright.copy(alpha = GLASS_TILE_TINT), GlassStyle.Tile),
+                trailingIcon = trailingIcon,
+                shape = shape,
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = Color.Transparent,
+                    labelColor = onGlass,
+                    iconColor = onGlass,
+                    selectedLabelColor = onGlass,
+                    selectedLeadingIconColor = onGlass,
+                    selectedTrailingIconColor = onGlass,
+                ),
+                border = null,
+            )
+        }
+    }
 }
 
 /** Fork: how much of the card color lies over the glass of a card or a chip of the expanded search. */
