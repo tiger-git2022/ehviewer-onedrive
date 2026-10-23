@@ -34,7 +34,8 @@ import com.kyant.backdrop.shadow.Shadow
  * buttons, both drawers, the top bar of the gallery details), behind the "Liquid glass" switch. A part refracts the
  * content below it, recorded with [glassContent]: a page records its list (see Screen, SearchBarScreen and
  * GalleryDetailScreen), MainActivity the pages below the drawers. A part inside the recorded content cannot refract it
- * (it would draw itself): the scrollbar and the refresh indicator are only translucent. The refraction needs Android 13,
+ * (it would draw itself): the scrollbar and the refresh indicator are only translucent. The cards and the chips of the
+ * expanded search refract its blurred glass instead (see SearchBarScreen). The refraction needs Android 13,
  * the blur Android 12; before, the glass is only its tint and its edge.
  */
 
@@ -85,6 +86,9 @@ private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.
 private val DarkSheetEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.5f)))
 private val SheetShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.3f))
 
+// The cards and the chips of the expanded search: many of them side by side, a faint shadow keeps the page calm
+private val TileShadow = Shadow(radius = 12.dp, offset = DpOffset(0.dp, 1.dp), color = Color.Black.copy(alpha = 0.1f))
+
 private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, sheetTint: Float, sheetFringe: Float) = FloatingGlass { shape, tint, style ->
     // The drawers and the dialogs take the tint set in the settings
     val alpha = if (style == GlassStyle.Sheet) sheetTint.coerceIn(0f, 1f) else tint.alpha
@@ -98,6 +102,7 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, she
         // A screen-wide glass has no shadow to cast
         style == GlassStyle.Backdrop -> null
         style == GlassStyle.Sheet -> SheetShadow
+        style == GlassStyle.Tile -> TileShadow
         dark -> Shadow.Default
         else -> LightGlassShadow
     }
@@ -105,7 +110,8 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, she
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            vibrancy()
+            // A tile refracts a glass that has its vibrancy already: brighter colors would set the tile apart from it
+            if (style != GlassStyle.Tile) vibrancy()
             when (style) {
                 // Only the rim bends: a deeper lens stretched the text below the search bar
                 GlassStyle.Control -> {
@@ -126,6 +132,12 @@ private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, she
                 }
                 // A light blur, chosen in the search glass tuner: the list stays visible behind the search
                 GlassStyle.Backdrop -> blur(10f.dp.toPx())
+                // Refracting the blurred glass of the expanded search, so no blur: only the edge bends, over less
+                // of the small chips than of the cards
+                GlassStyle.Tile -> {
+                    val height = minOf(16f.dp.toPx(), size.minDimension * 0.3f)
+                    lens(height, height * 1.4f, chromaticAberration = true)
+                }
             }
         },
         highlight = edge?.let { { it } },
