@@ -4,7 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ImageSearch
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -57,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -71,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -81,6 +84,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.coerceAtMost
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.util.lerp
 import com.ehviewer.core.database.dao.SearchDao
 import com.ehviewer.core.database.model.Search
@@ -88,8 +92,11 @@ import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.TagNamespace
 import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.LocalSearchExit
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.leavingWithSearch
+import com.ehviewer.core.ui.component.searchExitGlassAlpha
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
 import com.hippo.ehviewer.Settings
@@ -268,8 +275,9 @@ fun SearchBarScreen(
     val expandedGlassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f)
     // Fork: the expanded search grows out of the search field like the Material search bar, in step with it
     val expandProgress = remember { Animatable(if (expanded) 1f else 0f) }
-    // Closing with liquid glass, the search bar is collapsed at once (a new one, see below) and the blurred glass fades
-    // out over the whole screen: shrinking back, the field showed the hint and its outline until the end
+    // Closing with liquid glass, the search bar is collapsed at once (a new one, see below): shrinking back, the field
+    // showed the hint and its outline until the end. The cards and the chips leave one after another from the bottom up
+    // and the blurred glass fades out after them, see SearchExit.kt
     // Counted in the composition that closes the search, not after it: for a frame, the wide field of the old search
     // bar showed the glass of the collapsed one. Plain values, a key only needs to change
     val closes = remember { intArrayOf(0) }
@@ -283,6 +291,43 @@ fun SearchBarScreen(
     // The blurred glass of the expanded search, for its cards and chips to refract
     val frostedBackdrop = rememberLayerBackdrop()
     val tileGlass = rememberLiquidGlass(frostedBackdrop.takeIf { glass != null })
+    // Fork: the cards and the chips of the search, in the search bar without liquid glass; with it, over the search bar
+    // (searchShown), where they stay while they leave
+    val searchContent = @Composable {
+        // Fork: the cards and the chips are glass refracting the blurred glass behind the search
+        CompositionLocalProvider(LocalTileGlass provides tileGlass) {
+            if (glass != null && filter != null) {
+                // Fork: over the glass, a selected chip is a light in the glass
+                val colors = MaterialTheme.colorScheme
+                MaterialTheme(colorScheme = colors.copy(secondaryContainer = glassSelectedColor(), onSecondaryContainer = glassOnSelectedColor())) {
+                    filter()
+                }
+            } else {
+                filter?.invoke()
+            }
+            // Fork: two staggered columns, each suggestion goes to the shorter one (like the Mihon fork's history)
+            LazyVerticalStaggeredGrid(
+                columns = StaggeredGridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                contentPadding = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalItemSpacing = 8.dp,
+            ) {
+                // Workaround for prepending before the first item
+                item(span = StaggeredGridItemSpan.FullLine) {}
+                items(mSuggestionList, key = { it.keyword.hashCode() * 31 + it.canDelete.hashCode() }) {
+                    SearchSuggestionCell(
+                        suggestion = it,
+                        onDelete = { deleteKeyword(it.keyword) },
+                        modifier = Modifier.thenIf(animateItems) { animateItem() },
+                    )
+                }
+            }
+        }
+    }
+    val searchShown by remember { derivedStateOf { expandProgress.value > 0f } }
+    val searchExit = remember(expanded) { { if (expanded) 0f else 1f - expandProgress.value } }
+    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -443,43 +488,36 @@ fun SearchBarScreen(
                 },
                 expanded = expanded,
                 onExpandedChange = onExpandedChange,
-                // Fork: collapsed, the field draws the glass, the bar nothing; expanded, the suggestions keep their color
+                // Fork: collapsed, the field draws the glass, the bar nothing; expanded, the suggestions keep their color.
+                // With liquid glass, the divider is drawn with the cards and the chips, over the search bar
                 colors = if (glass != null) {
-                    SearchBarDefaults.colors(containerColor = Color.Transparent, dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    SearchBarDefaults.colors(containerColor = Color.Transparent, dividerColor = Color.Transparent)
                 } else {
                     SearchBarDefaults.colors()
                 },
             ) {
                 activeState.Anchor()
-                // Fork: the cards and the chips are glass refracting the blurred glass behind the search
-                CompositionLocalProvider(LocalTileGlass provides tileGlass) {
-                    if (glass != null && filter != null) {
-                        // Fork: over the glass, a selected chip is a light in the glass
-                        val colors = MaterialTheme.colorScheme
-                        MaterialTheme(colorScheme = colors.copy(secondaryContainer = glassSelectedColor(), onSecondaryContainer = glassOnSelectedColor())) {
-                            filter()
-                        }
-                    } else {
-                        filter?.invoke()
+                if (glass == null) searchContent()
+            }
+        }
+        // Fork: with liquid glass, the cards and the chips of the search lie over the search bar, below its field: the
+        // collapsed search bar no longer holds them, they stay while they leave. They come in with the search bar's
+        // own fading; leaving, they take no touches
+        if (glass != null && (expanded || searchShown)) {
+            val top = with(LocalDensity.current) { SearchBarDefaults.windowInsets.getTop(this).toDp() } +
+                SearchBarVerticalPadding * 2 + SearchBarDefaults.InputFieldHeight
+            CompositionLocalProvider(LocalSearchExit provides searchExit) {
+                Box(
+                    Modifier.zIndex(2f).fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                        .padding(top = top)
+                        .graphicsLayer { alpha = if (expanded) expandProgress.value else 1f },
+                ) {
+                    Column {
+                        HorizontalDivider(Modifier.leavingWithSearch(), color = dividerColor)
+                        searchContent()
                     }
-                    // Fork: two staggered columns, each suggestion goes to the shorter one (like the Mihon fork's history)
-                    LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Fixed(2),
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                        contentPadding = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalItemSpacing = 8.dp,
-                    ) {
-                        // Workaround for prepending before the first item
-                        item(span = StaggeredGridItemSpan.FullLine) {}
-                        items(mSuggestionList, key = { it.keyword.hashCode() * 31 + it.canDelete.hashCode() }) {
-                            SearchSuggestionCell(
-                                suggestion = it,
-                                onDelete = { deleteKeyword(it.keyword) },
-                                modifier = Modifier.thenIf(animateItems) { animateItem() },
-                            )
-                        }
-                    }
+                    if (!expanded) Box(Modifier.matchParentSize().pointerInput(Unit) {})
                 }
             }
         }
@@ -488,7 +526,8 @@ fun SearchBarScreen(
 
 /**
  * Fork: the blurred glass behind the expanded search. It grows out of the field of the collapsed search bar as
- * [progress] goes to 1, its lit edge fading as it fills the screen; closing, it fades out over the whole screen. It reads [progress] here,
+ * [progress] goes to 1, its lit edge fading as it fills the screen; closing, it fades out over the whole screen once
+ * the cards have mostly left (searchExitGlassAlpha). It reads [progress] here,
  * so only this glass follows the animation frame by frame, not the whole search.
  */
 @Composable
@@ -528,7 +567,7 @@ private fun ExpandedSearchGlass(
                 val placeable = measurable.measure(Constraints.fixed(right - left, bottom - top))
                 layout(width, height) { placeable.place(left, top) }
             }
-            .thenIf(!expanded) { graphicsLayer { alpha = fraction } }
+            .thenIf(!expanded) { graphicsLayer { alpha = searchExitGlassAlpha(1f - fraction) } }
             .layerBackdrop(backdrop)
             .floatingGlass(glass, shape, lerp(tint, expandedTint, size), GlassStyle.Backdrop)
             .thenIf(dark && size < 1f) { border(1.5.dp, Color.White.copy(alpha = 0.5f * (1 - size)), shape) },
@@ -556,8 +595,8 @@ private val SearchBarHorizontalPadding = 16.dp
 // Fork: the opening animation of the Material search bar (SearchBar.kt), for the glass growing with it
 private val SearchBarVerticalPadding = 8.dp
 private val ExpandSpec = tween<Float>(durationMillis = 600, delayMillis = 100, easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
-// Closing, the blurred glass fades out
-private val CollapseSpec = tween<Float>(durationMillis = 250, easing = LinearOutSlowInEasing)
+// Closing, the cards leave and the blurred glass fades out after them, see SearchExit.kt: even in time, they ease
+private val CollapseSpec = tween<Float>(durationMillis = 400, easing = LinearEasing)
 
 // Fork: how much of the bar color lies over the glass of the search bar and the sync progress
 const val GLASS_BAR_TINT = 0.2f

@@ -21,6 +21,7 @@ import com.ehviewer.core.ui.component.GLASS_TILE_TINT
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.leavingWithSearch
 
 /**
  * One search suggestion as a card of the two staggered columns of the search bar (fork, like the search history of
@@ -39,7 +40,8 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
         // The expanded search bar is surfaceContainerHigh itself: a brighter card stands out from it
         color = if (glass != null) Color.Transparent else scheme.surfaceBright,
         contentColor = scheme.onSurface,
-        modifier = modifier.floatingGlass(glass, shape, scheme.surfaceBright.copy(alpha = GLASS_TILE_TINT), GlassStyle.Tile),
+        // Closing the search, the card leaves with it, see LocalSearchExit
+        modifier = modifier.leavingWithSearch().floatingGlass(glass, shape, scheme.surfaceBright.copy(alpha = GLASS_TILE_TINT), GlassStyle.Tile),
     ) {
         Row(verticalAlignment = Alignment.Top) {
             if (suggestion.canOpenDirectly) {
