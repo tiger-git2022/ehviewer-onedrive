@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,6 +50,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
@@ -285,6 +287,13 @@ fun SearchBarScreen(
     if (wasExpanded[0] && !expanded && glass != null) closes[0]++
     wasExpanded[0] = expanded
     val searchBarKey = closes[0]
+    // Fork: closing, the field shrinks from the whole width of the screen into the floating field with its glass
+    // (ClosingFieldGlass), the buttons of the open search fading out over the title and the buttons of the page fading
+    // in; the field's own glass waits for it. A new one for each closing, so it starts there in the very composition
+    // that closes the search
+    val fieldMorph = remember(searchBarKey) { Animatable(if (searchBarKey == 0) 1f else 0f) }
+    LaunchedEffect(fieldMorph) { fieldMorph.animateTo(1f, FieldMorphSpec) }
+    val fieldMorphed by remember(fieldMorph) { derivedStateOf { fieldMorph.value == 1f } }
     LaunchedEffect(expanded) {
         expandProgress.animateTo(if (expanded) 1f else 0f, if (expanded) ExpandSpec else CollapseSpec)
     }
@@ -396,6 +405,28 @@ fun SearchBarScreen(
                 tint = glassTint,
                 expandedTint = expandedGlassTint,
             )
+            if (!expanded) {
+                ClosingFieldGlass(
+                    progress = fieldMorph,
+                    glass = glass,
+                    fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth),
+                    tint = glassTint,
+                    offsetY = searchBarOffsetY,
+                ) {
+                    // The buttons of the open search where they were, fading out; they take no touches
+                    Box(Modifier.align(Alignment.CenterStart).offset(x = SearchBarIconOffsetX)) {
+                        IconButton(onClick = {}, shapes = IconButtonDefaults.shapes()) {
+                            Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = null)
+                        }
+                    }
+                    Row(Modifier.align(Alignment.CenterEnd).offset(x = -SearchBarIconOffsetX)) {
+                        IconButton(onClick = {}, shapes = IconButtonDefaults.shapes()) {
+                            Icon(if (searchFieldState.text.isNotEmpty()) Icons.Default.Close else Icons.Default.ImageSearch, contentDescription = null)
+                        }
+                        expandedTrailingIcon()
+                    }
+                }
+            }
         }
         // https://issuetracker.google.com/337191298
         // Workaround for can't exit SearchBar due to refocus in non-touch mode
@@ -415,9 +446,24 @@ fun SearchBarScreen(
                         },
                         expanded = expanded,
                         onExpandedChange = onExpandedChange,
-                        modifier = Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
-                            // Fork: the field is the glass while the search bar is collapsed
-                            .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) },
+                        modifier = if (!expanded && !fieldMorphed) {
+                            // Fork: closing, the field shrinks from the whole width into the floating field, see
+                            // ClosingFieldGlass, its title and buttons fading in
+                            val fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)
+                            val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+                            val screenWidth = maxWidth
+                            Modifier.layout { measurable, constraints ->
+                                val available = screenWidth.roundToPx() - navigationBars.getLeft(this, layoutDirection) -
+                                    navigationBars.getRight(this, layoutDirection)
+                                val width = lerp(available, minOf(fieldMaxWidth.roundToPx(), available), FieldMorphEasing.transform(fieldMorph.value))
+                                val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                                layout(width, placeable.height) { placeable.place(0, 0) }
+                            }.graphicsLayer { alpha = fieldContentAlpha(fieldMorph.value) }
+                        } else {
+                            Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
+                                // Fork: the field is the glass while the search bar is collapsed
+                                .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) }
+                        },
                         // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
                         // and black by day: the paler Material color got lost over the list showing through
                         colors = if (glass != null) {
@@ -574,6 +620,54 @@ private fun ExpandedSearchGlass(
     )
 }
 
+/**
+ * Fork: closing the search, the glass of the field shrinks from the whole width of the screen into the floating field
+ * as [progress] goes to 1, in step with the field, its corners rounding and its glass coming in; gone at 1, where the
+ * field draws its own. [previous], the buttons of the open search, fade out on it.
+ */
+@Composable
+private fun ClosingFieldGlass(
+    progress: Animatable<Float, AnimationVector1D>,
+    glass: FloatingGlass,
+    fieldMaxWidth: Dp,
+    tint: Color,
+    offsetY: () -> Int,
+    previous: @Composable BoxScope.() -> Unit,
+) {
+    // Even in time; the size follows it eased, as the field does
+    val time = progress.value
+    if (time == 1f) return
+    val fraction = FieldMorphEasing.transform(time)
+    val searchBarInsets = SearchBarDefaults.windowInsets
+    val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+    val shape = RoundedCornerShape(SearchBarDefaults.InputFieldHeight / 2 * fraction)
+    Box(
+        Modifier
+            .layout { measurable, constraints ->
+                val width = constraints.maxWidth
+                // Where the field of the collapsed search bar lies, at the top of the screen
+                val navigationLeft = navigationBars.getLeft(this, layoutDirection)
+                val available = width - navigationLeft - navigationBars.getRight(this, layoutDirection)
+                val fieldWidth = minOf(fieldMaxWidth.roundToPx(), available)
+                val fieldLeft = navigationLeft + (available - fieldWidth) / 2
+                val top = searchBarInsets.getTop(this) + SearchBarVerticalPadding.roundToPx() + offsetY()
+                val left = lerp(navigationLeft, fieldLeft, fraction)
+                val right = lerp(navigationLeft + available, fieldLeft + fieldWidth, fraction)
+                val placeable = measurable.measure(Constraints.fixed(right - left, SearchBarDefaults.InputFieldHeight.roundToPx()))
+                layout(width, constraints.maxHeight) { placeable.place(left, top) }
+            },
+    ) {
+        Box(Modifier.matchParentSize().graphicsLayer { alpha = (time / 0.3f).coerceAtMost(1f) }.floatingGlass(glass, shape, tint))
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            Box(Modifier.matchParentSize().graphicsLayer { alpha = 1f - (time / 0.35f).coerceAtMost(1f) }, content = previous)
+        }
+        Box(Modifier.matchParentSize().pointerInput(Unit) {})
+    }
+}
+
+/** Fork: the title and the buttons of the field closing the search, coming in after those of the open search left. */
+private fun fieldContentAlpha(progress: Float) = ((progress - 0.15f) / 0.45f).coerceIn(0f, 1f)
+
 fun wrapTagKeyword(keyword: String, translate: Boolean = false): String = run {
     val tag = keyword.substringAfter(':')
     val prefix = keyword.dropLast(tag.length + 1)
@@ -594,9 +688,14 @@ private val WhitespaceRegex = Regex("\\s+")
 private val SearchBarHorizontalPadding = 16.dp
 // Fork: the opening animation of the Material search bar (SearchBar.kt), for the glass growing with it
 private val SearchBarVerticalPadding = 8.dp
+private val SearchBarIconOffsetX = 4.dp
 private val ExpandSpec = tween<Float>(durationMillis = 600, delayMillis = 100, easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
 // Closing, the cards leave and the blurred glass fades out after them, see SearchExit.kt: even in time, they ease
 private val CollapseSpec = tween<Float>(durationMillis = 400, easing = LinearEasing)
+// Closing, the field shrinks into the floating field (FieldMorphEasing, quick at first and settling) while the buttons
+// cross-fade: even in time
+private val FieldMorphSpec = tween<Float>(durationMillis = 400, easing = LinearEasing)
+private val FieldMorphEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 // Fork: how much of the bar color lies over the glass of the search bar and the sync progress
 const val GLASS_BAR_TINT = 0.2f
