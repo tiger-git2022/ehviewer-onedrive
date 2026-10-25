@@ -77,6 +77,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -268,6 +269,9 @@ fun SearchBarScreen(
 
     // Fork: height of the sync progress below the search bar, the content leaves room for it
     var syncProgressHeight by remember { mutableIntStateOf(0) }
+    // Fork: the height of the field, for the glass growing out of it and shrinking into it and for the cards below it:
+    // with a larger font it is taller than InputFieldHeight, and the glass jumped to it at the end of the animations
+    var fieldHeight by remember { mutableIntStateOf(0) }
     // Fork: liquid glass refracting the list, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
     val glass = rememberLiquidGlass(backdrop)
@@ -402,6 +406,7 @@ fun SearchBarScreen(
                 glass = glass,
                 backdrop = frostedBackdrop,
                 fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth),
+                fieldHeight = fieldHeight,
                 tint = glassTint,
                 expandedTint = expandedGlassTint,
             )
@@ -410,6 +415,7 @@ fun SearchBarScreen(
                     progress = fieldMorph,
                     glass = glass,
                     fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth),
+                    fieldHeight = fieldHeight,
                     tint = glassTint,
                     offsetY = searchBarOffsetY,
                 ) {
@@ -446,7 +452,7 @@ fun SearchBarScreen(
                         },
                         expanded = expanded,
                         onExpandedChange = onExpandedChange,
-                        modifier = if (!expanded && !fieldMorphed) {
+                        modifier = Modifier.onSizeChanged { fieldHeight = it.height }.then(if (!expanded && !fieldMorphed) {
                             // Fork: closing, the field shrinks from the whole width into the floating field, see
                             // ClosingFieldGlass, its title and buttons fading in
                             val fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)
@@ -463,7 +469,7 @@ fun SearchBarScreen(
                             Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
                                 // Fork: the field is the glass while the search bar is collapsed
                                 .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) }
-                        },
+                        }),
                         // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
                         // and black by day: the paler Material color got lost over the list showing through
                         colors = if (glass != null) {
@@ -550,8 +556,9 @@ fun SearchBarScreen(
         // collapsed search bar no longer holds them, they stay while they leave. They come in with the search bar's
         // own fading; leaving, they take no touches
         if (glass != null && (expanded || searchShown)) {
-            val top = with(LocalDensity.current) { SearchBarDefaults.windowInsets.getTop(this).toDp() } +
-                SearchBarVerticalPadding * 2 + SearchBarDefaults.InputFieldHeight
+            val top = with(LocalDensity.current) {
+                SearchBarDefaults.windowInsets.getTop(this).toDp() + fieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight)
+            } + SearchBarVerticalPadding * 2
             CompositionLocalProvider(LocalSearchExit provides searchExit) {
                 Box(
                     Modifier.zIndex(2f).fillMaxSize()
@@ -583,6 +590,7 @@ private fun ExpandedSearchGlass(
     glass: FloatingGlass,
     backdrop: LayerBackdrop,
     fieldMaxWidth: Dp,
+    fieldHeight: Int,
     tint: Color,
     expandedTint: Color,
 ) {
@@ -592,7 +600,8 @@ private fun ExpandedSearchGlass(
     val size = if (expanded) fraction else 1f
     val searchBarInsets = SearchBarDefaults.windowInsets
     val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-    val shape = RoundedCornerShape(SearchBarDefaults.InputFieldHeight / 2 * (1 - size))
+    val fieldHeightDp = with(LocalDensity.current) { fieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight) }
+    val shape = RoundedCornerShape(fieldHeightDp / 2 * (1 - size))
     // The lit edge of the floating search bar, at night; by day the bar has none
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Box(
@@ -609,7 +618,7 @@ private fun ExpandedSearchGlass(
                 val left = lerp(fieldLeft, 0, size)
                 val top = lerp(fieldTop, 0, size)
                 val right = lerp(fieldLeft + fieldWidth, width, size)
-                val bottom = lerp(fieldTop + SearchBarDefaults.InputFieldHeight.roundToPx(), height, size)
+                val bottom = lerp(fieldTop + maxOf(fieldHeight, SearchBarDefaults.InputFieldHeight.roundToPx()), height, size)
                 val placeable = measurable.measure(Constraints.fixed(right - left, bottom - top))
                 layout(width, height) { placeable.place(left, top) }
             }
@@ -630,6 +639,7 @@ private fun ClosingFieldGlass(
     progress: Animatable<Float, AnimationVector1D>,
     glass: FloatingGlass,
     fieldMaxWidth: Dp,
+    fieldHeight: Int,
     tint: Color,
     offsetY: () -> Int,
     previous: @Composable BoxScope.() -> Unit,
@@ -640,7 +650,8 @@ private fun ClosingFieldGlass(
     val fraction = FieldMorphEasing.transform(time)
     val searchBarInsets = SearchBarDefaults.windowInsets
     val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-    val shape = RoundedCornerShape(SearchBarDefaults.InputFieldHeight / 2 * fraction)
+    val fieldHeightDp = with(LocalDensity.current) { fieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight) }
+    val shape = RoundedCornerShape(fieldHeightDp / 2 * fraction)
     Box(
         Modifier
             .layout { measurable, constraints ->
@@ -653,7 +664,7 @@ private fun ClosingFieldGlass(
                 val top = searchBarInsets.getTop(this) + SearchBarVerticalPadding.roundToPx() + offsetY()
                 val left = lerp(navigationLeft, fieldLeft, fraction)
                 val right = lerp(navigationLeft + available, fieldLeft + fieldWidth, fraction)
-                val placeable = measurable.measure(Constraints.fixed(right - left, SearchBarDefaults.InputFieldHeight.roundToPx()))
+                val placeable = measurable.measure(Constraints.fixed(right - left, maxOf(fieldHeight, SearchBarDefaults.InputFieldHeight.roundToPx())))
                 layout(width, constraints.maxHeight) { placeable.place(left, top) }
             },
     ) {
