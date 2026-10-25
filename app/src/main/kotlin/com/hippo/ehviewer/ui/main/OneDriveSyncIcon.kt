@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -193,31 +195,37 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
     // Keeps the last text while it hides
     val last = remember { arrayOfNulls<Pair<SyncProgressLine, Float?>>(1) }
     if (shown) last[0] = text to fraction
-    AnimatedVisibility(
-        visible = shown,
-        modifier = modifier.onSizeChanged { onHeightChanged(it.height) },
-        enter = expandVertically() + fadeIn(),
-        exit = shrinkVertically() + fadeOut(),
-    ) {
-        val (shownText, shownFraction) = last[0] ?: return@AnimatedVisibility
-        val shape = MaterialTheme.shapes.large
-        val color = MaterialTheme.colorScheme.surfaceContainerHigh
-        // Fork: liquid glass when the search bar is, see LiquidGlass.kt
-        Surface(
-            shape = shape,
-            color = if (glass != null) Color.Transparent else color,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp).floatingGlass(glass, shape, color.copy(alpha = GLASS_BAR_TINT)),
+    // Fork: the height is measured around the animation, not on it: hidden, AnimatedVisibility lays out nothing at all,
+    // so its own size was never reported as 0 and the list kept the room of the last bar, an empty gap below the search
+    // bar. Leaving the screen it is 0 too
+    DisposableEffect(Unit) { onDispose { onHeightChanged(0) } }
+    Box(modifier = modifier.onSizeChanged { onHeightChanged(it.height) }) {
+        AnimatedVisibility(
+            visible = shown,
+            modifier = Modifier.fillMaxWidth(),
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                SyncProgressLineText(
-                    line = shownText,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                // Waiting to go on: no bar, nothing moves
-                if (syncing || working) {
-                    SyncLinearProgress(fraction = shownFraction, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+            val (shownText, shownFraction) = last[0] ?: return@AnimatedVisibility
+            val shape = MaterialTheme.shapes.large
+            val color = MaterialTheme.colorScheme.surfaceContainerHigh
+            // Fork: liquid glass when the search bar is, see LiquidGlass.kt
+            Surface(
+                shape = shape,
+                color = if (glass != null) Color.Transparent else color,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp).floatingGlass(glass, shape, color.copy(alpha = GLASS_BAR_TINT)),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    SyncProgressLineText(
+                        line = shownText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Waiting to go on: no bar, nothing moves
+                    if (syncing || working) {
+                        SyncLinearProgress(fraction = shownFraction, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                    }
                 }
             }
         }

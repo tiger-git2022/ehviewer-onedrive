@@ -385,13 +385,16 @@ fun SearchBarScreen(
                 )
             }
         }
-        // Fork: below the search bar, it stays below the status bar when the search bar scrolls away
-        if (showSyncProgress && !expanded) {
+        // Fork: below the search bar, it stays below the status bar when the search bar scrolls away. Hidden, not taken
+        // away, while the search is open: taken away, it could not tell the list that it had gone, and a sync ending in
+        // the meantime left an empty gap below the search bar
+        if (showSyncProgress) {
             val statusBarTop = WindowInsets.statusBars.getTop(LocalDensity.current)
             OneDriveSyncProgressBanner(
                 onHeightChanged = { syncProgressHeight = it },
                 glass = glass,
                 modifier = Modifier.align(Alignment.TopCenter)
+                    .thenIf(expanded) { graphicsLayer { alpha = 0f } }
                     .offset {
                         val below = statusBarTop + (SearchBarDefaults.InputFieldHeight + 16.dp).roundToPx()
                         IntOffset(0, maxOf(statusBarTop, below + searchBarOffsetY()))
