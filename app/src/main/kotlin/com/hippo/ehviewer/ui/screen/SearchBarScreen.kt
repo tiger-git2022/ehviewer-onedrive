@@ -33,10 +33,12 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
@@ -46,7 +48,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ImageSearch
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -71,7 +72,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -98,7 +103,6 @@ import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalSearchExit
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
-import com.ehviewer.core.ui.component.leavingWithSearch
 import com.ehviewer.core.ui.component.searchExitGlassAlpha
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
@@ -318,10 +322,13 @@ fun SearchBarScreen(
             } else {
                 filter?.invoke()
             }
-            // Fork: two staggered columns, each suggestion goes to the shorter one (like the Mihon fork's history)
+            // Fork: two staggered columns, each suggestion goes to the shorter one (like the Mihon fork's history).
+            // With liquid glass, no line below the field: scrolled, the cards fade out at the top of the list
+            val gridState = rememberLazyStaggeredGridState()
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                modifier = Modifier.fillMaxSize().thenIf(glass != null) { fadingTopEdge(gridState) }.padding(horizontal = 12.dp),
+                state = gridState,
                 contentPadding = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalItemSpacing = 8.dp,
@@ -340,7 +347,6 @@ fun SearchBarScreen(
     }
     val searchShown by remember { derivedStateOf { expandProgress.value > 0f } }
     val searchExit = remember(expanded) { { if (expanded) 0f else 1f - expandProgress.value } }
-    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -541,7 +547,7 @@ fun SearchBarScreen(
                 expanded = expanded,
                 onExpandedChange = onExpandedChange,
                 // Fork: collapsed, the field draws the glass, the bar nothing; expanded, the suggestions keep their color.
-                // With liquid glass, the divider is drawn with the cards and the chips, over the search bar
+                // With liquid glass, no divider: the cards and the chips lie over the search bar, see fadingTopEdge
                 colors = if (glass != null) {
                     SearchBarDefaults.colors(containerColor = Color.Transparent, dividerColor = Color.Transparent)
                 } else {
@@ -566,10 +572,7 @@ fun SearchBarScreen(
                         .padding(top = top)
                         .graphicsLayer { alpha = if (expanded) expandProgress.value else 1f },
                 ) {
-                    Column {
-                        HorizontalDivider(Modifier.leavingWithSearch(), color = dividerColor)
-                        searchContent()
-                    }
+                    Column { searchContent() }
                     if (!expanded) Box(Modifier.matchParentSize().pointerInput(Unit) {})
                 }
             }
@@ -676,6 +679,22 @@ private fun ClosingFieldGlass(
     }
 }
 
+/**
+ * Fork: the top of the suggestions fades out once they are scrolled, over [SearchTopFade]; the cards no longer end
+ * on a hard line below the chips. It grows with the first [SearchTopFade] of scrolling, so nothing jumps.
+ */
+private fun Modifier.fadingTopEdge(state: LazyStaggeredGridState) = graphicsLayer {
+    compositingStrategy = if (state.canScrollBackward) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+}.drawWithContent {
+    drawContent()
+    val fade = SearchTopFade.toPx()
+    val scrolled = if (state.firstVisibleItemIndex <= 1) state.firstVisibleItemScrollOffset.toFloat() else fade
+    val height = scrolled.coerceAtMost(fade)
+    if (state.canScrollBackward && height >= 1f) {
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = height), blendMode = BlendMode.DstIn)
+    }
+}
+
 /** Fork: the title and the buttons of the field closing the search, coming in after those of the open search left. */
 private fun fieldContentAlpha(progress: Float) = ((progress - 0.15f) / 0.45f).coerceIn(0f, 1f)
 
@@ -700,6 +719,7 @@ private val SearchBarHorizontalPadding = 16.dp
 // Fork: the opening animation of the Material search bar (SearchBar.kt), for the glass growing with it
 private val SearchBarVerticalPadding = 8.dp
 private val SearchBarIconOffsetX = 4.dp
+private val SearchTopFade = 24.dp
 private val ExpandSpec = tween<Float>(durationMillis = 600, delayMillis = 100, easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f))
 // Closing, the cards leave and the blurred glass fades out after them, see SearchExit.kt: even in time, they ease
 private val CollapseSpec = tween<Float>(durationMillis = 400, easing = LinearEasing)
