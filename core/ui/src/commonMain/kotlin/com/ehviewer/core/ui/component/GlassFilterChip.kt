@@ -36,8 +36,8 @@ fun GlassFilterChip(
     val shape = FilterChipDefaults.shape
     // The chip is 32 dp tall in a 48 dp touch target: the glass goes on the chip, not on the target around it, or it
     // stood out above and below the chip and its selected light. The box keeps the room of the target, a touch near
-    // the chip still reaches it
-    Box(modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+    // the chip still reaches it. Closing the search, the chip leaves with it (leavingWithSearch)
+    Box(modifier.leavingWithSearch().minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
             FilterChip(
                 selected = selected,
