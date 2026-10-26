@@ -50,8 +50,8 @@ fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = tru
     }
 }
 
-private val LightCorner = Color(0xF2FFFFFF)
-private val DarkCorner = Color(0xF2262626)
+private val LightCorner = Color(0x80FFFFFF)
+private val DarkCorner = Color(0x80262626)
 
 // Triangles with their right angle on the top end corner, or the top start one
 private val EndCorner = GenericShape { size, direction ->
