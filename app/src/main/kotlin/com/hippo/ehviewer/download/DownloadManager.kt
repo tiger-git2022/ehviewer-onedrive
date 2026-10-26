@@ -231,6 +231,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
     }
 
     suspend fun startDownload(galleryInfo: BaseGalleryInfo, label: String?) {
+        // Fork: one found on PandaChika by a search downloads from there, see RestoredGalleries.promote
+        RestoredGalleries.promote(galleryInfo.gid)
         if (mCurrentTask?.gid == galleryInfo.gid) {
             // It is current task
             return

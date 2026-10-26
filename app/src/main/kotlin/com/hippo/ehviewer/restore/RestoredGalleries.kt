@@ -68,6 +68,15 @@ object RestoredGalleries {
         save()
     }
 
+    /**
+     * [gid] goes to the downloads: when found by a search, it is kept as restored, its download coming from PandaChika
+     * also after a restart. Opening it still asks E-Hentai first.
+     */
+    fun promote(gid: Long) {
+        val gallery = found.value[gid] ?: return
+        restore(gid, gallery)
+    }
+
     /** E-Hentai showed [gid]: it is not removed, or no longer. */
     fun dismiss(gid: Long) {
         found.update { it - gid }

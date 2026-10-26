@@ -22,6 +22,9 @@ import moe.tarsin.coroutines.runSuspendCatching
 /** A restored gallery: one E-Hentai removed, shown from PandaChika. */
 val GalleryInfo.isRestored get() = RestoredGalleries.isRestored(gid)
 
+/** Restored, or found by a search on PandaChika: its pages are only in its download. */
+val GalleryInfo.fromPandaChaika get() = gid in RestoredGalleries.badged.value
+
 /**
  * The details of [gid] from PandaChika, once E-Hentai said it is unavailable; null when PandaChika has no backup or
  * cannot be reached. [info] is the gallery as listed, for its cover.

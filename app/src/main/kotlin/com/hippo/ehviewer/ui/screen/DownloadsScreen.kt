@@ -117,6 +117,7 @@ import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.download.DownloadsFilterMode
 import com.hippo.ehviewer.download.shownPages
+import com.hippo.ehviewer.restore.fromPandaChaika
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
@@ -588,7 +589,13 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
             }
         }
 
+        val downloadFirst = stringResource(R.string.pandachaika_download_first)
         fun onItemClick(info: DownloadInfo) {
+            // Fork: a gallery from PandaChika reads from its download only
+            if (info.galleryInfo.fromPandaChaika && info.state != DownloadInfo.STATE_FINISH) {
+                launchIO { snackbar(downloadFirst) }
+                return
+            }
             launchIO { EhDB.putHistoryInfo(info) }
             navToReader(info.galleryInfo)
         }

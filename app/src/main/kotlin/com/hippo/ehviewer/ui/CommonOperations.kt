@@ -64,6 +64,7 @@ import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.download.downloadDir
 import com.hippo.ehviewer.download.downloadLocation
 import com.hippo.ehviewer.download.tempDownloadDir
+import com.hippo.ehviewer.restore.fromPandaChaika
 import com.hippo.ehviewer.ui.destinations.ReaderScreenDestination
 import com.hippo.ehviewer.ui.reader.ReaderScreenArgs
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -335,6 +336,11 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     val actions = mutableListOf<GalleryInfoAction>()
     fun action(icon: ImageVector, text: Int, run: suspend () -> Unit) = actions.add(GalleryInfoAction(icon, text, run))
     action(Icons.AutoMirrored.Default.MenuBook, R.string.read) {
+        // Fork: a gallery from PandaChika reads from its download only
+        if (info.fromPandaChaika && DownloadManager.getDownloadState(info.gid) != DownloadInfo.STATE_FINISH) {
+            tip(R.string.pandachaika_download_first)
+            return@action
+        }
         EhDB.putHistoryInfo(info)
         navToReader(info)
     }
