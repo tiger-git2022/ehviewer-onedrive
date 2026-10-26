@@ -180,6 +180,8 @@ fun GalleryDetailContent(
     voteTag: VoteTag,
     modifier: Modifier,
     state: LazyGridState = rememberLazyGridState(),
+    // Fork: fresh links for previews that fail to load, see PreviewRefetcher
+    previewRefetcher: PreviewRefetcher? = null,
 ) {
     val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
     val galleryDetail = galleryInfo.asGalleryDetail()
@@ -269,10 +271,6 @@ fun GalleryDetailContent(
 
     // Fork: a gallery restored from PandaChika has no previews
     val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
-    // Fork: fresh links for previews that fail to load, see PreviewRefetcher
-    val previewRefetcher = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.let { detail ->
-        rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
-    }
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),

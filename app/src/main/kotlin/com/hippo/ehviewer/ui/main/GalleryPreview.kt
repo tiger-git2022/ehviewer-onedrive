@@ -40,7 +40,7 @@ fun EhPreviewCard(
     model: GalleryPreview,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onError: () -> Unit = {},
+    onState: (State) -> Unit = {},
 ) {
     var contentScale by remember(model) { mutableStateOf(ContentScale.Fit) }
     val request = requestOf(model)
@@ -63,7 +63,7 @@ fun EhPreviewCard(
         },
         onState = {
             // Fork: see PreviewRefetcher
-            if (it is State.Error) onError()
+            onState(it)
             if (it is State.Success) {
                 if (model is V2GalleryPreview) {
                     if (model.shouldCrop) {
