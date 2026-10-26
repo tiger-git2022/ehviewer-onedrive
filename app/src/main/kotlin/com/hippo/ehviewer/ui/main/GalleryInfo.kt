@@ -50,6 +50,7 @@ import com.ehviewer.core.ui.util.listThumbGenerator
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.download.DownloadManager
+import com.hippo.ehviewer.restore.RestoredBadge
 import com.hippo.ehviewer.util.FavouriteStatusRouter
 
 @Composable
@@ -242,6 +243,8 @@ fun GalleryInfoGridItem(
                 )
             }
         }
+        // Fork: a gallery restored from PandaChika
+        RestoredBadge(info.gid, Modifier.align(Alignment.TopStart))
         val categoryColor = EhUtils.getCategoryColor(info.category)
         Badge(
             modifier = Modifier.align(Alignment.TopEnd).widthIn(min = 32.dp).height(24.dp),

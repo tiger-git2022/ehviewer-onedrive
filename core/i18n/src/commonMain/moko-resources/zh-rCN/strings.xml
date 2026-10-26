@@ -784,4 +784,11 @@
     <string name="moved_to_local_favorites">已移出云端收藏，保留在本地收藏</string>
     <string name="drawer_navigation_menu">导航菜单</string>
     <string name="drawer_close">关闭侧边栏</string>
+    <!-- Fork: galleries E-Hentai removed, restored from PandaChika -->
+    <string name="pandachaika_badge">修复</string>
+    <string name="pandachaika_no_backup">PandaChika 上也没有备份</string>
+    <string name="pandachaika_restored_note">此画廊已在 E-Hentai 失效，这里显示的是 PandaChika 上的备份：没有预览图，下载后可以阅读。</string>
+    <string name="pandachaika_download_first">从 PandaChika 恢复的画廊不能在线阅读，请先下载</string>
+    <string name="pandachaika_in_search">搜索时同时查找 PandaChika 备份</string>
+    <string name="pandachaika_in_search_summary">E-Hentai 已删除、PandaChika 有备份的画廊按发布时间显示在搜索结果中，封面带「修复」角标</string>
 </resources>

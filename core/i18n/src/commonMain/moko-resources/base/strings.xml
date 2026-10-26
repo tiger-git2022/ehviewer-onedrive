@@ -802,4 +802,11 @@
     <string name="moved_to_local_favorites">Removed from the cloud favorites, kept in the local favorites</string>
     <string name="drawer_navigation_menu">Navigation menu</string>
     <string name="drawer_close">Close the drawer</string>
+    <!-- Fork: galleries E-Hentai removed, restored from PandaChika -->
+    <string name="pandachaika_badge">Restored</string>
+    <string name="pandachaika_no_backup">PandaChika has no backup of it either</string>
+    <string name="pandachaika_restored_note">Removed from E-Hentai. Shown from its backup on PandaChika: no previews, download it to read.</string>
+    <string name="pandachaika_download_first">A gallery restored from PandaChika cannot be read online, download it first</string>
+    <string name="pandachaika_in_search">Search PandaChika too</string>
+    <string name="pandachaika_in_search_summary">Galleries E-Hentai removed and PandaChika keeps show in the search results by posted time, with a “Restored” badge</string>
 </resources>

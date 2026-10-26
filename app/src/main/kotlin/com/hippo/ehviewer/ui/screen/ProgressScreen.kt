@@ -26,11 +26,13 @@ import com.ehviewer.core.ui.icons.EhIcons
 import com.ehviewer.core.ui.icons.big.SadAndroid
 import com.ehviewer.core.util.withUIContext
 import com.hippo.ehviewer.client.EhEngine
+import com.hippo.ehviewer.restore.PandaChaikaApi
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.util.displayString
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import kotlinx.coroutines.CancellationException
 import moe.tarsin.coroutines.runSuspendCatching
 import moe.tarsin.navigate
 
@@ -45,11 +47,20 @@ fun AnimatedVisibilityScope.ProgressScreen(gid: Long, token: String, page: Int, 
                 error = wrong
             } else {
                 runSuspendCatching {
-                    EhEngine.getGalleryToken(gid, token, page)
-                }.onSuccess {
+                    try {
+                        EhEngine.getGalleryToken(gid, token, page) to page
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Fork: a page of a gallery E-Hentai removed: its token from the backup on PandaChika, whose
+                        // details then open from there (GalleryDetailScreen), not the page: it reads once downloaded
+                        val galleryToken = runSuspendCatching { PandaChaikaApi.gallery(gid) }.getOrNull()?.ehToken ?: throw e
+                        galleryToken to 0
+                    }
+                }.onSuccess { (galleryToken, toPage) ->
                     withUIContext {
                         navigator.popBackStack()
-                        navigate(gid asDstPageTo page with it)
+                        navigate(gid asDstPageTo toPage with galleryToken)
                     }
                 }.onFailure {
                     error = it.displayString()

@@ -81,6 +81,9 @@ object Settings : DataStorePreferences(null) {
 
     // Fork: gallery lists leave out the galleries in the cloud or local favorites, see GalleryListViewModel
     val hideFavoritedInLists = boolPref("hide_favorited_in_lists", false)
+
+    // Fork: a search also looks on PandaChika for galleries E-Hentai removed, see restore/PandaChaikaSearch.kt
+    val pandaChaikaInSearch = boolPref("pandachaika_in_search", true)
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
     val blackDarkTheme = boolPref("black_dark_theme", false)
     val harmonizeCategoryColor = boolPref("harmonize_category_color", true)

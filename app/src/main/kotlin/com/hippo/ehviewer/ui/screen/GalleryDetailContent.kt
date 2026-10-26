@@ -118,6 +118,8 @@ import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.restore.isRestored
+import com.hippo.ehviewer.restore.restoredNote
 import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
 import com.hippo.ehviewer.ui.MainActivity
@@ -201,7 +203,13 @@ fun GalleryDetailContent(
         DownloadInfo.STATE_FAILED -> stringResource(R.string.download_state_failed)
         else -> error("Invalid DownloadState!!!")
     }
+    val downloadFirst = stringResource(R.string.pandachaika_download_first)
     fun onReadButtonClick() {
+        // Fork: a gallery restored from PandaChika has no pages online, only its download
+        if (galleryInfo.isRestored && downloadState != DownloadInfo.STATE_FINISH) {
+            launch { snackbar(downloadFirst) }
+            return
+        }
         if (galleryDetail != null || downloadState != DownloadInfo.STATE_INVALID) {
             navToReader(galleryInfo.findBaseInfo(), startPage)
         }
@@ -258,7 +266,8 @@ fun GalleryDetailContent(
         }
     }
 
-    val previews = galleryDetail?.collectPreviewItems()
+    // Fork: a gallery restored from PandaChika has no previews
+    val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),
@@ -319,6 +328,7 @@ fun GalleryDetailContent(
                     }
                 }
             }
+            if (galleryDetail != null && galleryDetail.isRestored) restoredNote()
             if (galleryDetail != null && previews != null) {
                 galleryPreview(galleryDetail, previews) { navToReader(galleryDetail.galleryInfo, it) }
             }
@@ -389,6 +399,7 @@ fun GalleryDetailContent(
                     }
                 }
             }
+            if (galleryDetail != null && galleryDetail.isRestored) restoredNote()
             if (galleryDetail != null && previews != null) {
                 galleryPreview(galleryDetail, previews) { navToReader(galleryDetail.galleryInfo, it) }
             }
