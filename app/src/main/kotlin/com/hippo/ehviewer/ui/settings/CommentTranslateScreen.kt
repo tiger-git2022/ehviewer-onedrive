@@ -23,6 +23,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import arrow.core.left
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.Settings
@@ -34,6 +35,7 @@ import com.hippo.ehviewer.translate.TargetLanguage
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.tools.awaitInputText
+import com.hippo.ehviewer.ui.tools.awaitSelectItem
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -106,9 +108,32 @@ fun AnimatedVisibilityScope.CommentTranslateScreen(navigator: DestinationsNaviga
             val model by Settings.commentTranslateModel.collectAsState()
             val modelTitle = stringResource(id = R.string.comment_translate_model)
             val modelHint = stringResource(id = R.string.comment_translate_model_hint)
-            Preference(title = modelTitle, summary = model.ifBlank { modelHint }) {
+            // The models the API offers (GET /models) to pick from, or typed in by hand when it lists none
+            var fetchingModels by remember { mutableStateOf(false) }
+            val manualInput = stringResource(id = R.string.comment_translate_model_manual)
+            Preference(
+                title = modelTitle,
+                summary = if (fetchingModels) stringResource(id = R.string.comment_translate_model_fetching) else model.ifBlank { modelHint },
+            ) {
+                if (fetchingModels) return@Preference
                 launch {
-                    val value = awaitInputText(initial = model, title = modelTitle, hint = modelHint).trim()
+                    val config = CommentTranslations.config
+                    val models = if (config.apiUrl.isBlank()) {
+                        emptyList()
+                    } else {
+                        fetchingModels = true
+                        runSuspendCatching { CommentTranslateApi.listModels(config) }
+                            .onFailure { e -> snackbar(string(R.string.comment_translate_model_fetch_failed, e.message ?: e.toString())) }
+                            .getOrDefault(emptyList())
+                            .also { fetchingModels = false }
+                    }
+                    val picked = if (models.isEmpty()) {
+                        null
+                    } else {
+                        val index = awaitSelectItem(models + manualInput, modelTitle.left(), selected = models.indexOf(model))
+                        models.getOrNull(index)
+                    }
+                    val value = picked ?: awaitInputText(initial = model, title = modelTitle, hint = modelHint).trim()
                     Settings.commentTranslateModel.value = value
                     CommentTranslations.forgetFailures()
                 }
