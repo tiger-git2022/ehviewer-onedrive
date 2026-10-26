@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
@@ -97,22 +98,12 @@ fun RefreshIndicator(
 }
 
 /**
- * Fork: a page or a part of it loading, in the look of [RefreshIndicator]: the refresh arrow turning in a drop of
- * glass, in place of the Material wavy circle. [glass] only where the indicator lies outside the content the page's
- * glass refracts; else a translucent disc with a lit rim.
+ * Fork: a page or a part of it loading: the Material loading shape, morphing between rounded shapes as it turns, in
+ * place of the Material wavy circle. No container: on a plain page a drop of glass read as a gray dot.
  */
 @Composable
-fun GlassLoadingIndicator(modifier: Modifier = Modifier, glass: FloatingGlass? = null) {
-    val spin = rememberInfiniteTransition(label = "Loading")
-    val spinAngle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "Spin")
-    Box(modifier = modifier.size(IndicatorSize).refreshDrop(glass), contentAlignment = Alignment.Center) {
-        Icon(
-            imageVector = Icons.Rounded.Refresh,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(ArrowSize).graphicsLayer { rotationZ = spinAngle },
-        )
-    }
+fun ShapeLoadingIndicator(modifier: Modifier = Modifier) {
+    LoadingIndicator(modifier = modifier.size(LoadingSize), color = MaterialTheme.colorScheme.primary)
 }
 
 // The drop behind the arrow: glass, else a translucent disc with a lit rim over glass pages, else a plain disc
@@ -132,6 +123,7 @@ private fun Modifier.refreshDrop(glass: FloatingGlass?): Modifier {
 }
 
 private val IndicatorSize: Dp = 40.dp
+private val LoadingSize: Dp = 48.dp
 private val ArrowSize: Dp = 22.dp
 
 // Like the floating buttons

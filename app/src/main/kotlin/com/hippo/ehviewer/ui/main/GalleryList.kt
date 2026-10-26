@@ -239,7 +239,7 @@ fun GalleryList(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        GlassLoadingIndicator()
+                        ShapeLoadingIndicator()
                     }
                 }
             }

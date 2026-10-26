@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.ui.LocalPageBackdrop
-import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
+import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.GlassDialog
@@ -68,7 +68,7 @@ private fun ProgressDialogRow() = Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier.padding(18.dp),
 ) {
-    GlassLoadingIndicator()
+    ShapeLoadingIndicator()
     Spacer(modifier = Modifier.size(18.dp))
     Text(text = stringResource(id = R.string.please_wait))
 }

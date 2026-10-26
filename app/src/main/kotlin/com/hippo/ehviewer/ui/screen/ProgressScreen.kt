@@ -27,7 +27,7 @@ import com.ehviewer.core.util.withUIContext
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.restore.PandaChaikaApi
 import com.hippo.ehviewer.ui.Screen
-import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
+import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.util.displayString
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -90,7 +90,7 @@ fun AnimatedVisibilityScope.ProgressScreen(gid: Long, token: String, page: Int, 
                 )
             }
         } else {
-            GlassLoadingIndicator()
+            ShapeLoadingIndicator()
         }
     }
 }

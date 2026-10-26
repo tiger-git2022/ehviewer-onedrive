@@ -150,7 +150,7 @@ fun showImageLimits() {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    GlassLoadingIndicator()
+                    ShapeLoadingIndicator()
                     Spacer(modifier = Modifier.size(dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)))
                     Text(text = stringResource(id = R.string.please_wait))
                 }

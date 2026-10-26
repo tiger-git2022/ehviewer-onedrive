@@ -49,8 +49,8 @@ import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.sync.RemoteDevice
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.destinations.OneDriveDeviceDownloadsScreenDestination
-import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.util.ReadableTime
 import com.ramcosta.composedestinations.annotation.Destination
@@ -97,7 +97,7 @@ fun AnimatedVisibilityScope.OneDriveDevicesScreen(navigator: DestinationsNavigat
         when {
             error != null -> CenteredText(text = error.orEmpty(), modifier = Modifier.padding(paddingValues))
             list == null -> Box(modifier = Modifier.padding(paddingValues).fillMaxSize(), contentAlignment = Alignment.Center) {
-                GlassLoadingIndicator()
+                ShapeLoadingIndicator()
             }
             list.isEmpty() -> CenteredText(text = stringResource(id = R.string.onedrive_sync_no_devices), modifier = Modifier.padding(paddingValues))
             else -> LazyColumn(
@@ -238,7 +238,7 @@ fun AnimatedVisibilityScope.OneDriveDeviceDownloadsScreen(deviceId: String, navi
         when {
             error != null -> CenteredText(text = error.orEmpty(), modifier = Modifier.padding(paddingValues))
             remote == null -> Box(modifier = Modifier.padding(paddingValues).fillMaxSize(), contentAlignment = Alignment.Center) {
-                GlassLoadingIndicator()
+                ShapeLoadingIndicator()
             }
             else -> LazyColumn(
                 modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
