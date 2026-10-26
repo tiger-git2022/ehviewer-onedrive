@@ -1,42 +1,75 @@
 package com.hippo.ehviewer.restore
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.CrystalCard
 
 // Fork: how a gallery restored from PandaChika shows, see RestoredGalleries
 
-/** The badge on the cover of [gid] when restored, or found by a search on PandaChika: a panda. */
+/**
+ * The badge on the cover of [gid] when restored, or found by a search on PandaChika: a panda in a triangle on the
+ * corner, the top end one, or the top start one when not [atEnd]. Light or dark as the theme.
+ */
 @Composable
-fun RestoredBadge(gid: Long, modifier: Modifier = Modifier) {
+fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = true) {
     val badged by RestoredGalleries.badged.collectAsState()
     if (gid in badged) {
-        Image(
-            imageVector = Panda,
-            contentDescription = stringResource(R.string.pandachaika_badge),
-            modifier = modifier.padding(4.dp).size(20.dp),
-        )
+        val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        Box(modifier.size(30.dp).background(if (dark) DarkCorner else LightCorner, if (atEnd) EndCorner else StartCorner)) {
+            Image(
+                imageVector = Panda,
+                contentDescription = stringResource(R.string.pandachaika_badge),
+                modifier = Modifier.align(if (atEnd) Alignment.TopEnd else Alignment.TopStart).padding(2.dp).size(13.dp),
+            )
+        }
     }
 }
 
-// A panda's head, in its own colors, outlined to show on light covers as on dark ones
+private val LightCorner = Color(0xF2FFFFFF)
+private val DarkCorner = Color(0xF2262626)
+
+// Triangles with their right angle on the top end corner, or the top start one
+private val EndCorner = GenericShape { size, direction ->
+    if (direction == LayoutDirection.Ltr) corner(size.width, 0f, size) else corner(0f, size.width, size)
+}
+private val StartCorner = GenericShape { size, direction ->
+    if (direction == LayoutDirection.Ltr) corner(0f, size.width, size) else corner(size.width, 0f, size)
+}
+
+// The right angle at x = [right] on the top edge, the other ends at x = [other] on the top edge and below the angle
+private fun Path.corner(right: Float, other: Float, size: Size) {
+    moveTo(other, 0f)
+    lineTo(right, 0f)
+    lineTo(right, size.height)
+    close()
+}
+
+// A panda's head, in its own colors, outlined to show on the light corner as on the dark one
 private val Panda by lazy {
     val black = SolidColor(Color(0xFF1E1E1E))
     val white = SolidColor(Color.White)

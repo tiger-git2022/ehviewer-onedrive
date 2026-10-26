@@ -243,8 +243,8 @@ fun GalleryInfoGridItem(
                 )
             }
         }
-        // Fork: a gallery restored from PandaChika
-        RestoredBadge(info.gid, Modifier.align(Alignment.TopStart))
+        // Fork: a gallery restored from PandaChika, on the top start corner: the category is on the other
+        RestoredBadge(info.gid, Modifier.align(Alignment.TopStart), atEnd = false)
         val categoryColor = EhUtils.getCategoryColor(info.category)
         Badge(
             modifier = Modifier.align(Alignment.TopEnd).widthIn(min = 32.dp).height(24.dp),
