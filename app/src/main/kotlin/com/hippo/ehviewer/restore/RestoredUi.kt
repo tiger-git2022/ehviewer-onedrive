@@ -18,7 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -33,7 +35,7 @@ import com.ehviewer.core.ui.component.CrystalCard
 
 /**
  * The badge on the cover of [gid] when restored, or found by a search on PandaChika: a panda in a triangle on the
- * corner, the top end one, or the top start one when not [atEnd]. Light or dark as the theme.
+ * corner, the top end one, or the top start one when not [atEnd]. A white triangle and a black panda in the light theme, the other way round in the dark one.
  */
 @Composable
 fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = true) {
@@ -44,6 +46,7 @@ fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = tru
             Image(
                 imageVector = Panda,
                 contentDescription = stringResource(R.string.pandachaika_badge),
+                colorFilter = ColorFilter.tint(if (dark) Color.White else PandaBlack),
                 modifier = Modifier.align(if (atEnd) Alignment.TopEnd else Alignment.TopStart).padding(2.dp).size(13.dp),
             )
         }
@@ -52,6 +55,7 @@ fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = tru
 
 private val LightCorner = Color(0x80FFFFFF)
 private val DarkCorner = Color(0x80262626)
+private val PandaBlack = Color(0xFF1E1E1E)
 
 // Triangles with their right angle on the top end corner, or the top start one
 private val EndCorner = GenericShape { size, direction ->
@@ -69,33 +73,30 @@ private fun Path.corner(right: Float, other: Float, size: Size) {
     close()
 }
 
-// A panda's head, in its own colors, outlined to show on the light corner as on the dark one
+// A panda's head in one color (tinted), the eye patches and the nose cut out
 private val Panda by lazy {
-    val black = SolidColor(Color(0xFF1E1E1E))
-    val white = SolidColor(Color.White)
+    val color = SolidColor(Color.Black)
     ImageVector.Builder("Panda", 24.dp, 24.dp, 24f, 24f).apply {
-        oval(6f, 6.2f, 3.4f, 3.4f, black, white)
-        oval(18f, 6.2f, 3.4f, 3.4f, black, white)
-        oval(12f, 13.6f, 9.6f, 8.4f, white, black)
-        oval(8.2f, 12.9f, 2.3f, 2.8f, black)
-        oval(15.8f, 12.9f, 2.3f, 2.8f, black)
-        oval(8.6f, 12.4f, 0.8f, 0.8f, white)
-        oval(15.4f, 12.4f, 0.8f, 0.8f, white)
-        oval(12f, 17.2f, 1.5f, 1f, black)
+        addPath(ovals(listOf(Oval(5.6f, 5.8f, 3.2f, 3.2f), Oval(18.4f, 5.8f, 3.2f, 3.2f))), fill = color)
+        addPath(
+            ovals(listOf(Oval(12f, 13.6f, 9.6f, 8.4f), Oval(8.4f, 12.9f, 2.1f, 2.6f), Oval(15.6f, 12.9f, 2.1f, 2.6f), Oval(12f, 17.1f, 1.4f, 0.95f))),
+            pathFillType = PathFillType.EvenOdd,
+            fill = color,
+        )
+        addPath(ovals(listOf(Oval(8.8f, 12.5f, 0.9f, 0.9f), Oval(15.2f, 12.5f, 0.9f, 0.9f))), fill = color)
     }.build()
 }
 
-private fun ImageVector.Builder.oval(cx: Float, cy: Float, rx: Float, ry: Float, fill: SolidColor, stroke: SolidColor? = null) = addPath(
-    pathData = PathBuilder().apply {
+private data class Oval(val cx: Float, val cy: Float, val rx: Float, val ry: Float)
+
+private fun ovals(ovals: List<Oval>) = PathBuilder().apply {
+    ovals.forEach { (cx, cy, rx, ry) ->
         moveTo(cx - rx, cy)
         arcToRelative(rx, ry, 0f, true, true, rx * 2, 0f)
         arcToRelative(rx, ry, 0f, true, true, -rx * 2, 0f)
         close()
-    }.nodes,
-    fill = fill,
-    stroke = stroke,
-    strokeLineWidth = if (stroke != null) 1.2f else 0f,
-)
+    }
+}.nodes
 
 /** In the details of a restored gallery, in place of the previews: where they come from. */
 fun LazyGridScope.restoredNote() = item(
