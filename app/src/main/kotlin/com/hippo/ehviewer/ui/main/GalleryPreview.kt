@@ -11,6 +11,7 @@ import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +29,7 @@ import com.ehviewer.core.model.V2GalleryPreview
 import com.ehviewer.core.ui.component.CrystalCard
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.ui.tools.shouldCrop
+import kotlinx.coroutines.launch
 
 @Composable
 @NonRestartableComposable
@@ -40,6 +42,7 @@ fun EhPreviewCard(
     model: GalleryPreview,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onError: () -> Unit = {},
 ) {
     var contentScale by remember(model) { mutableStateOf(ContentScale.Fit) }
     val request = requestOf(model)
@@ -61,6 +64,8 @@ fun EhPreviewCard(
             }
         },
         onState = {
+            // Fork: see PreviewRefetcher
+            if (it is State.Error) onError()
             if (it is State.Success) {
                 if (model is V2GalleryPreview) {
                     if (model.shouldCrop) {
@@ -97,14 +102,24 @@ fun EhPreviewCard(
 fun EhPreviewItem(
     galleryPreview: GalleryPreview?,
     position: Int,
+    refetcher: PreviewRefetcher? = null,
     onClick: () -> Unit,
 ) = Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Box(contentAlignment = Alignment.Center) {
         if (galleryPreview != null) {
+            // Fork: a preview whose link stopped working loads again with a fresh one
+            var preview by remember(galleryPreview) { mutableStateOf(galleryPreview) }
+            val scope = rememberCoroutineScope()
             EhPreviewCard(
-                model = galleryPreview,
+                model = preview,
                 onClick = onClick,
                 modifier = Modifier.aspectRatio(DEFAULT_RATIO),
+                onError = {
+                    if (refetcher != null) {
+                        val failed = preview
+                        scope.launch { refetcher.refetch(failed)?.let { preview = it } }
+                    }
+                },
             )
         } else {
             CrystalCard(
