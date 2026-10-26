@@ -82,29 +82,22 @@ private fun Path.corner(right: Float, other: Float, size: Size) {
 // A panda's head in lines of one color, in a box of 24: the ears and the eye patches filled, the face open
 private val PandaEars = Path().apply {
     val ears = Path().apply {
-        addOval(Rect(Offset(5.3f, 6.4f), 3.5f))
-        addOval(Rect(Offset(18.7f, 6.4f), 3.5f))
+        addOval(Rect(Offset(4.8f, 6.2f), 3.6f))
+        addOval(Rect(Offset(19.2f, 6.2f), 3.6f))
     }
-    op(ears, oval(12f, 13.8f, 8.4f, 7.4f), PathOperation.Difference)
+    op(ears, oval(12f, 13.6f, 9f, 7.7f), PathOperation.Difference)
 }
 private val PandaEyes = Path().apply {
-    val patches = Path().apply {
-        addPath(oval(8.4f, 13.4f, 2.1f, 2.9f, rotation = 35f))
-        addPath(oval(15.6f, 13.4f, 2.1f, 2.9f, rotation = -35f))
-    }
-    val pupils = Path().apply {
-        addOval(Rect(Offset(8.9f, 12.9f), 0.85f))
-        addOval(Rect(Offset(15.1f, 12.9f), 0.85f))
-    }
-    op(patches, pupils, PathOperation.Difference)
+    addPath(oval(8f, 13.2f, 2.3f, 3.1f, rotation = 42f))
+    addPath(oval(16f, 13.2f, 2.3f, 3.1f, rotation = -42f))
 }
-private val PandaNose = oval(12f, 16.5f, 1.2f, 0.75f)
+private val PandaNose = oval(12f, 16.2f, 1.25f, 0.75f)
 private val PandaMouth = Path().apply {
-    moveTo(12f, 17f)
-    lineTo(12f, 17.7f)
-    moveTo(10.4f, 17.9f)
-    quadraticTo(11.2f, 19f, 12f, 17.7f)
-    quadraticTo(12.8f, 19f, 13.6f, 17.9f)
+    moveTo(12f, 16.7f)
+    lineTo(12f, 17.4f)
+    moveTo(10.3f, 17.5f)
+    quadraticTo(11.15f, 18.8f, 12f, 17.4f)
+    quadraticTo(12.85f, 18.8f, 13.7f, 17.5f)
 }
 
 private fun oval(cx: Float, cy: Float, rx: Float, ry: Float, rotation: Float = 0f) = Path().apply {
@@ -122,7 +115,7 @@ private fun oval(cx: Float, cy: Float, rx: Float, ry: Float, rotation: Float = 0
 
 private fun DrawScope.drawPanda(color: Color) = scale(size.minDimension / 24f, pivot = Offset.Zero) {
     drawPath(PandaEars, color)
-    drawOval(color, Offset(2.8f, 5.6f), Size(18.4f, 16.4f), style = Stroke(1.6f))
+    drawOval(color, Offset(2.2f, 5.1f), Size(19.6f, 17f), style = Stroke(1.6f))
     drawPath(PandaEyes, color)
     drawPath(PandaNose, color)
     drawPath(PandaMouth, color, style = Stroke(0.6f, cap = StrokeCap.Round, join = StrokeJoin.Round))
