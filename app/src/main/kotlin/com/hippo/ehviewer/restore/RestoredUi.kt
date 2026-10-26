@@ -1,44 +1,68 @@
 package com.hippo.ehviewer.restore
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.CrystalCard
 
 // Fork: how a gallery restored from PandaChika shows, see RestoredGalleries
 
-/** The badge on the cover of [gid] when restored, or found by a search on PandaChika. */
+/** The badge on the cover of [gid] when restored, or found by a search on PandaChika: a panda. */
 @Composable
 fun RestoredBadge(gid: Long, modifier: Modifier = Modifier) {
     val badged by RestoredGalleries.badged.collectAsState()
     if (gid in badged) {
-        Text(
-            text = stringResource(R.string.pandachaika_badge),
-            modifier = modifier
-                .padding(4.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.tertiary)
-                .padding(horizontal = 5.dp, vertical = 1.dp),
-            color = MaterialTheme.colorScheme.onTertiary,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
-            maxLines = 1,
+        Image(
+            imageVector = Panda,
+            contentDescription = stringResource(R.string.pandachaika_badge),
+            modifier = modifier.padding(4.dp).size(20.dp),
         )
     }
 }
+
+// A panda's head, in its own colors, outlined to show on light covers as on dark ones
+private val Panda by lazy {
+    val black = SolidColor(Color(0xFF1E1E1E))
+    val white = SolidColor(Color.White)
+    ImageVector.Builder("Panda", 24.dp, 24.dp, 24f, 24f).apply {
+        oval(6f, 6.2f, 3.4f, 3.4f, black, white)
+        oval(18f, 6.2f, 3.4f, 3.4f, black, white)
+        oval(12f, 13.6f, 9.6f, 8.4f, white, black)
+        oval(8.2f, 12.9f, 2.3f, 2.8f, black)
+        oval(15.8f, 12.9f, 2.3f, 2.8f, black)
+        oval(8.6f, 12.4f, 0.8f, 0.8f, white)
+        oval(15.4f, 12.4f, 0.8f, 0.8f, white)
+        oval(12f, 17.2f, 1.5f, 1f, black)
+    }.build()
+}
+
+private fun ImageVector.Builder.oval(cx: Float, cy: Float, rx: Float, ry: Float, fill: SolidColor, stroke: SolidColor? = null) = addPath(
+    pathData = PathBuilder().apply {
+        moveTo(cx - rx, cy)
+        arcToRelative(rx, ry, 0f, true, true, rx * 2, 0f)
+        arcToRelative(rx, ry, 0f, true, true, -rx * 2, 0f)
+        close()
+    }.nodes,
+    fill = fill,
+    stroke = stroke,
+    strokeLineWidth = if (stroke != null) 1.2f else 0f,
+)
 
 /** In the details of a restored gallery, in place of the previews: where they come from. */
 fun LazyGridScope.restoredNote() = item(
