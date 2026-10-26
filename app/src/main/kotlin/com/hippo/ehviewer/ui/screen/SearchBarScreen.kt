@@ -438,7 +438,8 @@ fun SearchBarScreen(
                         IconButton(onClick = {}, shapes = IconButtonDefaults.shapes()) {
                             Icon(if (searchFieldState.text.isNotEmpty()) Icons.Default.Close else Icons.Default.ImageSearch, contentDescription = null)
                         }
-                        expandedTrailingIcon()
+                        // Fork: a checked "汉" refracts the blurred glass of the search, see checkedGlass
+                        CompositionLocalProvider(LocalTileGlass provides tileGlass) { expandedTrailingIcon() }
                     }
                 }
             }
@@ -526,7 +527,8 @@ fun SearchBarScreen(
                                             }
                                         }
                                     }
-                                    expandedTrailingIcon()
+                                    // Fork: a checked "汉" refracts the blurred glass of the search, see checkedGlass
+                                    CompositionLocalProvider(LocalTileGlass provides tileGlass) { expandedTrailingIcon() }
                                 }
                             } else {
                                 Row {

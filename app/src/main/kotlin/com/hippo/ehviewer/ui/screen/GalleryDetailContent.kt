@@ -38,10 +38,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -120,6 +122,7 @@ import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.restore.isRestored
 import com.hippo.ehviewer.restore.restoredNote
 import com.hippo.ehviewer.sync.MihonSearch
+import com.hippo.ehviewer.translate.CommentTranslations
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.confirmRemoveDownload
@@ -439,8 +442,20 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         fun navigateToCommentScreen() {
             navigate(GalleryCommentsScreenDestination(galleryDetail.gid))
         }
+        // Fork: translated like on the comments page, if set to, see translate/CommentTranslations.kt
+        val apiUrl by Settings.commentTranslateApiUrl.collectAsState()
+        val apiModel by Settings.commentTranslateModel.collectAsState()
+        val autoTranslate by Settings.commentTranslateAuto.collectAsState()
+        val translateInDetail by Settings.commentTranslateInDetail.collectAsState()
+        val translateTarget by Settings.commentTranslateTarget.collectAsState()
+        val translate = apiUrl.isNotBlank() && apiModel.isNotBlank() && autoTranslate && translateInDetail
+        val shownComments = commentsList.take(maxShowCount)
+        LaunchedEffect(shownComments, translate, translateTarget) {
+            if (translate) CommentTranslations.request(shownComments)
+        }
+        val originalShown = remember { mutableStateSetOf<Long>() }
         CrystalCard {
-            commentsList.take(maxShowCount).forEach { item ->
+            shownComments.forEach { item ->
                 GalleryCommentCard(
                     modifier = Modifier.padding(vertical = 4.dp),
                     comment = item,
@@ -455,6 +470,10 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     },
                     maxLines = 5,
                     ellipsis = true,
+                    translation = if (translate) CommentTranslations.stateOf(item) else null,
+                    showOriginal = item.id in originalShown,
+                    onToggleOriginal = { if (!originalShown.remove(item.id)) originalShown.add(item.id) },
+                    onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
                 )
             }
             Box(

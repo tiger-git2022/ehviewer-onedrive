@@ -84,6 +84,16 @@ object Settings : DataStorePreferences(null) {
 
     // Fork: a search also looks on PandaChika for galleries E-Hentai removed, see restore/PandaChaikaSearch.kt
     val pandaChaikaInSearch = boolPref("pandachaika_in_search", true)
+
+    // Fork: comments not in the target language translated by a large language model, see translate/CommentTranslations.kt.
+    // The API key never leaves this device (OneDriveSyncMerger)
+    val commentTranslateAuto = boolPref("comment_translate_auto", true)
+    val commentTranslateTarget = stringPref("comment_translate_target", "zh-CN")
+    val commentTranslateInDetail = boolPref("comment_translate_in_detail", true)
+    val commentTranslateApiUrl = stringPref("comment_translate_api_url", "")
+    val commentTranslateApiKey = stringPref("comment_translate_api_key", "")
+    val commentTranslateModel = stringPref("comment_translate_model", "")
+
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
     val blackDarkTheme = boolPref("black_dark_theme", false)
     val harmonizeCategoryColor = boolPref("harmonize_category_color", true)
