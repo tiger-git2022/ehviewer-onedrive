@@ -35,7 +35,8 @@ import com.ehviewer.core.ui.component.CrystalCard
 
 /**
  * The badge on the cover of [gid] when restored, or found by a search on PandaChika: a panda in a triangle on the
- * corner, the top end one, or the top start one when not [atEnd]. A white triangle and a black panda in the light theme, the other way round in the dark one.
+ * corner, the top end one, or the top start one when not [atEnd]. A white triangle and a black panda in the light
+ * theme, the other way round in the dark one.
  */
 @Composable
 fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = true) {
