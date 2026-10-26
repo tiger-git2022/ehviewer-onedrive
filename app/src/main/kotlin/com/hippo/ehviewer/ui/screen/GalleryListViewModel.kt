@@ -20,6 +20,7 @@ import com.hippo.ehviewer.client.data.ListUrlBuilder.Companion.MODE_TOPLIST
 import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.GalleryListResult
 import com.hippo.ehviewer.restore.PandaChaikaMerger
+import com.hippo.ehviewer.restore.RestoredGalleries
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -142,6 +143,8 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                             }
                             result = shown
                         }
+                        // Fork: listed by E-Hentai, not removed: no badge
+                        RestoredGalleries.listed(result.galleryInfoList.map { it.gid })
                         if (merger != null) {
                             val load = when (params) {
                                 is LoadParams.Refresh -> PandaChaikaMerger.Load.Refresh

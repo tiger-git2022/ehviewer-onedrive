@@ -61,6 +61,13 @@ object RestoredGalleries {
         if (new.isNotEmpty()) found.update { it + new }
     }
 
+    /** E-Hentai listed [gids]: those found by a search before are not removed. Restored ones stay until opened. */
+    fun listed(gids: Collection<Long>) {
+        if (found.value.keys.none { it in gids }) return
+        val listed = gids.toSet()
+        found.update { it - listed }
+    }
+
     /** E-Hentai said [gid] is unavailable and PandaChika has [gallery]. */
     fun restore(gid: Long, gallery: PandaChaikaApi.Gallery) {
         found.update { it - gid }
@@ -70,7 +77,7 @@ object RestoredGalleries {
 
     /**
      * [gid] goes to the downloads: when found by a search, it is kept as restored, its download coming from PandaChika
-     * also after a restart. Opening it still asks E-Hentai first.
+     * also after a restart. The download asks E-Hentai first, see DownloadManager.startPandaChaikaDownload.
      */
     fun promote(gid: Long) {
         val gallery = found.value[gid] ?: return

@@ -44,7 +44,10 @@ import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.mapNotNull
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.client.EhEngine
+import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.exception.FatalException
+import com.hippo.ehviewer.client.exception.GalleryUnavailableException
 import com.hippo.ehviewer.restore.PandaChaikaDownload
 import com.hippo.ehviewer.restore.RestoredGalleries
 import com.hippo.ehviewer.spider.COMIC_INFO_FILE
@@ -71,6 +74,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
+import moe.tarsin.coroutines.runSuspendCatching
 import okio.Path
 import okio.Path.Companion.toOkioPath
 import okio.Path.Companion.toPath
@@ -159,32 +163,40 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
                     }
                     // Fork: a gallery E-Hentai removed downloads its archive from PandaChika
                     if (RestoredGalleries.isRestored(gid)) return startPandaChaikaDownload(this)
-                    state = DownloadInfo.STATE_DOWNLOAD
-                    speed = -1
-                    remaining = -1
-                    total = -1
-                    finished = 0
-                    downloaded = 0
-                    legacy = -1
                 }
-                val spider = SpiderQueen.obtainSpiderQueen(info, SpiderQueen.MODE_DOWNLOAD)
-                mCurrentSpider = spider
-                spider.addOnSpiderListener(this)
-                // Update in DB
-                EhDB.putDownloadInfo(info)
-                // Start speed count
-                mSpeedReminder.start()
-                // Notify start downloading
-                mDownloadListener?.onStart(info)
-                // Notify state update
-                mutableNotifyFlow.emit(info)
+                startSpider(info)
             }
         }
     }
 
+    // Fork: out of ensureDownload, also for a gallery that turns out to be on E-Hentai, see startPandaChaikaDownload
+    private suspend fun startSpider(info: DownloadInfo) {
+        with(info) {
+            state = DownloadInfo.STATE_DOWNLOAD
+            speed = -1
+            remaining = -1
+            total = -1
+            finished = 0
+            downloaded = 0
+            legacy = -1
+        }
+        val spider = SpiderQueen.obtainSpiderQueen(info, SpiderQueen.MODE_DOWNLOAD)
+        mCurrentSpider = spider
+        spider.addOnSpiderListener(this)
+        // Update in DB
+        EhDB.putDownloadInfo(info)
+        // Start speed count
+        mSpeedReminder.start()
+        // Notify start downloading
+        mDownloadListener?.onStart(info)
+        // Notify state update
+        mutableNotifyFlow.emit(info)
+    }
+
     /**
      * Fork: downloads the archive of [info], a gallery restored from PandaChika, as "<gid>.zip". Its pages show as
-     * done in the part of the archive received; the speed and the time left as for the pages of a spider.
+     * done in the part of the archive received; the speed and the time left as for the pages of a spider. E-Hentai is
+     * asked first: one found by a search may still be there, hidden from the search by the filters of the account.
      */
     private suspend fun startPandaChaikaDownload(info: DownloadInfo) {
         val pages = info.pages.coerceAtLeast(1)
@@ -202,6 +214,19 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
         mDownloadListener?.onStart(info)
         mutableNotifyFlow.emit(info)
         mCurrentPanda = launch {
+            val onEh = runSuspendCatching { EhEngine.getGalleryDetail(EhUrl.getGalleryDetailUrl(info.gid, info.token)) }
+                .onFailure { if (it !is GalleryUnavailableException) logcat(TAG, it) }
+                .isSuccess
+            if (onEh) {
+                RestoredGalleries.dismiss(info.gid)
+                mutex.withLock {
+                    if (mCurrentTask === info) {
+                        mCurrentPanda = null
+                        startSpider(info)
+                    }
+                }
+                return@launch
+            }
             val failed = try {
                 PandaChaikaDownload.download(info) { size, done, read ->
                     if (size == Long.MAX_VALUE || size <= 0) return@download

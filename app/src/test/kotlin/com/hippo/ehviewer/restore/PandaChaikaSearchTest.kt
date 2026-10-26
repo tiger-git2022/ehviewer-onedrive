@@ -38,6 +38,31 @@ class PandaChaikaSearchTest {
     }
 
     @Test
+    fun wordsAreAlsoATag() {
+        assertEquals(
+            listOf(PandaChaikaQuery("Mind Control", emptyList(), null), PandaChaikaQuery(null, listOf("mind_control"), null)),
+            PandaChaikaQuery.fromKeyword("Mind Control")!!.searches(),
+        )
+        // Not a tag: too many words, or a word with a namespace PandaChika does not know
+        assertEquals(1, PandaChaikaQuery.fromKeyword("a b c d e")!!.searches().size)
+        assertEquals(1, PandaChaikaQuery.fromKeyword("foo:bar")!!.searches().size)
+        assertEquals(1, PandaChaikaQuery.fromKeyword("f:nun$")!!.searches().size)
+    }
+
+    @Test
+    fun bothSearchesGoTogether() = runBlocking {
+        val merger = PandaChaikaMerger(
+            accept = { true },
+            sources = listOf(
+                { PandaChaikaApi.GalleryPage(listOf(panda(1, 950, "In the title"), panda(3, 850, "Both")), hasNext = false) },
+                { PandaChaikaApi.GalleryPage(listOf(panda(2, 900, "Tagged"), panda(3, 850, "Both")), hasNext = false) },
+            ),
+            onFound = {},
+        )
+        assertEquals(listOf(10L, 1, 2, 3, 11), merger.merge(Load.Refresh, null, listOf(eh(10, 1000), eh(11, 800)), null, null).map { it.gid })
+    }
+
+    @Test
     fun galleriesGoBetweenPagesByPostedTime() = runBlocking {
         val found = mutableListOf<Long>()
         val merger = merger(
@@ -81,9 +106,8 @@ class PandaChaikaSearchTest {
         val fetched = mutableListOf<Int>()
         val pages = listOf(listOf(panda(1, 3000, "A"), panda(2, 2500, "B")), listOf(panda(3, 1500, "C")), listOf(panda(4, 500, "D")))
         val merger = PandaChaikaMerger(
-            PandaChaikaQuery("x", emptyList(), null),
             accept = { true },
-            fetch = { page ->
+            sources = listOf { page ->
                 fetched += page
                 PandaChaikaApi.GalleryPage(pages[page - 1], hasNext = page < pages.size)
             },
@@ -95,9 +119,8 @@ class PandaChaikaSearchTest {
     }
 
     private fun merger(galleries: List<PandaChaikaApi.Gallery>, found: MutableList<Long> = mutableListOf()) = PandaChaikaMerger(
-        PandaChaikaQuery("x", emptyList(), null),
         accept = { true },
-        fetch = { PandaChaikaApi.GalleryPage(galleries, hasNext = false) },
+        sources = listOf { PandaChaikaApi.GalleryPage(galleries, hasNext = false) },
         onFound = { list -> list.forEach { found += it.gid!! } },
     )
 

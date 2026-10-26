@@ -21,7 +21,20 @@ import moe.tarsin.coroutines.runSuspendCatching
 data class PandaChaikaQuery(val title: String?, val tags: List<String>, val uploader: String?) {
     suspend fun search(page: Int) = PandaChaikaApi.search(title, tags, uploader, page)
 
+    /**
+     * The searches on PandaChika for this one. Words E-Hentai finds in the titles and in the tags, PandaChika in the
+     * titles only: one more search, of a tag named so ("mind control" is "female:mind control" and the others).
+     */
+    fun searches(): List<PandaChaikaQuery> {
+        val words = title ?: return listOf(this)
+        if (':' in words || words.split(' ').size > MAX_TAG_WORDS) return listOf(this)
+        return listOf(this, copy(title = null, tags = tags + words.lowercase().replace(' ', '_')))
+    }
+
     companion object {
+        // The words of a tag at most, for searches()
+        private const val MAX_TAG_WORDS = 4
+
         private val NAMESPACES = mapOf(
             "a" to "artist", "artist" to "artist",
             "c" to "character", "char" to "character", "character" to "character",
@@ -76,8 +89,12 @@ data class PandaChaikaQuery(val title: String?, val tags: List<String>, val uplo
 
         /** The search of [lub], null when PandaChika cannot do it (the front page, the popular, an image...). */
         fun of(lub: ListUrlBuilder): PandaChaikaQuery? {
-            val keyword = lub.keyword?.trim()?.ifEmpty { null } ?: return null
+            val keyword = lub.keyword?.trim()?.ifEmpty { null }
             val language = lub.language.takeIf { it in GalleryInfo.S_LANG_TAGS.indices }?.let { GalleryInfo.S_LANG_TAGS[it] }
+            if (keyword == null) {
+                // Only a language: the galleries in it
+                return if (lub.mode == ListUrlBuilder.MODE_NORMAL && language != null) PandaChaikaQuery(null, listOf(language), null) else null
+            }
             val query = when (lub.mode) {
                 ListUrlBuilder.MODE_NORMAL -> fromKeyword(keyword)
                 ListUrlBuilder.MODE_TAG -> {
@@ -102,25 +119,33 @@ data class PandaChaikaQuery(val title: String?, val tags: List<String>, val uplo
  * Puts the galleries PandaChika has for a search between the pages of E-Hentai. Pages of E-Hentai go newest first: a
  * page gets the galleries of PandaChika posted between its newest and its oldest (between the oldest of the page before
  * and its own oldest when appended), and the last page all those left. A gallery shows once, and not when E-Hentai
- * listed one of the same gid or title. One for each search: a refresh starts another.
+ * listed one of the same gid or title. One for each search: a refresh starts another. [sources] are the searches on
+ * PandaChika (PandaChaikaQuery.searches), each fetched as far as needed.
  */
 class PandaChaikaMerger(
-    private val query: PandaChaikaQuery,
     private val accept: suspend (BaseGalleryInfo) -> Boolean,
-    private val fetch: suspend (page: Int) -> PandaChaikaApi.GalleryPage = query::search,
+    sources: List<suspend (page: Int) -> PandaChaikaApi.GalleryPage>,
     private val onFound: (Collection<PandaChaikaApi.Gallery>) -> Unit = RestoredGalleries::found,
 ) {
+    constructor(query: PandaChaikaQuery, accept: suspend (BaseGalleryInfo) -> Boolean) :
+        this(accept, query.searches().map { search -> { page: Int -> search.search(page) } })
+
     enum class Load { Refresh, Append, Prepend }
 
     private class Item(val gallery: PandaChaikaApi.Gallery, val info: BaseGalleryInfo, val posted: Long)
 
+    private class Source(val fetch: suspend (page: Int) -> PandaChaikaApi.GalleryPage) {
+        var nextPage = 1
+        var hasMore = true
+
+        // Posted time (ms) of the oldest gallery fetched so far, shown or not
+        var oldestFetched = Long.MAX_VALUE
+    }
+
+    private val sources = sources.map(::Source)
     private val mutex = Mutex()
     private val loaded = mutableListOf<Item>()
-    private var nextPage = 1
-    private var hasMore = true
-
-    // Posted time (ms) of the oldest gallery fetched so far, shown or not
-    private var oldestFetched = Long.MAX_VALUE
+    private val loadedGids = mutableSetOf<Long>()
     private val shown = mutableSetOf<Long>()
     private val ehGids = mutableSetOf<Long>()
     private val ehTitles = mutableSetOf<String>()
@@ -167,16 +192,22 @@ class PandaChaikaMerger(
 
     private fun Item.sameTitleAsEh() = listOfNotNull(gallery.title, gallery.titleJpn).any { it.normalized() in ehTitles }
 
-    private suspend fun loadUntil(lower: Long) {
-        while (hasMore && nextPage <= MAX_PAGES && oldestFetched >= lower) {
-            val result = fetch(nextPage)
-            nextPage++
-            hasMore = result.hasNext && result.galleries.isNotEmpty()
-            result.galleries.forEach { gallery ->
-                val posted = gallery.posted * 1000
-                oldestFetched = minOf(oldestFetched, posted)
-                val info = gallery.toGalleryInfo() ?: return@forEach
-                if (accept(info)) loaded += Item(gallery, info, posted)
+    private suspend fun loadUntil(lower: Long) = sources.forEach { source ->
+        with(source) {
+            while (hasMore && nextPage <= MAX_PAGES && oldestFetched >= lower) {
+                val result = fetch(nextPage)
+                nextPage++
+                hasMore = result.hasNext && result.galleries.isNotEmpty()
+                result.galleries.forEach { gallery ->
+                    val posted = gallery.posted * 1000
+                    oldestFetched = minOf(oldestFetched, posted)
+                    val info = gallery.toGalleryInfo() ?: return@forEach
+                    // Listed by both searches: once
+                    if (info.gid !in loadedGids && accept(info)) {
+                        loadedGids += info.gid
+                        loaded += Item(gallery, info, posted)
+                    }
+                }
             }
         }
     }
@@ -199,7 +230,7 @@ class PandaChaikaMerger(
         private const val TAG = "PandaChaikaMerger"
 
         /** Pages of 100 galleries fetched at most for a search. */
-        const val MAX_PAGES = 5
+        const val MAX_PAGES = 10
 
         /** For the search of [lub] when on in the settings, with its categories, rating, pages and the filters. */
         fun of(lub: ListUrlBuilder, hideFavorited: () -> Boolean): PandaChaikaMerger? {
