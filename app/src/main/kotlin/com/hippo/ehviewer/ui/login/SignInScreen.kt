@@ -70,7 +70,7 @@ import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.destinations.WebViewSignInScreenDestination
-import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
+import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.util.displayString
@@ -342,7 +342,7 @@ fun AnimatedVisibilityScope.SignInScreen(navigator: DestinationsNavigator) = Scr
             }
         }
         if (isProgressIndicatorVisible) {
-            GlassLoadingIndicator()
+            ShapeLoadingIndicator()
         }
     }
 }

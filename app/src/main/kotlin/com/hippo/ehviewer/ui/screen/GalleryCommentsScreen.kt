@@ -122,10 +122,10 @@ import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
-import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.ui.main.GlassToggleButton
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
+import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.addBBCodeTextContextMenuItems
@@ -532,11 +532,11 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                     item {
                         Crossfade(targetState = refreshing, modifier = Modifier.padding(keylineMargin), label = "refreshing") {
                             Box(
-                                modifier = Modifier.fillMaxWidth().height(40.dp),
+                                modifier = Modifier.fillMaxWidth().height(56.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (it) {
-                                    GlassLoadingIndicator()
+                                    ShapeLoadingIndicator()
                                 } else {
                                     TextButton(
                                         onClick = {

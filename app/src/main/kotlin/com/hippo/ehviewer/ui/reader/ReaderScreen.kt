@@ -78,7 +78,7 @@ import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.glassContent
-import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
+import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.EhModalBottomSheet
@@ -155,7 +155,7 @@ fun AnimatedVisibilityScope.ReaderScreen(args: ReaderScreenArgs, navigator: Dest
         },
         placeholder = {
             Background(bgColor) {
-                GlassLoadingIndicator()
+                ShapeLoadingIndicator()
             }
         },
     ) { result ->
