@@ -134,6 +134,7 @@ import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.GalleryDetailHeaderCard
 import com.hippo.ehviewer.ui.main.GalleryTags
+import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.modifyFavorites
 import com.hippo.ehviewer.ui.navToReader
@@ -268,6 +269,10 @@ fun GalleryDetailContent(
 
     // Fork: a gallery restored from PandaChika has no previews
     val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
+    // Fork: fresh links for previews that fail to load, see PreviewRefetcher
+    val previewRefetcher = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.let { detail ->
+        rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
+    }
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),
@@ -330,7 +335,7 @@ fun GalleryDetailContent(
             }
             if (galleryDetail != null && galleryDetail.isRestored) restoredNote()
             if (galleryDetail != null && previews != null) {
-                galleryPreview(galleryDetail, previews) { navToReader(galleryDetail.galleryInfo, it) }
+                galleryPreview(galleryDetail, previews, previewRefetcher) { navToReader(galleryDetail.galleryInfo, it) }
             }
         }
         else -> FastScrollLazyVerticalGrid(
@@ -401,7 +406,7 @@ fun GalleryDetailContent(
             }
             if (galleryDetail != null && galleryDetail.isRestored) restoredNote()
             if (galleryDetail != null && previews != null) {
-                galleryPreview(galleryDetail, previews) { navToReader(galleryDetail.galleryInfo, it) }
+                galleryPreview(galleryDetail, previews, previewRefetcher) { navToReader(galleryDetail.galleryInfo, it) }
             }
         }
     }
@@ -862,7 +867,7 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
 }.collectAsLazyPagingItems()
 
 context(_: Context)
-private fun LazyGridScope.galleryPreview(detail: GalleryDetail, data: LazyPagingItems<GalleryPreview>, onClick: (Int) -> Unit) {
+private fun LazyGridScope.galleryPreview(detail: GalleryDetail, data: LazyPagingItems<GalleryPreview>, refetcher: PreviewRefetcher?, onClick: (Int) -> Unit) {
     val isV2Thumb = detail.previewList.first() is V2GalleryPreview
     items(
         count = data.itemCount,
@@ -870,7 +875,7 @@ private fun LazyGridScope.galleryPreview(detail: GalleryDetail, data: LazyPaging
         contentType = { "preview" },
     ) { index ->
         val item = data[index]
-        EhPreviewItem(item, index) { onClick(index) }
+        EhPreviewItem(item, index, refetcher) { onClick(index) }
         PrefetchAround(data, index, if (isV2Thumb) 20 else 6) { imageRequest(it) }
     }
 }

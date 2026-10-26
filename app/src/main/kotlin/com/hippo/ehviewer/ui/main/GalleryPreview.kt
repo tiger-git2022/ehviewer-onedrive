@@ -40,6 +40,7 @@ fun EhPreviewCard(
     model: GalleryPreview,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onError: () -> Unit = {},
 ) {
     var contentScale by remember(model) { mutableStateOf(ContentScale.Fit) }
     val request = requestOf(model)
@@ -61,6 +62,8 @@ fun EhPreviewCard(
             }
         },
         onState = {
+            // Fork: see PreviewRefetcher
+            if (it is State.Error) onError()
             if (it is State.Success) {
                 if (model is V2GalleryPreview) {
                     if (model.shouldCrop) {
@@ -97,12 +100,15 @@ fun EhPreviewCard(
 fun EhPreviewItem(
     galleryPreview: GalleryPreview?,
     position: Int,
+    refetcher: PreviewRefetcher? = null,
     onClick: () -> Unit,
 ) = Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Box(contentAlignment = Alignment.Center) {
         if (galleryPreview != null) {
-            EhPreviewCard(
-                model = galleryPreview,
+            // Fork: a preview that fails to load tries again by itself, see PreviewRefetcher
+            RetryingPreviewCard(
+                galleryPreview = galleryPreview,
+                refetcher = refetcher,
                 onClick = onClick,
                 modifier = Modifier.aspectRatio(DEFAULT_RATIO),
             )
