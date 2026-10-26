@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.ui
 
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.runtime.Composable
@@ -15,6 +16,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.LocalTileGlass
+import com.ehviewer.core.ui.component.floatingGlass
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
 import com.kyant.backdrop.Backdrop
@@ -154,6 +157,25 @@ fun glassSelectedColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
 /** The text and icon of [glassSelectedColor]. */
 @Composable
 fun glassOnSelectedColor() = MaterialTheme.colorScheme.primary
+
+/**
+ * A round toggle checked over liquid glass ("汉", hiding the favorited, the comment translation): a small lens of clear
+ * glass around its text or icon, with the lit edge and the shadow of the floating buttons, instead of a flat blue light.
+ * On the expanded search it refracts the blurred glass there, like the cards ([LocalTileGlass]). Nothing while unchecked
+ * or without liquid glass.
+ */
+@Composable
+fun Modifier.checkedGlass(checked: Boolean): Modifier {
+    val tileGlass = LocalTileGlass.current
+    val pageGlass = rememberLiquidGlass(LocalPageBackdrop.current)
+    val glass = tileGlass ?: pageGlass
+    if (!checked || glass == null) return this
+    // A neutral glass like the floating buttons: a tint of the primary color read as a solid colored block
+    val tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = CHECKED_GLASS_TINT)
+    return floatingGlass(glass, CircleShape, tint, if (tileGlass != null) GlassStyle.Tile else GlassStyle.Control)
+}
+
+private const val CHECKED_GLASS_TINT = 0.3f
 
 /** The items of the left drawer: black or white like the right drawer, the tinted gray was hard to read on the glass. */
 @Composable

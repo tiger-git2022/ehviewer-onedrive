@@ -255,6 +255,9 @@ dependencies {
         exclude(group = "com.microsoft.device.display", module = "display-mask")
     }
 
+    // Comment translation (fork): the language of a comment, offline, see translate/CommentTranslations.kt
+    implementation(libs.mlkit.language.id)
+
     implementation(libs.bundles.kotlinx.serialization)
 
     implementation(libs.kotlinx.coroutines.android)

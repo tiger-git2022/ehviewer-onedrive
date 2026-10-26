@@ -38,6 +38,7 @@ import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.destinations.FilterScreenDestination
 import com.hippo.ehviewer.ui.destinations.MyTagsScreenDestination
 import com.hippo.ehviewer.ui.destinations.UConfigScreenDestination
@@ -289,6 +290,11 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                     pref = Settings.commentThreshold,
                 )
             }
+            // Fork: comments in other languages translated, see translate/CommentTranslations.kt
+            Preference(
+                title = stringResource(id = R.string.comment_translate),
+                summary = stringResource(id = R.string.comment_translate_summary),
+            ) { navigate(CommentTranslateScreenDestination) }
             if (EhTagDatabase.translatable) {
                 SwitchPreference(
                     title = stringResource(id = R.string.settings_eh_show_tag_translations),

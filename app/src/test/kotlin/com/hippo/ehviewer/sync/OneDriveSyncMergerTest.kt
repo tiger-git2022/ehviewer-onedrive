@@ -123,6 +123,7 @@ class OneDriveSyncMergerTest {
         assertEquals(setOf("theme_2"), merged.keys)
         assertFalse(OneDriveSyncMerger.isSyncableSetting("image_scheme"))
         assertFalse(OneDriveSyncMerger.isSyncableSetting("last_update_time"))
+        assertFalse(OneDriveSyncMerger.isSyncableSetting("comment_translate_api_key"))
         assertTrue(OneDriveSyncMerger.isSyncableSetting("pref_default_reading_mode_key"))
     }
 
