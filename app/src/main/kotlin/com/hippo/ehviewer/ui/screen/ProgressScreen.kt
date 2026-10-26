@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +27,7 @@ import com.ehviewer.core.util.withUIContext
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.restore.PandaChaikaApi
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.util.displayString
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -90,7 +90,7 @@ fun AnimatedVisibilityScope.ProgressScreen(gid: Long, token: String, page: Int, 
                 )
             }
         } else {
-            CircularWavyProgressIndicator()
+            GlassLoadingIndicator()
         }
     }
 }

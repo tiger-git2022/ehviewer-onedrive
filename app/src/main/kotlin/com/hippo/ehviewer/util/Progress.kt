@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.ui.LocalPageBackdrop
+import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.GlassDialog
@@ -68,7 +68,7 @@ private fun ProgressDialogRow() = Row(
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier.padding(18.dp),
 ) {
-    CircularWavyProgressIndicator()
+    GlassLoadingIndicator()
     Spacer(modifier = Modifier.size(18.dp))
     Text(text = stringResource(id = R.string.please_wait))
 }

@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -134,6 +133,7 @@ import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.GalleryDetailHeaderCard
 import com.hippo.ehviewer.ui.main.GalleryTags
+import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.modifyFavorites
@@ -180,6 +180,8 @@ fun GalleryDetailContent(
     voteTag: VoteTag,
     modifier: Modifier,
     state: LazyGridState = rememberLazyGridState(),
+    // Fork: fresh links for previews that fail to load, see PreviewRefetcher
+    previewRefetcher: PreviewRefetcher? = null,
 ) {
     val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
     val galleryDetail = galleryInfo.asGalleryDetail()
@@ -269,10 +271,6 @@ fun GalleryDetailContent(
 
     // Fork: a gallery restored from PandaChika has no previews
     val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
-    // Fork: fresh links for previews that fail to load, see PreviewRefetcher
-    val previewRefetcher = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.let { detail ->
-        rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
-    }
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),
@@ -328,7 +326,7 @@ fun GalleryDetailContent(
                             modifier = Modifier.fillMaxSize().padding(keylineMargin),
                             contentAlignment = Alignment.Center,
                         ) {
-                            CircularWavyProgressIndicator()
+                            GlassLoadingIndicator()
                         }
                     }
                 }
@@ -399,7 +397,7 @@ fun GalleryDetailContent(
                             modifier = Modifier.fillMaxSize().padding(keylineMargin),
                             contentAlignment = Alignment.Center,
                         ) {
-                            CircularWavyProgressIndicator()
+                            GlassLoadingIndicator()
                         }
                     }
                 }

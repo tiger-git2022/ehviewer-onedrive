@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -79,6 +78,7 @@ import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.glassContent
+import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.EhModalBottomSheet
@@ -155,7 +155,7 @@ fun AnimatedVisibilityScope.ReaderScreen(args: ReaderScreenArgs, navigator: Dest
         },
         placeholder = {
             Background(bgColor) {
-                CircularWavyProgressIndicator()
+                GlassLoadingIndicator()
             }
         },
     ) { result ->

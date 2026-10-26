@@ -36,7 +36,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -101,15 +100,16 @@ import com.hippo.ehviewer.client.EhFilter.remember
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
+import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
 import com.hippo.ehviewer.ui.main.NavigationIcon
-import com.hippo.ehviewer.ui.LocalPageBackdrop
-import com.hippo.ehviewer.ui.glassContent
-import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.openBrowser
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.addBBCodeTextContextMenuItems
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
@@ -442,7 +442,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (it) {
-                                    CircularWavyProgressIndicator()
+                                    GlassLoadingIndicator()
                                 } else {
                                     TextButton(
                                         onClick = {

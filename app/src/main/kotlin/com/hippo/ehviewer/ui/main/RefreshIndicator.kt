@@ -71,7 +71,6 @@ fun RefreshIndicator(
     // Nothing to draw (nor to refract) while not pulled
     if (state.distanceFraction <= 0f && !isRefreshing) return
     val scheme = MaterialTheme.colorScheme
-    val dark = scheme.surface.luminance() < 0.5f
     val spin = rememberInfiniteTransition(label = "Refresh")
     val spinAngle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "Spin")
     Box(
@@ -83,17 +82,7 @@ fun RefreshIndicator(
             }
             .graphicsLayer { alpha = if (isRefreshing) 1f else (state.distanceFraction * 2f).coerceIn(0f, 1f) }
             .size(IndicatorSize)
-            .then(
-                if (glass != null) {
-                    Modifier.floatingGlass(glass, CircleShape, scheme.surfaceContainerHigh.copy(alpha = GLASS_TINT), GlassStyle.Control)
-                } else if (LocalPageBackdrop.current == null) {
-                    // Liquid glass off: the same arrow on a plain disc
-                    Modifier.shadow(3.dp, CircleShape).background(scheme.surfaceContainerHigh, CircleShape)
-                } else {
-                    val rim = if (dark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
-                    Modifier.background(scheme.surfaceContainerHigh.copy(alpha = 0.55f), CircleShape).border(1.dp, rim, CircleShape)
-                },
-            ),
+            .refreshDrop(glass),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -104,6 +93,41 @@ fun RefreshIndicator(
                 rotationZ = if (isRefreshing) spinAngle else state.distanceFraction.coerceIn(0f, 1f) * 270f
             },
         )
+    }
+}
+
+/**
+ * Fork: a page or a part of it loading, in the look of [RefreshIndicator]: the refresh arrow turning in a drop of
+ * glass, in place of the Material wavy circle. [glass] only where the indicator lies outside the content the page's
+ * glass refracts; else a translucent disc with a lit rim.
+ */
+@Composable
+fun GlassLoadingIndicator(modifier: Modifier = Modifier, glass: FloatingGlass? = null) {
+    val spin = rememberInfiniteTransition(label = "Loading")
+    val spinAngle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "Spin")
+    Box(modifier = modifier.size(IndicatorSize).refreshDrop(glass), contentAlignment = Alignment.Center) {
+        Icon(
+            imageVector = Icons.Rounded.Refresh,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(ArrowSize).graphicsLayer { rotationZ = spinAngle },
+        )
+    }
+}
+
+// The drop behind the arrow: glass, else a translucent disc with a lit rim over glass pages, else a plain disc
+@Composable
+private fun Modifier.refreshDrop(glass: FloatingGlass?): Modifier {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
+    return if (glass != null) {
+        floatingGlass(glass, CircleShape, scheme.surfaceContainerHigh.copy(alpha = GLASS_TINT), GlassStyle.Control)
+    } else if (LocalPageBackdrop.current == null) {
+        // Liquid glass off: the same arrow on a plain disc
+        shadow(3.dp, CircleShape).background(scheme.surfaceContainerHigh, CircleShape)
+    } else {
+        val rim = if (dark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
+        background(scheme.surfaceContainerHigh.copy(alpha = 0.55f), CircleShape).border(1.dp, rim, CircleShape)
     }
 }
 
