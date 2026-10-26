@@ -773,6 +773,9 @@
     <string name="update_downloading">正在下载更新</string>
     <string name="update_download_progress">%1$s / %2$s（%3$d%%）</string>
     <string name="update_download_speed">%s/秒</string>
+    <string name="update_download_failed">下载失败</string>
+    <string name="update_download_failed_message">%s\n\nGitHub 的下载服务器或中间的网络代理可能暂时出了问题。可以稍后再试，或打开发布页用浏览器下载 APK。</string>
+    <string name="update_open_release_page">打开发布页</string>
     <string name="onedrive_sync_cloud_favorites_last_full">上次完整读取：%1$s，当时共 %2$d 本\n点这里重新读取全部收藏夹</string>
     <string name="onedrive_sync_cloud_favorites_reread">重新读取</string>
     <string name="onedrive_sync_cloud_favorites_reread_last">云端收藏上次完整读取在 %1$s，当时共 %2$d 本。</string>

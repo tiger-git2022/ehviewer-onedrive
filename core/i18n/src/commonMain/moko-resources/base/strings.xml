@@ -791,6 +791,9 @@
     <string name="update_downloading">Downloading update</string>
     <string name="update_download_progress">%1$s / %2$s (%3$d%%)</string>
     <string name="update_download_speed">%s/s</string>
+    <string name="update_download_failed">Download failed</string>
+    <string name="update_download_failed_message">%s\n\nGitHub\'s download servers or a network proxy on the way may be having trouble. Try again later, or open the release page and download the APK in the browser.</string>
+    <string name="update_open_release_page">Open release page</string>
     <string name="onedrive_sync_cloud_favorites_last_full">Last read completely: %1$s, %2$d favorites then\nTap to read all slots again</string>
     <string name="onedrive_sync_cloud_favorites_reread">Read again</string>
     <string name="onedrive_sync_cloud_favorites_reread_last">The cloud favorites were last read completely on %1$s, %2$d favorites then.</string>

@@ -45,6 +45,7 @@ import com.hippo.ehviewer.download.downloadLocation
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.destinations.LicenseScreenDestination
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.EhAlertDialog
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
@@ -60,6 +61,7 @@ import com.hippo.ehviewer.util.installPackage
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import moe.tarsin.coroutines.runSuspendCatching
@@ -171,7 +173,21 @@ suspend fun showNewVersion(release: EhRelease) {
         EhDB.exportDB(downloadLocation / "$time.db")
     }
     val path = AppConfig.tempDir / "update.apk"
-    awaitUpdateDownload(release.downloadLink, path.apply { delete() })
+    try {
+        awaitUpdateDownload(release.downloadLink, path.apply { delete() })
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Fork: the browser can download from the release page when the app cannot, e.g. GitHub answered 504
+        awaitConfirmationOrCancel(
+            confirmText = R.string.update_open_release_page,
+            title = R.string.update_download_failed,
+        ) {
+            Text(text = stringResource(R.string.update_download_failed_message, e.displayString()))
+        }
+        withUIContext { openBrowser(release.releaseLink) }
+        return
+    }
     withUIContext { installPackage(path.toFile()) }
 }
 
