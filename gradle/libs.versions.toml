@@ -30,6 +30,7 @@ ksp = "2.3.9"
 ktor = "3.6.0"
 moko-resources = "0.27.1"
 msal = "8.4.1"
+mlkit-language-id = "17.0.6"
 okhttp = "5.5.0"
 okio = "3.18.2"
 splitties = "3.0.0"
@@ -116,6 +117,7 @@ logcat = "com.squareup.logcat:logcat:0.4"
 moko-resources = { module = "dev.icerock.moko:resources", version.ref = "moko-resources" }
 
 msal = { module = "com.microsoft.identity.client:msal", version.ref = "msal" }
+mlkit-language-id = { module = "com.google.mlkit:language-id", version.ref = "mlkit-language-id" }
 
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 

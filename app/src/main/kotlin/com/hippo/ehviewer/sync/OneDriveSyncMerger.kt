@@ -32,6 +32,7 @@ object OneDriveSyncMerger {
         "fav_cloud",
         // Secrets and per device state
         "archive_passwds",
+        "comment_translate_api_key",
         "clipboard_text_hash_code",
         "last_update_time",
         "last_dawn_days",

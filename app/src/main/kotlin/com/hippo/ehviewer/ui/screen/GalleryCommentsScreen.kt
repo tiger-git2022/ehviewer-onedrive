@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -48,18 +49,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -71,7 +76,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
@@ -86,6 +94,11 @@ import com.ehviewer.core.database.model.Filter
 import com.ehviewer.core.database.model.FilterMode
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.GalleryComment
+import com.ehviewer.core.ui.component.GlassEdge
+import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.LocalFabGlass
+import com.ehviewer.core.ui.component.edgeGlass
+import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.animateFloatMergePredictiveBackAsState
 import com.ehviewer.core.ui.util.snackBarPadding
 import com.ehviewer.core.ui.util.thenIf
@@ -100,12 +113,17 @@ import com.hippo.ehviewer.client.EhFilter.remember
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.translate.CommentTranslation
+import com.hippo.ehviewer.translate.CommentTranslations
+import com.hippo.ehviewer.translate.TargetLanguage
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GlassLoadingIndicator
+import com.hippo.ehviewer.ui.main.GlassToggleButton
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.openBrowser
@@ -180,6 +198,12 @@ fun processComment(
 
 private val MinimumContentPaddingEditText = 88.dp
 
+// Fork: the lower corners of the glass of the top bar, as on the gallery details
+private val BAR_GLASS_CORNER = 24.dp
+
+// Fork: how much of the bar color lies over the glass of the reply button, as on the floating buttons of the lists
+private const val GLASS_FAB_TINT = 0.25f
+
 @Destination<RootGraph>
 @Composable
 fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: DestinationsNavigator) = Screen(navigator, recordsGlass = true) {
@@ -206,6 +230,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     }
 
     val copyComment = stringResource(R.string.copy_comment_text)
+    val copyTranslation = stringResource(R.string.copy_comment_translation)
     val blockCommenter = stringResource(R.string.block_commenter)
     val editComment = stringResource(R.string.edit_comment)
     val cancelVoteUp = stringResource(R.string.cancel_vote_up)
@@ -272,12 +297,63 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
         }
     }
     val hasSignedIn by Settings.hasSignedIn.collectAsState()
+
+    // Fork: the comments not in the target language translated, see translate/CommentTranslations.kt. "汉" on the top bar
+    // shows all the translations or all the originals; a comment's own link flips just that one
+    val apiUrl by Settings.commentTranslateApiUrl.collectAsState()
+    val apiModel by Settings.commentTranslateModel.collectAsState()
+    val translateConfigured = apiUrl.isNotBlank() && apiModel.isNotBlank()
+    val autoTranslate by Settings.commentTranslateAuto.collectAsState()
+    val translateTarget by Settings.commentTranslateTarget.collectAsState()
+    var showTranslations by rememberSaveable { mutableStateOf(autoTranslate) }
+    val flippedComments = remember { mutableStateSetOf<Long>() }
+    LaunchedEffect(comments, showTranslations, translateConfigured, translateTarget) {
+        if (showTranslations && translateConfigured) CommentTranslations.request(comments.comments)
+    }
+    val translateNotConfigured = stringResource(R.string.comment_translate_not_configured)
+
+    // Fork: with liquid glass, the top bar refracts the comments scrolled below it (only then: over nothing it stood
+    // out) and the reply button is glass like the floating buttons of the lists
+    val backdrop = LocalPageBackdrop.current
+    val barScrolled by remember { derivedStateOf { scrollBehavior.state.overlappedFraction > 0f } }
+    val barGlass = rememberLiquidGlass(backdrop).takeIf { barScrolled }
+    val barColor = MaterialTheme.colorScheme.surfaceContainer
+    val fabGlass = LocalFabGlass.current
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(text = stringResource(id = R.string.gallery_comments)) },
                 navigationIcon = { NavigationIcon() },
+                actions = {
+                    val chineseTarget = TargetLanguage.of(translateTarget).primary == "zh"
+                    val toggleDescription = stringResource(R.string.comment_translate_toggle)
+                    GlassToggleButton(
+                        checked = showTranslations && translateConfigured,
+                        onCheckedChange = { on ->
+                            if (!translateConfigured) {
+                                launch { snackbar(translateNotConfigured) }
+                                navigate(CommentTranslateScreenDestination)
+                            } else {
+                                showTranslations = on
+                                flippedComments.clear()
+                            }
+                        },
+                        modifier = Modifier.semantics { contentDescription = toggleDescription },
+                    ) {
+                        Text(text = if (chineseTarget) "汉" else "译", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                },
+                modifier = Modifier.edgeGlass(barGlass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
+                colors = if (backdrop != null) {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                } else {
+                    TopAppBarDefaults.topAppBarColors()
+                },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -291,7 +367,14 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                         }
                         commenting = true
                     },
-                    modifier = Modifier.snackBarPadding(),
+                    modifier = Modifier.snackBarPadding().floatingGlass(
+                        fabGlass,
+                        FloatingActionButtonDefaults.shape,
+                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_FAB_TINT),
+                    ),
+                    containerColor = if (fabGlass != null) Color.Transparent else FloatingActionButtonDefaults.containerColor,
+                    contentColor = MaterialTheme.colorScheme.contentColorFor(FloatingActionButtonDefaults.containerColor),
+                    elevation = if (fabGlass != null) FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp) else FloatingActionButtonDefaults.elevation(),
                 ) {
                     Icon(imageVector = Icons.AutoMirrored.Default.Reply, contentDescription = null)
                 }
@@ -316,12 +399,13 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                     isRefreshing = false
                 }
             },
-            modifier = Modifier.imePadding().padding(top = paddingValues.calculateTopPadding()),
+            // Fork: the comments scroll on below the top bar, for its glass to refract them
+            modifier = Modifier.imePadding(),
             state = refreshState,
             indicator = {
                 // Fork: like the lists of the search pages, glass refracting the comments
                 RefreshIndicator(
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = paddingValues.calculateTopPadding()),
                     isRefreshing = isRefreshing,
                     state = refreshState,
                     glass = commentsGlass,
@@ -349,6 +433,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                 state = lazyListState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(
+                    top = paddingValues.calculateTopPadding(),
                     start = paddingValues.calculateStartPadding(layoutDirection),
                     end = paddingValues.calculateEndPadding(layoutDirection),
                     bottom = paddingValues.calculateBottomPadding() + additionalPadding,
@@ -379,6 +464,11 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                     suspend fun doCommentAction(comment: GalleryComment) = awaitSelectAction {
                         onSelect(copyComment) {
                             addTextToClipboard(comment.comment.parseAsHtml())
+                        }
+                        // Fork: the translation too, once there is one
+                        val translation = CommentTranslations.stateOf(comment)
+                        if (translation is CommentTranslation.Done) {
+                            onSelect(copyTranslation) { addTextToClipboard(translation.text) }
                         }
                         if (!comment.uploader && !comment.editable) {
                             onSelect(blockCommenter) { showFilterCommenter(comment) }
@@ -432,6 +522,10 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                             }
                         },
                         processComment = { c, ig -> processComment(c, ig) },
+                        translation = if (translateConfigured) CommentTranslations.stateOf(item) else null,
+                        showOriginal = (item.id in flippedComments) == showTranslations,
+                        onToggleOriginal = { if (!flippedComments.remove(item.id)) flippedComments.add(item.id) },
+                        onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
                     )
                 }
                 if (comments.hasMore) {
