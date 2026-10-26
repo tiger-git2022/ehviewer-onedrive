@@ -795,8 +795,6 @@
     <string name="pandachaika_in_search">搜索时同时查找 PandaChika 备份</string>
     <string name="pandachaika_in_search_summary">E-Hentai 已删除、PandaChika 有备份的画廊按发布时间显示在搜索结果中，封面带「修复」角标</string>
     <string name="refresh_previews">刷新预览图</string>
-    <string name="preview_retrying">%1$s · 重试 %2$d/%3$d</string>
-    <string name="preview_failed_long_press">%s · 长按重试</string>
     <string name="preview_error_unknown_host">找不到服务器</string>
     <string name="preview_error_unreachable">连不上服务器</string>
     <string name="preview_error_ssl">加密连接失败</string>
@@ -804,12 +802,15 @@
     <string name="preview_error_reset">连接被断开</string>
     <string name="preview_error_link_expired">链接失效（%d）</string>
     <string name="preview_error_http">服务器返回 %d</string>
-    <string name="preview_refresh_close">关闭</string>
-    <string name="preview_refresh_all_ok">全部正常</string>
-    <string name="preview_refresh_some_failed">%d 步失败</string>
-    <string name="preview_refresh_links">第 %d 页：获取链接</string>
-    <string name="preview_refresh_images">第 %1$d 页：下载图片 %2$d/%3$d</string>
-    <string name="preview_refresh_images_done">%1$d 张 · %2$s · %3$s</string>
-    <string name="preview_refresh_images_failed">%2$d 张里 %1$d 张失败：%3$s · %4$s</string>
-    <string name="preview_refresh_seconds">%s 秒</string>
+    <string name="preview_failure_count">%d 张预览图加载失败</string>
+    <string name="preview_refresh_nothing">没有加载失败的预览图</string>
+    <string name="preview_loading">正在加载预览图 %1$d/%2$d</string>
+    <string name="preview_loading_failed_too">另有 %d 张加载失败</string>
+    <string name="preview_all_loaded">预览图已全部加载（%d 张）</string>
+    <string name="preview_failure_group">%1$s %2$d 张（第 %3$s 张）</string>
+    <string name="preview_failure_servers">服务器 %s</string>
+    <string name="preview_refresh_again">重新刷新</string>
+    <string name="preview_refreshing">正在刷新预览图 第 %1$d/%2$d 页</string>
+    <string name="preview_refresh_links">重新获取链接…</string>
+    <string name="preview_refresh_images">下载图片…</string>
 </resources>

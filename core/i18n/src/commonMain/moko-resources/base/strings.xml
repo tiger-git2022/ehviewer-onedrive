@@ -813,8 +813,6 @@
     <string name="pandachaika_in_search">Search PandaChika too</string>
     <string name="pandachaika_in_search_summary">Galleries E-Hentai removed and PandaChika keeps show in the search results by posted time, with a “Restored” badge</string>
     <string name="refresh_previews">Refresh previews</string>
-    <string name="preview_retrying">%1$s · retry %2$d/%3$d</string>
-    <string name="preview_failed_long_press">%s · long press to retry</string>
     <string name="preview_error_unknown_host">Server not found</string>
     <string name="preview_error_unreachable">Cannot reach the server</string>
     <string name="preview_error_ssl">Secure connection failed</string>
@@ -822,12 +820,15 @@
     <string name="preview_error_reset">Connection dropped</string>
     <string name="preview_error_link_expired">Link expired (%d)</string>
     <string name="preview_error_http">Server returned %d</string>
-    <string name="preview_refresh_close">Close</string>
-    <string name="preview_refresh_all_ok">All loaded</string>
-    <string name="preview_refresh_some_failed">%d steps failed</string>
-    <string name="preview_refresh_links">Page %d: links</string>
-    <string name="preview_refresh_images">Page %1$d: images %2$d/%3$d</string>
-    <string name="preview_refresh_images_done">%1$d images · %2$s · %3$s</string>
-    <string name="preview_refresh_images_failed">%1$d of %2$d failed: %3$s · %4$s</string>
-    <string name="preview_refresh_seconds">%s s</string>
+    <string name="preview_failure_count">%d previews failed to load</string>
+    <string name="preview_refresh_nothing">No previews failed to load</string>
+    <string name="preview_loading">Loading previews %1$d/%2$d</string>
+    <string name="preview_loading_failed_too">%d failed to load before</string>
+    <string name="preview_all_loaded">All %d previews loaded</string>
+    <string name="preview_failure_group">%1$s: %2$d (%3$s)</string>
+    <string name="preview_failure_servers">Server %s</string>
+    <string name="preview_refresh_again">Refresh again</string>
+    <string name="preview_refreshing">Refreshing previews, page %1$d of %2$d</string>
+    <string name="preview_refresh_links">Getting new links…</string>
+    <string name="preview_refresh_images">Downloading images…</string>
 </resources>

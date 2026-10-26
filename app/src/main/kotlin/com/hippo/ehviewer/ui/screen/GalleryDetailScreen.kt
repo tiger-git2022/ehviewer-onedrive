@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
@@ -87,7 +88,7 @@ import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
-import com.hippo.ehviewer.ui.main.showPreviewRefresh
+import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -293,8 +294,9 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                                 getDetailError = ""
                             },
                         )
-                        // Fork: fetches the links of the previews and their images again, step by step, see PreviewRefreshDialog
-                        if (previewRefetcher != null) add(BarAction(refreshPreviews) { launchIO { showPreviewRefresh(previewRefetcher) } })
+                        // Fork: fetches the links and the images of the previews that failed again, the progress on the
+                        // floating bar at the bottom, see PreviewProgressBar
+                        if (previewRefetcher != null) add(BarAction(refreshPreviews) { previewRefetcher.refreshFailed(contextOf<MainActivity>()) })
                         if (syncIconShown) add(shareAction)
                         add(
                             BarAction(clearCache) {
@@ -408,6 +410,14 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     state = gridState,
                     previewRefetcher = previewRefetcher,
                 )
+                // Fork: how the previews load, floating at the bottom, see PreviewProgressBar
+                if (previewRefetcher != null) {
+                    PreviewProgressBar(
+                        refetcher = previewRefetcher,
+                        glass = rememberLiquidGlass(backdrop),
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(it).padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                }
             }
         } else if (getDetailError.isNotBlank()) {
             GalleryDetailErrorTip(error = getDetailError, onClick = { getDetailError = "" })
