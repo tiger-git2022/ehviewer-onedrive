@@ -57,7 +57,7 @@ fun EhAsyncCropThumb(
         contentScale = contentScale,
     )
     // Fork: a gallery restored from PandaChika (the download list)
-    RestoredBadge(key.gid, Modifier.align(Alignment.TopStart))
+    RestoredBadge(key.gid, Modifier.align(Alignment.TopEnd))
 }
 
 @Composable
@@ -88,6 +88,6 @@ fun EhThumbCard(
             contentScale = contentScale,
         )
         // Fork: a gallery restored from PandaChika
-        RestoredBadge(key.gid, Modifier.align(Alignment.TopStart))
+        RestoredBadge(key.gid, Modifier.align(Alignment.TopEnd))
     }
 }
