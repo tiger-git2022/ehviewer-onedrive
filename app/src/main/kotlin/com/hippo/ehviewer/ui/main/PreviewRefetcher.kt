@@ -54,7 +54,13 @@ fun RetryingPreviewCard(
             onClick = onClick,
             modifier = modifier,
             onError = {
-                if (!retrying && attempt < MAX_RETRIES) {
+                if (retrying) {
+                    // A retry is on its way
+                } else if (attempt >= MAX_RETRIES) {
+                    // Retries used up: a manual retry (long press) still gets a new link when there is one
+                    val failed = preview
+                    scope.launch { refetcher?.refetch(failed)?.takeIf { it.url != failed.url }?.let { preview = it } }
+                } else {
                     retrying = true
                     val failed = preview
                     scope.launch {
