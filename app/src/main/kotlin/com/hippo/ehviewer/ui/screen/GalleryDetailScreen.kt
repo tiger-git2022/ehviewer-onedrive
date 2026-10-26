@@ -72,11 +72,14 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.data.fillInfo
+import com.hippo.ehviewer.client.exception.GalleryUnavailableException
 import com.hippo.ehviewer.coil.justDownload
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.ktbuilder.executeIn
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.restore.RestoredGalleries
+import com.hippo.ehviewer.restore.restoredDetail
 import com.hippo.ehviewer.spider.SpiderDen
 import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.sync.OneDriveClient
@@ -147,6 +150,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     }
 
     var getDetailError by rememberSaveable { mutableStateOf("") }
+    val noBackup = stringResource(R.string.pandachaika_no_backup)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
 
@@ -164,7 +168,15 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         LaunchedEffect(Unit) {
             val galleryDetail = detailCache[gid]
                 ?: runSuspendCatching {
-                    withIOContext { EhEngine.getGalleryDetail(galleryDetailUrl) }
+                    withIOContext {
+                        // Fork: a gallery E-Hentai removed opens from its backup on PandaChika, see restore/
+                        try {
+                            EhEngine.getGalleryDetail(galleryDetailUrl).also { RestoredGalleries.dismiss(it.gid) }
+                        } catch (e: GalleryUnavailableException) {
+                            restoredDetail(gid, token, galleryInfo)
+                                ?: throw GalleryUnavailableException(e.message.orEmpty() + "\n" + noBackup)
+                        }
+                    }
                 }.onSuccess { galleryDetail ->
                     detailCache[galleryDetail.gid] = galleryDetail
                 }.onFailure { e ->

@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +25,7 @@ import com.ehviewer.core.ui.util.SharedElementBox
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.restore.RestoredBadge
 import com.hippo.ehviewer.ui.tools.shouldCrop
 
 @Composable
@@ -54,6 +56,8 @@ fun EhAsyncCropThumb(
         modifier = modifier,
         contentScale = contentScale,
     )
+    // Fork: a gallery restored from PandaChika (the download list)
+    RestoredBadge(key.gid, Modifier.align(Alignment.TopStart))
 }
 
 @Composable
@@ -83,5 +87,7 @@ fun EhThumbCard(
             }.fillMaxSize(),
             contentScale = contentScale,
         )
+        // Fork: a gallery restored from PandaChika
+        RestoredBadge(key.gid, Modifier.align(Alignment.TopStart))
     }
 }

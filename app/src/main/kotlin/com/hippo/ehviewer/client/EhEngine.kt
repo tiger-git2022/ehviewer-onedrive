@@ -34,6 +34,7 @@ import com.hippo.ehviewer.client.data.filterComments
 import com.hippo.ehviewer.client.exception.CloudflareBypassException
 import com.hippo.ehviewer.client.exception.EhError
 import com.hippo.ehviewer.client.exception.EhException
+import com.hippo.ehviewer.client.exception.GalleryUnavailableException
 import com.hippo.ehviewer.client.exception.InsufficientFundsException
 import com.hippo.ehviewer.client.exception.InsufficientGpException
 import com.hippo.ehviewer.client.exception.IpBannedException
@@ -140,7 +141,8 @@ private fun rethrowExactly(response: HttpResponse, body: Either<String, ByteBuff
     }?.getOrNull()
 
     // Check Gallery Not Available - 404
-    if (error is EhError.GalleryUnavailable) throw EhException(error.message)
+    // Fork: of its own type, for the backup on PandaChika (restore/)
+    if (error is EhError.GalleryUnavailable) throw GalleryUnavailableException(error.message)
 
     // Check bad response code
     response.status.ensureSuccess()

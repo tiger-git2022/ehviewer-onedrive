@@ -45,6 +45,8 @@ import com.ehviewer.core.util.mapNotNull
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.exception.FatalException
+import com.hippo.ehviewer.restore.PandaChaikaDownload
+import com.hippo.ehviewer.restore.RestoredGalleries
 import com.hippo.ehviewer.spider.COMIC_INFO_FILE
 import com.hippo.ehviewer.spider.SpeedTracker
 import com.hippo.ehviewer.spider.SpiderQueen
@@ -58,6 +60,7 @@ import com.hippo.ehviewer.sync.AutoDownload
 import com.hippo.ehviewer.util.AppConfig
 import com.hippo.ehviewer.util.insertWith
 import com.hippo.ehviewer.util.runAssertingNotMainThread
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -95,6 +98,9 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
     private var mDownloadListener: DownloadListener? = null
     private var mCurrentTask: DownloadInfo? = null
     private var mCurrentSpider: SpiderQueen? = null
+
+    // Fork: the download of a gallery restored from PandaChika, in place of a spider, see startPandaChaikaDownload
+    private var mCurrentPanda: Job? = null
 
     private val mutableNotifyFlow = MutableSharedFlow<DownloadInfo>(extraBufferCapacity = 1)
     val notifyFlow = mutableNotifyFlow.asSharedFlow()
@@ -151,6 +157,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
                     archiveFile?.let {
                         return onFinish(pages, pages, pages, failed = false)
                     }
+                    // Fork: a gallery E-Hentai removed downloads its archive from PandaChika
+                    if (RestoredGalleries.isRestored(gid)) return startPandaChaikaDownload(this)
                     state = DownloadInfo.STATE_DOWNLOAD
                     speed = -1
                     remaining = -1
@@ -170,6 +178,54 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
                 mDownloadListener?.onStart(info)
                 // Notify state update
                 mutableNotifyFlow.emit(info)
+            }
+        }
+    }
+
+    /**
+     * Fork: downloads the archive of [info], a gallery restored from PandaChika, as "<gid>.zip". Its pages show as
+     * done in the part of the archive received; the speed and the time left as for the pages of a spider.
+     */
+    private suspend fun startPandaChaikaDownload(info: DownloadInfo) {
+        val pages = info.pages.coerceAtLeast(1)
+        with(info) {
+            state = DownloadInfo.STATE_DOWNLOAD
+            speed = -1
+            remaining = -1
+            total = pages
+            finished = 0
+            downloaded = 0
+            legacy = -1
+        }
+        EhDB.putDownloadInfo(info)
+        mSpeedReminder.start()
+        mDownloadListener?.onStart(info)
+        mutableNotifyFlow.emit(info)
+        mCurrentPanda = launch {
+            val failed = try {
+                PandaChaikaDownload.download(info) { size, done, read ->
+                    if (size == Long.MAX_VALUE || size <= 0) return@download
+                    // As if the pages were of the same size: the one received in part is the one downloading
+                    val perPage = (size / pages).coerceAtLeast(1)
+                    val donePages = (done / perPage).toInt().coerceAtMost(pages)
+                    mSpeedReminder.onDownload(0, perPage, done - donePages * perPage, read)
+                    if (donePages != info.finished && mCurrentTask === info) {
+                        info.finished = donePages
+                        info.downloaded = donePages
+                        mDownloadListener?.onDownload(info)
+                        mutableNotifyFlow.emit(info)
+                    }
+                }
+                false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logcat(TAG, e)
+                true
+            }
+            if (mCurrentTask === info) {
+                mCurrentPanda = null
+                onFinish(if (failed) 0 else pages, if (failed) 0 else pages, pages, failed)
             }
         }
     }
@@ -456,6 +512,9 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
         }
         mCurrentTask = null
         mCurrentSpider = null
+        // Fork: and the download from PandaChika
+        mCurrentPanda?.cancel()
+        mCurrentPanda = null
         // Stop speed reminder
         mSpeedReminder.stop()
         if (info == null) {

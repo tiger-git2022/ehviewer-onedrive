@@ -17,6 +17,9 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.client.data.ListUrlBuilder.Companion.MODE_TOPLIST
+import com.hippo.ehviewer.client.exception.NoHitsFoundException
+import com.hippo.ehviewer.client.parser.GalleryListResult
+import com.hippo.ehviewer.restore.PandaChaikaMerger
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -39,6 +42,10 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
     @Volatile
     var hideFavoritedApplied: Boolean? = null
         private set
+
+    // Fork: the search on PandaChika of the pages loaded, see PandaChaikaMerger
+    @Volatile
+    private var pandaChaika: PandaChaikaMerger? = null
 
     // Use a smaller prefetch distance to avoid prepending an additional page after jumping
     val data = Pager(PagingConfig(25, prefetchDistance = 20)) {
@@ -89,6 +96,10 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         LoadResult.Page(result.galleryInfoList, prev?.toString(), next?.toString())
                     }
                 } else {
+                    // Fork: the galleries PandaChika keeps for the search, between those of E-Hentai, see
+                    // PandaChaikaMerger. A refresh is a new search, or the same from its start
+                    if (params is LoadParams.Refresh) pandaChaika = PandaChaikaMerger.of(urlBuilder) { hideFavoritedPref.value }
+                    val merger = pandaChaika
                     val url = mutex.withLock {
                         with(urlBuilder) {
                             when (params) {
@@ -100,7 +111,15 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         }
                     }
                     runSuspendCatching {
-                        var result = EhEngine.getGalleryList(url)
+                        // Fork: without a hit on E-Hentai, PandaChika may have some
+                        var noHits: NoHitsFoundException? = null
+                        var result = try {
+                            EhEngine.getGalleryList(url)
+                        } catch (e: NoHitsFoundException) {
+                            if (merger == null || params !is LoadParams.Refresh) throw e
+                            noHits = e
+                            GalleryListResult(null, null, mutableListOf())
+                        }
                         // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
                         // (before it when prepending), as an empty page ended the list
                         val hide = hideFavoritedPref.value
@@ -123,6 +142,16 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                             }
                             result = shown
                         }
+                        if (merger != null) {
+                            val load = when (params) {
+                                is LoadParams.Refresh -> PandaChaikaMerger.Load.Refresh
+                                is LoadParams.Append -> PandaChaikaMerger.Load.Append
+                                is LoadParams.Prepend -> PandaChaikaMerger.Load.Prepend
+                            }
+                            val merged = merger.merge(load, params.key, result.galleryInfoList, result.prev, result.next)
+                            result = result.copy(galleryInfoList = merged.toMutableList())
+                        }
+                        noHits?.let { if (result.galleryInfoList.isEmpty()) throw it }
                         result
                     }.foldToLoadResult { result ->
                         LoadResult.Page(result.galleryInfoList, result.prev, result.next)
