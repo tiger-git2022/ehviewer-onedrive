@@ -846,6 +846,9 @@
     <string name="comment_translate_api_key_summary">Kept on this device only, never synced to OneDrive</string>
     <string name="comment_translate_model">Model</string>
     <string name="comment_translate_model_hint">e.g. deepseek-chat</string>
+    <string name="comment_translate_model_fetching">Getting the models…</string>
+    <string name="comment_translate_model_manual">Type it in…</string>
+    <string name="comment_translate_model_fetch_failed">Could not get the models: %s</string>
     <string name="comment_translate_not_set">Not set</string>
     <string name="comment_translate_key_set">Set (ending in %s)</string>
     <string name="comment_translate_test">Test</string>

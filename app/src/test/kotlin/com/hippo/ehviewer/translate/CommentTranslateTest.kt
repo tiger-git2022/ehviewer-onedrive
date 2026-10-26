@@ -25,6 +25,17 @@ class CommentTranslateTest {
     fun endpoint() {
         assertEquals("https://api.deepseek.com/v1/chat/completions", TranslateConfig("https://api.deepseek.com/v1/", "", "m").endpoint)
         assertEquals("https://x.com/v1/chat/completions", TranslateConfig("https://x.com/v1/chat/completions", "", "m").endpoint)
+        assertEquals("https://x.com/v1/models", TranslateConfig("https://x.com/v1/chat/completions", "", "").modelsEndpoint)
+        assertEquals("https://api.deepseek.com/v1/models", TranslateConfig("https://api.deepseek.com/v1/", "", "").modelsEndpoint)
+    }
+
+    @Test
+    fun parseModels() {
+        val body = """{"object":"list","data":[{"id":"deepseek-reasoner","object":"model"},{"id":"deepseek-chat","object":"model"}]}"""
+        assertEquals(listOf("deepseek-chat", "deepseek-reasoner"), CommentTranslateApi.parseModels(body))
+        assertEquals(listOf("a", "b"), CommentTranslateApi.parseModels("""{"models":[{"name":"b"},{"name":"a"}]}"""))
+        assertNull(CommentTranslateApi.parseModels("""{"data":[]}"""))
+        assertNull(CommentTranslateApi.parseModels("<html>"))
     }
 
     @Test

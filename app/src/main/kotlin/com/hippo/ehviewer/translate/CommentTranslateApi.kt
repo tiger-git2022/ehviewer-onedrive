@@ -5,6 +5,7 @@ import com.hippo.ehviewer.client.executeSafely
 import com.hippo.ehviewer.util.bodyAsUtf8Text
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -38,6 +39,10 @@ data class TranslateConfig(val apiUrl: String, val apiKey: String, val model: St
             val url = apiUrl.trim().trimEnd('/')
             return if (url.endsWith("/chat/completions")) url else "$url/chat/completions"
         }
+
+    /** The list of the models, next to the chat completions endpoint. */
+    val modelsEndpoint: String
+        get() = apiUrl.trim().trimEnd('/').removeSuffix("/chat/completions") + "/models"
 }
 
 class TranslateException(message: String) : Exception(message)
@@ -68,6 +73,35 @@ object CommentTranslateApi {
             items.associate { item -> item.id to translate(config, listOf(item), target).getValue(item.id) }
         }
     }
+
+    /** The ids of the models the API offers (GET /models), sorted; for Settings to pick one. */
+    suspend fun listModels(config: TranslateConfig): List<String> {
+        if (config.apiUrl.isBlank()) throw TranslateException("API not configured")
+        return ktorClient.prepareGet(config.modelsEndpoint) {
+            timeout { requestTimeoutMillis = 30_000 }
+            if (config.apiKey.isNotBlank()) header(HttpHeaders.Authorization, "Bearer ${config.apiKey.trim()}")
+            header(HttpHeaders.Accept, "application/json")
+        }.executeSafely { response ->
+            val text = response.bodyAsUtf8Text()
+            if (!response.status.isSuccess()) {
+                throw TranslateException("HTTP ${response.status.value}" + (errorMessage(text)?.let { ": $it" } ?: ""))
+            }
+            parseModels(text) ?: throw TranslateException(errorMessage(text) ?: "No models in the reply")
+        }
+    }
+
+    /** The model ids of a /models reply: {"data":[{"id":...}]}, or {"models":[...]} as some servers answer. */
+    fun parseModels(body: String): List<String>? = runCatching {
+        val root = json.parseToJsonElement(body).jsonObject
+        val list = (root["data"] ?: root["models"])!!.jsonArray
+        list.mapNotNull { element ->
+            when (element) {
+                is JsonObject -> (element["id"] ?: element["name"])?.jsonPrimitive?.contentOrNull
+                is JsonPrimitive -> element.contentOrNull
+                else -> null
+            }
+        }.filter { it.isNotBlank() }.distinct().sorted()
+    }.getOrNull()?.ifEmpty { null }
 
     private suspend fun request(config: TranslateConfig, system: String, user: String): String {
         val body = buildJsonObject {
