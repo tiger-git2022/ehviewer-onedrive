@@ -15,9 +15,12 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import java.util.zip.ZipInputStream
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlinx.coroutines.delay
 import kotlinx.io.asSource
 import moe.tarsin.coroutines.runSuspendCatching
 import okio.Path
@@ -37,6 +40,10 @@ const val LATEST_MANIFEST_URL = "$RELEASES_URL/latest/download/update.json"
 
 // Fork: the update interval that checks once on every app start, the default
 const val UPDATE_ON_LAUNCH = -1
+
+// Fork: GitHub's download servers, or a proxy on the way, now and then answer 502/503/504 or stall for a moment.
+// The download starts over a few times before it fails.
+private const val DOWNLOAD_ATTEMPTS = 3
 
 object AppUpdater {
     // A new activity (a rotation, a return from the background) is not a new start of the app. Set once a check
@@ -59,7 +66,7 @@ object AppUpdater {
             val latestVersion = release.version.removePrefix("v")
             if (ForkVersion.isNewer(latestVersion, BuildConfig.RAW_VERSION_NAME)) {
                 // The release notes list the changes since the previous release
-                return EhRelease(latestVersion, release.info, release.getDownloadLink())
+                return EhRelease(latestVersion, release.info, release.getDownloadLink(), release.releaseLink)
             }
         }
         return null
@@ -68,8 +75,28 @@ object AppUpdater {
     private suspend fun fetchRelease(manifestUrl: String, apiUrl: String): Release = runSuspendCatching { statement(manifestUrl).executeAndParseAs<Release>() }
         .getOrElse { githubStatement(apiUrl).executeAndParseAs<Release>() }
 
-    /** Downloads to [path], telling [onProgress] the bytes done and the total, null while the total is unknown. */
+    /**
+     * Downloads to [path], telling [onProgress] the bytes done and the total, null while the total is unknown. A failed
+     * download starts over, up to [DOWNLOAD_ATTEMPTS] tries.
+     */
     suspend fun downloadUpdate(url: String, path: Path, onProgress: (done: Long, total: Long?) -> Unit = { _, _ -> }) {
+        var attempt = 1
+        while (true) {
+            try {
+                downloadOnce(url, path, onProgress)
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (attempt >= DOWNLOAD_ATTEMPTS) throw e
+                onProgress(0, null)
+                delay((attempt * 2).seconds)
+                attempt++
+            }
+        }
+    }
+
+    private suspend fun downloadOnce(url: String, path: Path, onProgress: (done: Long, total: Long?) -> Unit) {
         val isZip = url.endsWith("zip")
         timeoutBySpeed(
             url,
@@ -114,4 +141,6 @@ data class EhRelease(
     val version: String,
     val changelog: String,
     val downloadLink: String,
+    // Fork: the release page, to download in the browser when the download in the app fails
+    val releaseLink: String,
 )
