@@ -321,12 +321,14 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     // Fork: with liquid glass, the top bar refracts the comments scrolled below it (only then: over nothing it stood
     // out) and the reply button is glass like the floating buttons of the lists
     val backdrop = LocalPageBackdrop.current
-    val barScrolled by remember { derivedStateOf { scrollBehavior.state.overlappedFraction > 0f } }
+    // Taken from the list, not from overlappedFraction: the bar counts the pull to refresh at the top as content
+    // scrolled below it, and turned to glass over nothing while the indicator was pulled out
+    val lazyListState = rememberLazyListState()
+    val barScrolled by remember { derivedStateOf { lazyListState.canScrollBackward } }
     val barGlass = rememberLiquidGlass(backdrop).takeIf { barScrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     val fabGlass = LocalFabGlass.current
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(text = stringResource(id = R.string.gallery_comments)) },
@@ -433,9 +435,10 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             val cancelVoteDownSucceed = stringResource(R.string.cancel_vote_down_successfully)
             val voteFailed = stringResource(R.string.vote_failed)
             val layoutDirection = LocalLayoutDirection.current
-            val lazyListState = rememberLazyListState()
             LazyColumn(
-                modifier = Modifier.glassContent(commentsBackdrop).fillMaxSize().padding(horizontal = keylineMargin).mouseDragScroll(lazyListState),
+                // Fork: the top bar follows the comments inside the pull to refresh, which no longer passes its pull on
+                // to the bar as a scroll (the bar took the scrolled color at the top)
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection).glassContent(commentsBackdrop).fillMaxSize().padding(horizontal = keylineMargin).mouseDragScroll(lazyListState),
                 state = lazyListState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(
