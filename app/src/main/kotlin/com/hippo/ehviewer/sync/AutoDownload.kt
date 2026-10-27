@@ -13,6 +13,7 @@ import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.spider.downloadDirname
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -63,6 +64,12 @@ object AutoDownload {
      */
     @Volatile
     private var checkDue = true
+
+    /**
+     * Tracked downloads started, or seen waiting or downloading, in this process: one of them found not started was
+     * stopped by the user. Not started without being here, it was cut off when the process ended, see [AutoDownloadRetry].
+     */
+    private val activeHere: MutableSet<Long> = ConcurrentHashMap.newKeySet()
 
     /** The network worked at the last change, see [init]. */
     @Volatile
@@ -197,6 +204,7 @@ object AutoDownload {
                 if (add(info, slotOf[info.gid])) started += info.gid else listed += info.gid
             }
         }
+        activeHere += started
         val added = state.copy(
             handled = kept + infos.map { it.gid },
             unstarted = state.unstarted + listed,
@@ -213,10 +221,22 @@ object AutoDownload {
      */
     private fun resume(state: State, skip: Set<Long> = emptySet()): State {
         if (state.unstarted.isEmpty() && state.running.isEmpty()) return state
-        val plan = AutoDownloadRetry.plan(state.unstarted, state.running, DownloadManager::getDownloadState, online || isOnlineNow(), skip)
+        (state.running.keys + state.unstarted).forEach { gid ->
+            val now = DownloadManager.getDownloadState(gid)
+            if (now == DownloadInfo.STATE_WAIT || now == DownloadInfo.STATE_DOWNLOAD) activeHere += gid
+        }
+        val plan = AutoDownloadRetry.plan(
+            state.unstarted,
+            state.running,
+            DownloadManager::getDownloadState,
+            online || isOnlineNow(),
+            skip,
+            activeHere::contains,
+        )
         if (plan.start.isEmpty()) return state.copy(unstarted = plan.unstarted, running = plan.running)
         return try {
             with(appCtx) { DownloadService.startRangeDownload(plan.start.toLongArray()) }
+            activeHere += plan.start
             logcat(TAG) { "Started ${plan.start.size} downloads again" }
             state.copy(unstarted = plan.unstarted, running = plan.running)
         } catch (e: IllegalStateException) {

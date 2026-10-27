@@ -11,7 +11,8 @@ class AutoDownloadRetryTest {
         states: Map<Long, Int>,
         online: Boolean = true,
         skip: Set<Long> = emptySet(),
-    ) = AutoDownloadRetry.plan(unstarted, running, { states[it] ?: DownloadInfo.STATE_INVALID }, online, skip)
+        activeHere: Set<Long> = emptySet(),
+    ) = AutoDownloadRetry.plan(unstarted, running, { states[it] ?: DownloadInfo.STATE_INVALID }, online, skip, activeHere::contains)
 
     @Test
     fun aListedDownloadIsStarted() {
@@ -51,6 +52,7 @@ class AutoDownloadRetryTest {
         val plan = plan(
             running = mapOf(1L to 0, 2L to 0, 3L to 0, 4L to 1),
             states = mapOf(1L to DownloadInfo.STATE_FINISH, 2L to DownloadInfo.STATE_NONE, 4L to DownloadInfo.STATE_DOWNLOAD),
+            activeHere = setOf(2L, 4L),
         )
         assertEquals(emptyList(), plan.start)
         assertEquals(mapOf(4L to 1), plan.running)
@@ -71,5 +73,13 @@ class AutoDownloadRetryTest {
         assertEquals(emptyList(), plan.start)
         assertEquals(setOf(1L), plan.unstarted)
         assertEquals(mapOf(2L to 0), plan.running)
+    }
+
+    @Test
+    fun oneCutOffByTheEndOfTheProcessStartsAgain() {
+        // Read back not started after the app was killed while downloading
+        val plan = plan(running = mapOf(1L to 0), states = mapOf(1L to DownloadInfo.STATE_NONE))
+        assertEquals(listOf(1L), plan.start)
+        assertEquals(mapOf(1L to 1), plan.running)
     }
 }
