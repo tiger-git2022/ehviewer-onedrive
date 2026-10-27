@@ -872,4 +872,8 @@
     <string name="comment_translate_retry">Retry</string>
     <string name="comment_translate_toggle">Translate comments</string>
     <string name="copy_comment_translation">Copy translation</string>
+    <string name="select_text">Select text</string>
+    <string name="select_text_hint">Long-press the text, then drag the handles to pick the part to copy</string>
+    <string name="select_text_close">Close</string>
+    <string name="select_text_translation">Translation</string>
 </resources>

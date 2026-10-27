@@ -4,6 +4,7 @@ import androidx.activity.result.contract.ActivityResultContracts.CreateDocument
 import androidx.collection.SieveCache
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.core.animate
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -31,10 +32,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,9 +97,11 @@ import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.BarAction
 import com.hippo.ehviewer.ui.tools.BarActions
+import com.hippo.ehviewer.ui.tools.SelectableSection
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
 import com.hippo.ehviewer.ui.tools.awaitSelectTags
+import com.hippo.ehviewer.ui.tools.awaitSelectText
 import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.util.AppHelper
 import com.hippo.ehviewer.util.awaitActivityResult
@@ -105,6 +110,7 @@ import com.hippo.ehviewer.util.displayString
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -248,8 +254,25 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 },
                 title = {
                     galleryInfo?.let {
+                        // Fork: a long press picks part of the titles, see ui/tools/SelectTextDialog.kt
+                        val haptic = LocalHapticFeedback.current
+                        val titleScope = contextOf<CoroutineScope>()
+                        val titleLabel = stringResource(R.string.key_title)
+                        val titleJpnLabel = stringResource(R.string.key_title_jpn)
                         Text(
                             text = EhUtils.getSuitableTitle(it),
+                            modifier = Modifier.pointerInput(it) {
+                                detectTapGestures(
+                                    onLongPress = { _ ->
+                                        val sections = listOf(titleLabel to it.title, titleJpnLabel to it.titleJpn)
+                                            .mapNotNull { (label, title) -> title?.takeIf { t -> t.isNotBlank() }?.let { t -> SelectableSection(label, t) } }
+                                        if (sections.isNotEmpty()) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            titleScope.launch { awaitSelectText(sections) }
+                                        }
+                                    },
+                                )
+                            },
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )

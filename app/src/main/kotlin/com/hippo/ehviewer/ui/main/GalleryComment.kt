@@ -3,11 +3,13 @@ package com.hippo.ehviewer.ui.main
 import android.text.Html
 import android.text.TextUtils
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -18,6 +20,7 @@ import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
@@ -31,6 +34,7 @@ import com.hippo.ehviewer.translate.CommentTranslation
 import com.hippo.ehviewer.translate.CommentTranslations
 import com.hippo.ehviewer.ui.legacy.CoilImageGetter
 import com.hippo.ehviewer.ui.legacy.LinkifyTextView
+import com.hippo.ehviewer.ui.tools.SelectableSection
 import com.hippo.ehviewer.util.ReadableTime
 
 @Composable
@@ -48,16 +52,27 @@ fun GalleryCommentCard(
     showOriginal: Boolean = false,
     onToggleOriginal: () -> Unit = {},
     onRetryTranslation: () -> Unit = {},
+    // Fork: a long press, to pick part of the text, see ui/tools/SelectTextDialog.kt
+    onCardLongClick: (() -> Unit)? = null,
 ) = with(comment) {
     val targetUrl = remember { mutableStateOf<String?>(null) }
+    val onClick: () -> Unit = {
+        targetUrl.value?.also {
+            onUrlClick(it)
+            targetUrl.value = null
+        } ?: onCardClick()
+    }
     Card(
-        onClick = {
-            targetUrl.value?.also {
-                onUrlClick(it)
-                targetUrl.value = null
-            } ?: onCardClick()
-        },
-        modifier = modifier,
+        modifier = modifier.clip(CardDefaults.shape).combinedClickable(
+            onLongClick = onCardLongClick?.let { longClick ->
+                {
+                    // A long press on a link is not a tap on it
+                    targetUrl.value = null
+                    longClick()
+                }
+            },
+            onClick = onClick,
+        ),
     ) {
         val margin = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)
         Row(
@@ -98,6 +113,16 @@ fun GalleryCommentCard(
         if (translation != null) {
             TranslationLine(translation, showOriginal, onToggleOriginal, onRetryTranslation, Modifier.padding(start = margin, end = margin, bottom = 10.dp))
         }
+    }
+}
+
+/** Fork: the text of the comment, and its translation once there is one, to pick part of them in a dialog. */
+fun GalleryComment.selectableSections(translation: CommentTranslation?, originalLabel: String, translationLabel: String): List<SelectableSection> {
+    val original = comment.parseAsHtml().trim()
+    return if (translation is CommentTranslation.Done) {
+        listOf(SelectableSection(originalLabel, original), SelectableSection(translationLabel, translation.text.trim()))
+    } else {
+        listOf(SelectableSection(null, original))
     }
 }
 
