@@ -2,7 +2,9 @@ package com.hippo.ehviewer.translate
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CommentTranslateTest {
     @Test
@@ -19,6 +21,31 @@ class CommentTranslateTest {
         assertEquals(CommentScript.CHINESE, CommentScript.guess("汉化版在这里 https://e-hentai.org/g/123/abcdef/"))
         assertNull(CommentScript.guess("https://e-hentai.org/g/123/abcdef/"))
         assertNull(CommentScript.guess("+1 👍 2333"))
+    }
+
+    @Test
+    fun listing() {
+        val contents = """
+            COMIC Masyo 2026-02
+            コミックマショウ 2026年2月号
+
+            ILLUSTRATION Urushihara Satoshi / うるし原智志
+
+            ★Contents★
+            003 - ジョン・K・ペー太 / John K. Pe-ta ... どうしようが止まらない
+            007 - 朱シオ / Aka Shio .............................. 不器用巫女の恋愛析願Q
+            029 - 戸村水仙 / Tomura Suisen ................. ダメギャルと恋の授業
+            107 - ジロウ / Jirou ..................................... 熟女好きな俺の新しい扉
+            131 - あ~る・こが / R-Koga ....................... 双子ミニマム母娘
+            239 - ジョン・K・ペー太 / John K. Pe-ta ... 歴戦の女戦士と僕の旅 10話 chapter 10!
+        """.trimIndent()
+        assertTrue(CommentListing.isListing(contents))
+        // Pages alone, without dots
+        assertTrue(CommentListing.isListing("Contents\n001 Foo / Bar\n021 Baz / Qux\n045 Quux\n069 Corge\n091 Grault"))
+        // Points of a review are translated
+        assertFalse(CommentListing.isListing("Thoughts:\n1. The art is great\n2. The story drags\n3. Too short\n4. Still worth it"))
+        assertFalse(CommentListing.isListing("한글판도 올렸습니다.\n항상 응원해 주셔서 감사합니다!"))
+        assertFalse(CommentListing.isListing("Page 12 is the best...\nAnd 30 too\nLove it\nThanks for uploading\nMore please"))
     }
 
     @Test

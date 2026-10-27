@@ -68,3 +68,40 @@ object CommentScript {
         }
     }
 }
+
+/**
+ * Fork: a comment that lists the contents of a gallery (an anthology, a magazine issue) is names and titles, nothing
+ * worth translating. Told by its lines: dots leading to a page, or pages going up through the issue:
+ *
+ *     003 - ジョン・K・ペー太 / John K. Pe-ta ... どうしようが止まらない
+ *     007 - 朱シオ / Aka Shio .............................. 不器用巫女の恋愛析願Q
+ *
+ * A comment of a few numbered points ("1. the art... 2. the story...") is no such list and is translated.
+ */
+object CommentListing {
+    // "003 - ", "p.12 ", "12. ", "P45 "
+    private val pageRegex = Regex("""^(?:pp?\.?\s*)?(\d{1,4})\s*(?:[-–—~～:：.)）|]|\s)\s*\S""", RegexOption.IGNORE_CASE)
+
+    // A run of dots or the like between a title and its page
+    private val leaderRegex = Regex("""\.{4,}|…{2,}|・{4,}|·{4,}""")
+
+    private const val MIN_ENTRIES = 4
+
+    fun isListing(text: String): Boolean {
+        val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
+        if (lines.size < MIN_ENTRIES) return false
+        val pages = mutableListOf<Int>()
+        var entries = 0
+        lines.forEach { line ->
+            val page = pageRegex.find(line)?.groupValues?.get(1)?.toInt()
+            if (page != null) pages += page
+            if (page != null || leaderRegex.containsMatchIn(line)) entries++
+        }
+        // A header and credits around the list are fine, but most lines are entries
+        if (entries < MIN_ENTRIES || entries * 2 < lines.size) return false
+        val leaders = lines.count { leaderRegex.containsMatchIn(it) }
+        // Pages go up, and further than the points of a comment would
+        val paged = pages.size >= MIN_ENTRIES && pages.zipWithNext().all { (a, b) -> b >= a } && pages.last() >= 20
+        return leaders >= 3 || paged
+    }
+}
