@@ -82,8 +82,9 @@ object CommentListing {
     // "003 - ", "p.12 ", "12. ", "P45 "
     private val pageRegex = Regex("""^(?:pp?\.?\s*)?(\d{1,4})\s*(?:[-–—~～:：.)）|]|\s)\s*\S""", RegexOption.IGNORE_CASE)
 
-    // A run of dots or the like between a title and its page
-    private val leaderRegex = Regex("""\.{4,}|…{2,}|・{4,}|·{4,}""")
+    // A long run of dots or the like between a name and a title, words on both sides; "そうか……" or "でも……好き" is
+    // only punctuation
+    private val leaderRegex = Regex("""\S\s*(?:\.{5,}|…{3,}|・{5,}|·{5,})\s*\S""")
 
     private const val MIN_ENTRIES = 4
 

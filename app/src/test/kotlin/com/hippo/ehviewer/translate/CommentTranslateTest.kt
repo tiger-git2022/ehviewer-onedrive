@@ -42,8 +42,12 @@ class CommentTranslateTest {
         assertTrue(CommentListing.isListing(contents))
         // Pages alone, without dots
         assertTrue(CommentListing.isListing("Contents\n001 Foo / Bar\n021 Baz / Qux\n045 Quux\n069 Corge\n091 Grault"))
+        // Dots alone, without pages
+        assertTrue(CommentListing.isListing("Contents\nAka Shio ........ 不器用巫女\nTomura ........ ダメギャル\nJirou ........ 熟女好き\nR-Koga ……… 双子"))
         // Points of a review are translated
         assertFalse(CommentListing.isListing("Thoughts:\n1. The art is great\n2. The story drags\n3. Too short\n4. Still worth it"))
+        // Ellipses of a Japanese comment are punctuation, not leaders
+        assertFalse(CommentListing.isListing("そうか……\nでも……\nうーん……\nまあ……好きだけど……"))
         assertFalse(CommentListing.isListing("한글판도 올렸습니다.\n항상 응원해 주셔서 감사합니다!"))
         assertFalse(CommentListing.isListing("Page 12 is the best...\nAnd 30 too\nLove it\nThanks for uploading\nMore please"))
     }
