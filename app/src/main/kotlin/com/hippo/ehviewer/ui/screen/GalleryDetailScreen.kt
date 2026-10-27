@@ -227,8 +227,9 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val syncIconShown = OneDriveClient.isSupported && oneDriveAccount != null
     // Fork: with liquid glass, the top bar refracts the details below it, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
-    // Only once the details scroll below it: at the top, a glass over nothing stood out
-    val scrolled by remember { derivedStateOf { scrollBehavior.state.collapsedFraction > 0f || scrollBehavior.state.overlappedFraction > 0f } }
+    // Only once the details scroll below it: at the top, a glass over nothing stood out. Taken from the details, not
+    // from overlappedFraction, which can stay above 0 back at the top (it takes the scroll offset either way round)
+    val scrolled by remember { derivedStateOf { scrollBehavior.state.collapsedFraction > 0f || gridState.canScrollBackward } }
     val glass = rememberLiquidGlass(backdrop).takeIf { scrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     // Fork: fresh links for previews that fail to load and "Refresh previews", see PreviewRefetcher
