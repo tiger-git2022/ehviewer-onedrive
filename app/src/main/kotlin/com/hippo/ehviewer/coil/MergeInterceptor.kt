@@ -6,6 +6,7 @@ import coil3.decode.DataSource
 import coil3.imageLoader
 import coil3.intercept.Interceptor
 import coil3.memory.MemoryCache
+import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
 import kotlinx.coroutines.CancellableContinuation
@@ -33,6 +34,9 @@ suspend inline fun <T> CancellableContinuation<T>.evalAndResume(f: suspend () ->
 
 class TightRope : CoroutineScope, Counter by counter() {
     override val coroutineContext = Dispatchers.IO + Job()
+
+    // Fork: see SharedFailure
+    val sharedFailure = SharedFailure()
     val actions = Channel<F>()
     val flow = actions.receiveAsFlow().map(F::invoke).buffer(0).shareIn(this, SharingStarted.WhileSubscribed(stopTimeoutMillis = 200))
     suspend inline fun <R> sendAndAwait(crossinline block: suspend () -> R) = raceN(
@@ -53,7 +57,14 @@ object MergeInterceptor : Interceptor {
         return if (key != null) {
             val cacheKey = MemoryCache.Key(key, req.memoryCacheKeyExtras)
             val cached = req.context.imageLoader.memoryCache!![cacheKey] != null
-            val result = TightRopeTracker.use(key) { sendAndAwait { chain.proceed() } }
+            // Fork: a failure while waiting is shared, see SharedFailure
+            val result = TightRopeTracker.use(key) {
+                val ticket = sharedFailure.ticket()
+                sendAndAwait {
+                    sharedFailure.since(ticket, req.data)?.let { ErrorResult(req.error(), req, it) }
+                        ?: chain.proceed().also { sharedFailure.record(req.data, (it as? ErrorResult)?.throwable) }
+                }
+            }
             when (result) {
                 is SuccessResult if !cached && result.dataSource == DataSource.MEMORY_CACHE -> {
                     result.copy(dataSource = DataSource.MEMORY)
