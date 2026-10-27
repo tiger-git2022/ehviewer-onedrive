@@ -716,11 +716,10 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         primaryIcon = Icons.Default.Checklist,
         onPrimaryClick = {
             val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
-            // Fork: of the pages in the CBZ, as the list shows, counted now for those not counted yet (shown ones are
-            // counted as they show), a few at a time: one by one, each a lookup and a read in the download folder, a
-            // long list took seconds and the tap seemed lost
-            val counted = ArchivePages.counts.value
-            list.filter { it.gid in progress && it.state == DownloadInfo.STATE_FINISH && it.gid !in counted }
+            // Fork: of the pages in the CBZ, as the list shows, counted again now (one counted earlier may have been
+            // changed since), a few at a time: one by one, each a lookup and a read in the download folder, a long list
+            // took seconds
+            list.filter { it.gid in progress && it.state == DownloadInfo.STATE_FINISH }
                 .parMap(concurrency = ARCHIVE_COUNT_CONCURRENCY) { ArchivePages.refresh(it) }
             val counts = ArchivePages.counts.value
             val read = list.filter { info ->
