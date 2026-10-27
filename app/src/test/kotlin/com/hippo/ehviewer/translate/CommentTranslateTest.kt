@@ -42,6 +42,21 @@ class CommentTranslateTest {
         assertTrue(CommentListing.isListing(contents))
         // Pages alone, without dots
         assertTrue(CommentListing.isListing("Contents\n001 Foo / Bar\n021 Baz / Qux\n045 Quux\n069 Corge\n091 Grault"))
+        // Pages and authors under a heading, after the titles and the cover artist
+        val anthology = """
+            Sanran Anthology Comics Vol. 3
+            産卵 アンソロジーコミックス Vol.3 デジタル版 [中文翻译]
+
+            Cover artist - Matsunami Rumi
+
+            Contents
+            005 - Matsunami Rumi
+            025 - Aya Hinase
+            045 - kinntarou
+        """.trimIndent()
+        assertTrue(CommentListing.isListing(anthology))
+        // Three points without a heading are not a list of contents
+        assertFalse(CommentListing.isListing("Title\n5 - good\n25 - meh\n45 - bad"))
         // Dots alone, without pages
         assertTrue(CommentListing.isListing("Contents\nAka Shio ........ 不器用巫女\nTomura ........ ダメギャル\nJirou ........ 熟女好き\nR-Koga ……… 双子"))
         // Points of a review are translated
