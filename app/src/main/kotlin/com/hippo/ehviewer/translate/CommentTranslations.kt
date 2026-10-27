@@ -88,6 +88,11 @@ object CommentTranslations {
                     is CommentTranslation.Failed -> if (!retry) return@mapNotNull null
                     else -> return@mapNotNull null
                 }
+                // A list of the contents is left as it is, even if it was translated by an older version
+                if (CommentListing.isListing(plainText(comment.comment))) {
+                    states[key] = CommentTranslation.NotNeeded(null)
+                    return@mapNotNull null
+                }
                 val cached = synchronized(cache) { cache[key] }
                 if (cached != null) {
                     states[key] = CommentTranslation.Done(cached.l, cached.t)
