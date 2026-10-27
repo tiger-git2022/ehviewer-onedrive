@@ -806,6 +806,8 @@
     <string name="preview_refresh_nothing">没有加载失败的预览图</string>
     <string name="preview_loading">正在加载预览图 %1$d/%2$d</string>
     <string name="preview_loading_failed_too">另有 %d 张加载失败</string>
+    <string name="preview_loading_retrying">%1$s，正在重试（%2$s）</string>
+    <string name="preview_loading_retrying_no_host">%s，正在重试</string>
     <string name="preview_all_loaded">预览图已全部加载（%d 张）</string>
     <string name="preview_failure_group">%1$s %2$d 张（第 %3$s 张）</string>
     <string name="preview_failure_servers">服务器 %s</string>

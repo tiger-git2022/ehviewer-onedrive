@@ -74,8 +74,8 @@ import kotlinx.coroutines.launch
  */
 
 private sealed interface BarState {
-    /** [failed]: the previews that failed before, told below the progress. */
-    data class Loading(val loaded: Int, val total: Int, val failed: Int) : BarState
+    /** [failed]: the previews that failed before, told below the progress, with why one is [retrying] now. */
+    data class Loading(val loaded: Int, val total: Int, val failed: Int, val retrying: PreviewLoad.Failed?) : BarState
     data class AllLoaded(val total: Int) : BarState
     data class Failed(val failures: Map<Int, PreviewLoad.Failed>) : BarState
     data class Refreshing(val refresh: PreviewRefresh) : BarState
@@ -97,7 +97,11 @@ fun PreviewProgressBar(refetcher: PreviewRefetcher, glass: FloatingGlass?, modif
             // Failures swiped away are not told again, see PreviewRefetcher.dismissedFailures
             val failures = allFailures - refetcher.dismissedFailures
             when {
-                pending > 0 -> BarState.Loading(loaded, loaded + pending, failures.size)
+                pending > 0 -> {
+                    // Why one is tried again, so a server that cannot be reached shows before the retries are used up
+                    val retrying = loads.values.lastOrNull { it is PreviewLoad.Failed && it.retrying } as PreviewLoad.Failed?
+                    BarState.Loading(loaded, loaded + pending, failures.size, retrying)
+                }
                 failures.isNotEmpty() -> BarState.Failed(failures)
                 allFailures.isEmpty() && loaded > 0 -> BarState.AllLoaded(loaded)
                 else -> BarState.Idle
@@ -197,7 +201,16 @@ private fun BarContent(state: BarState, onRefresh: (Context) -> Unit) {
     when (state) {
         is BarState.Loading -> ProgressRow(
             title = stringResource(R.string.preview_loading, state.loaded, state.total),
-            subtitle = if (state.failed > 0) stringResource(R.string.preview_loading_failed_too, state.failed) else null,
+            subtitle = listOfNotNull(
+                state.retrying?.run {
+                    if (host != null) {
+                        stringResource(R.string.preview_loading_retrying, reason, host)
+                    } else {
+                        stringResource(R.string.preview_loading_retrying_no_host, reason)
+                    }
+                },
+                if (state.failed > 0) stringResource(R.string.preview_loading_failed_too, state.failed) else null,
+            ).takeIf { it.isNotEmpty() }?.joinToString("\n"),
             subtitleColor = MaterialTheme.colorScheme.error,
             progress = if (state.total > 0) state.loaded.toFloat() / state.total else 0f,
         )
