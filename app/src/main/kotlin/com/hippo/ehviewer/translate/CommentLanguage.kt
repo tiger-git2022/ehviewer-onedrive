@@ -86,11 +86,24 @@ object CommentListing {
     // only punctuation
     private val leaderRegex = Regex("""\S\s*(?:\.{5,}|…{3,}|・{5,}|·{5,})\s*\S""")
 
+    // The heading of the list: "Contents", "★Contents★", "目次", "収録作品:"
+    private val headingRegex = Regex(
+        """^[\p{P}\p{S}\s]*(?:table of contents|contents|目次|もくじ|目录|目錄|收录|收錄|収録作品|収録)[\p{P}\p{S}\s]*$""",
+        RegexOption.IGNORE_CASE,
+    )
+
     private const val MIN_ENTRIES = 4
 
+    // Under a heading, a short list of three is enough
+    private const val MIN_ENTRIES_UNDER_HEADING = 3
+
     fun isListing(text: String): Boolean {
-        val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
-        if (lines.size < MIN_ENTRIES) return false
+        val all = text.lines().map(String::trim).filter(String::isNotEmpty)
+        // With a heading, the title, the cover artist and the like above it are not counted
+        val heading = all.indexOfFirst { headingRegex.matches(it) }
+        val lines = if (heading >= 0) all.drop(heading + 1) else all
+        val minEntries = if (heading >= 0) MIN_ENTRIES_UNDER_HEADING else MIN_ENTRIES
+        if (lines.size < minEntries) return false
         val pages = mutableListOf<Int>()
         var entries = 0
         lines.forEach { line ->
@@ -99,10 +112,10 @@ object CommentListing {
             if (page != null || leaderRegex.containsMatchIn(line)) entries++
         }
         // A header and credits around the list are fine, but most lines are entries
-        if (entries < MIN_ENTRIES || entries * 2 < lines.size) return false
+        if (entries < minEntries || entries * 2 < lines.size) return false
         val leaders = lines.count { leaderRegex.containsMatchIn(it) }
         // Pages go up, and further than the points of a comment would
-        val paged = pages.size >= MIN_ENTRIES && pages.zipWithNext().all { (a, b) -> b >= a } && pages.last() >= 20
+        val paged = pages.size >= minEntries && pages.zipWithNext().all { (a, b) -> b >= a } && pages.last() >= 20
         return leaders >= 3 || paged
     }
 }

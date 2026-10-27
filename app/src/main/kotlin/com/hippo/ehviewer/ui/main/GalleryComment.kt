@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.remember
@@ -96,19 +97,23 @@ fun GalleryCommentCard(
         // Fork: the translation as the text of the comment, so the score and the edit time follow it as they do the original
         val shown = if (translation is CommentTranslation.Done && !showOriginal) comment.copy(comment = translation.text.toCommentHtml()) else comment
         val commentText = processComment(shown, CoilImageGetter { redrawSignal.value = Unit })
-        AndroidView(
-            factory = { context ->
-                LinkifyTextView(context) { targetUrl.value = it }.apply {
-                    setTextColor(textColor)
-                    setLinkTextColor(linkTextColor)
-                    this.maxLines = maxLines
-                    if (ellipsis) ellipsize = TextUtils.TruncateAt.END
-                }
-            },
-            modifier = Modifier.padding(start = margin, end = margin, bottom = 8.dp),
-        ) { view ->
-            view.text = commentText
-            redrawSignal.value
+        // Fork: a new text view for another text. Set on the same view, a shorter text (the translation after the original)
+        // left the list spaced for the longer one below the card
+        key(shown.comment) {
+            AndroidView(
+                factory = { context ->
+                    LinkifyTextView(context) { targetUrl.value = it }.apply {
+                        setTextColor(textColor)
+                        setLinkTextColor(linkTextColor)
+                        this.maxLines = maxLines
+                        if (ellipsis) ellipsize = TextUtils.TruncateAt.END
+                    }
+                },
+                modifier = Modifier.padding(start = margin, end = margin, bottom = 8.dp),
+            ) { view ->
+                view.text = commentText
+                redrawSignal.value
+            }
         }
         if (translation != null) {
             TranslationLine(translation, showOriginal, onToggleOriginal, onRetryTranslation, Modifier.padding(start = margin, end = margin, bottom = 10.dp))
