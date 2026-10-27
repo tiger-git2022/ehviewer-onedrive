@@ -568,18 +568,19 @@ fun SearchBarScreen(
                         } else {
                             SearchBarDefaults.inputFieldColors()
                         },
-                        placeholder = if (shownTags.isEmpty()) {
-                            {
+                        // Fork: the placeholder and the chips are always given, empty when not shown: the Material text
+                        // field decides once, at its first composition, whether it shows them at all (TextFieldImpl
+                        // remembers its showPlaceholder and showAffix), so chips picked later stayed invisible
+                        placeholder = {
+                            if (shownTags.isEmpty()) {
                                 val contentActive by activeState.state
                                 val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
                                 Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
                             }
-                        } else {
-                            null
                         },
                         // Fork: the tags of the search, see SearchTagChips
-                        prefix = if (shownTags.isNotEmpty()) {
-                            {
+                        prefix = {
+                            if (shownTags.isNotEmpty()) {
                                 SearchTagChips(
                                     tags = shownTags,
                                     interactive = expanded,
@@ -589,8 +590,6 @@ fun SearchBarScreen(
                                     glass = glass != null,
                                 )
                             }
-                        } else {
-                            null
                         },
                         // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; the room goes to
                         // the buttons on the right

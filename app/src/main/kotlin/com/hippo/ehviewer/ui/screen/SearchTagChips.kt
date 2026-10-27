@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
@@ -55,15 +56,7 @@ fun SearchTagChips(
     // A tag picked comes in at the end: show it
     LaunchedEffect(tags.size, scrollState.maxValue) { scrollState.animateScrollTo(scrollState.maxValue) }
     Row(
-        modifier = Modifier
-            .layout { measurable, constraints ->
-                val maxWidth = (constraints.maxWidth - minTextWidth().roundToPx()).coerceAtLeast(0)
-                val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = maxWidth, minHeight = 0))
-                // As tall as the text: the field keeps its height
-                val height = minOf(placeable.height, TextLineHeight.roundToPx())
-                layout(placeable.width, height) { placeable.place(0, (height - placeable.height) / 2) }
-            }
-            .horizontalScroll(scrollState),
+        modifier = Modifier.chipRowLayout(minTextWidth).horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -78,6 +71,22 @@ fun SearchTagChips(
             )
         }
     }
+}
+
+/**
+ * The row of chips leaves [minTextWidth] of the field to the text, and is as tall as the line of the text, the chips
+ * standing out over and under it. Unbounded when the search bar asks the field how wide it would be (its intrinsic
+ * width, on every layout): taking the text away from an unbounded width gave a width Constraints cannot hold, a crash.
+ */
+internal fun Modifier.chipRowLayout(minTextWidth: () -> Dp) = layout { measurable, constraints ->
+    val maxWidth = if (constraints.hasBoundedWidth) {
+        (constraints.maxWidth - minTextWidth().roundToPx()).coerceAtLeast(0)
+    } else {
+        Constraints.Infinity
+    }
+    val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = maxWidth, minHeight = 0))
+    val height = minOf(placeable.height, TextLineHeight.roundToPx())
+    layout(placeable.width, height) { placeable.place(0, (height - placeable.height) / 2) }
 }
 
 @Composable
