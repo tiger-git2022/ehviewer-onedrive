@@ -193,6 +193,8 @@ fun SearchBarScreen(
     // The last search written from the chips and the text: coming back, it is no search set from outside, even when the
     // text has changed again since
     val writtenQuery = remember { arrayOfNulls<String>(1) }
+    // The chips shown: none in a local search, even if the favorites have just switched to one from a cloud category
+    val shownTags = if (tagChips) tags else emptyList()
     if (tagChips) {
         // The search set from outside (a tag of a gallery, the history, clearing it): its tags become chips
         LaunchedEffect(Unit) {
@@ -525,7 +527,7 @@ fun SearchBarScreen(
                             // Fork: backspace in an empty field removes the last chip
                             .thenIf(tagChips) {
                                 onPreviewKeyEvent {
-                                    if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && inputState.text.isEmpty() && tags.isNotEmpty()) {
+                                    if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && inputState.text.isEmpty() && shownTags.isNotEmpty()) {
                                         tags = tags.dropLast(1)
                                         true
                                     } else {
@@ -566,7 +568,7 @@ fun SearchBarScreen(
                         } else {
                             SearchBarDefaults.inputFieldColors()
                         },
-                        placeholder = if (tags.isEmpty()) {
+                        placeholder = if (shownTags.isEmpty()) {
                             {
                                 val contentActive by activeState.state
                                 val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
@@ -576,10 +578,10 @@ fun SearchBarScreen(
                             null
                         },
                         // Fork: the tags of the search, see SearchTagChips
-                        prefix = if (tags.isNotEmpty()) {
+                        prefix = if (shownTags.isNotEmpty()) {
                             {
                                 SearchTagChips(
-                                    tags = tags,
+                                    tags = shownTags,
                                     interactive = expanded,
                                     onRemove = { i -> tags = tags.filterIndexed { j, _ -> j != i } },
                                     onToggleExcluded = { i -> tags = tags.mapIndexed { j, tag -> if (j == i) toggleExcludedTag(tag) else tag } },
