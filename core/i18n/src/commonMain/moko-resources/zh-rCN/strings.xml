@@ -854,4 +854,8 @@
     <string name="comment_translate_retry">重试</string>
     <string name="comment_translate_toggle">翻译评论</string>
     <string name="copy_comment_translation">复制译文</string>
+    <string name="select_text">选择文字</string>
+    <string name="select_text_hint">长按文字，拖动两端的手柄选出要复制的部分</string>
+    <string name="select_text_close">关闭</string>
+    <string name="select_text_translation">译文</string>
 </resources>

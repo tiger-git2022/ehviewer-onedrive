@@ -126,11 +126,13 @@ import com.hippo.ehviewer.ui.main.GlassToggleButton
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.selectableSections
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.tools.addBBCodeTextContextMenuItems
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
+import com.hippo.ehviewer.ui.tools.awaitSelectText
 import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.ui.tools.normalizeSpan
 import com.hippo.ehviewer.ui.tools.showNoButton
@@ -231,6 +233,10 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
 
     val copyComment = stringResource(R.string.copy_comment_text)
     val copyTranslation = stringResource(R.string.copy_comment_translation)
+    // Fork: to pick part of a comment or of its translation, see ui/tools/SelectTextDialog.kt
+    val selectText = stringResource(R.string.select_text)
+    val originalLabel = stringResource(R.string.comment_original)
+    val translationLabel = stringResource(R.string.select_text_translation)
     val blockCommenter = stringResource(R.string.block_commenter)
     val editComment = stringResource(R.string.edit_comment)
     val cancelVoteUp = stringResource(R.string.cancel_vote_up)
@@ -470,6 +476,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                         if (translation is CommentTranslation.Done) {
                             onSelect(copyTranslation) { addTextToClipboard(translation.text) }
                         }
+                        onSelect(selectText) { awaitSelectText(comment.selectableSections(translation, originalLabel, translationLabel)) }
                         if (!comment.uploader && !comment.editable) {
                             onSelect(blockCommenter) { showFilterCommenter(comment) }
                         }
@@ -526,6 +533,9 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                         showOriginal = (item.id in flippedComments) == showTranslations,
                         onToggleOriginal = { if (!flippedComments.remove(item.id)) flippedComments.add(item.id) },
                         onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
+                        onCardLongClick = {
+                            launch { awaitSelectText(item.selectableSections(CommentTranslations.stateOf(item), originalLabel, translationLabel)) }
+                        },
                     )
                 }
                 if (comments.hasMore) {

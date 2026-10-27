@@ -139,16 +139,20 @@ import com.hippo.ehviewer.ui.main.GalleryTags
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TorrentList
+import com.hippo.ehviewer.ui.main.selectableSections
 import com.hippo.ehviewer.ui.modifyFavorites
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.startDownload
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.EhModalBottomSheet
+import com.hippo.ehviewer.ui.tools.SelectTextDialog
+import com.hippo.ehviewer.ui.tools.SelectableSection
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitResult
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
+import com.hippo.ehviewer.ui.tools.awaitSelectText
 import com.hippo.ehviewer.ui.tools.dialog
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
 import com.hippo.ehviewer.ui.tools.getClippedRefreshKey
@@ -240,10 +244,13 @@ fun GalleryDetailContent(
         galleryDetail ?: return
         launch {
             dialog { cont ->
+                // Fork: a long press on a row picks part of it (a title) in a dialog over the sheet, which stays open
+                var selecting by remember { mutableStateOf<SelectableSection?>(null) }
                 // Fork: as liquid glass, like the dialogs
                 EhModalBottomSheet(onDismissRequest = { cont.cancel() }) {
-                    GalleryInfoBottomSheet(galleryDetail)
+                    GalleryInfoBottomSheet(galleryDetail, onLongClick = { key, content -> selecting = SelectableSection(key, content) })
                 }
+                selecting?.let { SelectTextDialog(listOf(it), onDismiss = { selecting = null }) }
             }
         }
     }
@@ -454,6 +461,8 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             if (translate) CommentTranslations.request(shownComments)
         }
         val originalShown = remember { mutableStateSetOf<Long>() }
+        val originalLabel = stringResource(R.string.comment_original)
+        val translationLabel = stringResource(R.string.select_text_translation)
         CrystalCard {
             shownComments.forEach { item ->
                 GalleryCommentCard(
@@ -474,6 +483,13 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     showOriginal = item.id in originalShown,
                     onToggleOriginal = { if (!originalShown.remove(item.id)) originalShown.add(item.id) },
                     onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
+                    // Fork: a long press picks part of the comment or of its translation, see ui/tools/SelectTextDialog.kt
+                    onCardLongClick = {
+                        launch {
+                            val translation = if (translate) CommentTranslations.stateOf(item) else null
+                            awaitSelectText(item.selectableSections(translation, originalLabel, translationLabel))
+                        }
+                    },
                 )
             }
             Box(

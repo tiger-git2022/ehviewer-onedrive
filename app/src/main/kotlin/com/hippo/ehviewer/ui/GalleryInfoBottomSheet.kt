@@ -1,7 +1,7 @@
 package com.hippo.ehviewer.ui
 
 import android.content.Context
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -64,7 +64,7 @@ private fun GalleryDetail.content() = arrayOf(
 
 @Composable
 context(_: Context, _: DestinationsNavigator)
-fun GalleryInfoBottomSheet(detail: GalleryDetail) {
+fun GalleryInfoBottomSheet(detail: GalleryDetail, onLongClick: (key: String, content: String) -> Unit = { _, _ -> }) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(id = R.string.gallery_info),
@@ -75,8 +75,12 @@ fun GalleryInfoBottomSheet(detail: GalleryDetail) {
         ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             LazyColumn(contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Bottom).asPaddingValues()) {
                 itemsIndexed(data) { index, (key, content) ->
+                    val keyText = stringResource(id = key)
                     Row(
-                        modifier = Modifier.padding(horizontal = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)).clickable {
+                        // Fork: a long press picks part of the row (a title) instead of copying all of it
+                        modifier = Modifier.padding(horizontal = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)).combinedClickable(
+                            onLongClick = content?.takeIf { it.isNotBlank() }?.let { { onLongClick(keyText, it) } },
+                        ) {
                             if (index == INDEX_PARENT) {
                                 if (content != null) {
                                     navWithUrl(content)
@@ -90,7 +94,7 @@ fun GalleryInfoBottomSheet(detail: GalleryDetail) {
                             }
                         }.fillMaxWidth(),
                     ) {
-                        Text(stringResource(id = key), modifier = Modifier.width(90.dp).padding(8.dp))
+                        Text(keyText, modifier = Modifier.width(90.dp).padding(8.dp))
                         Text(content.orEmpty(), modifier = Modifier.padding(8.dp))
                     }
                 }
