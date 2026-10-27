@@ -264,11 +264,25 @@ fun SearchBarScreen(
         override val keyword: String,
         // Fork: translations of its tags
         override val hint: String? = null,
+        // Fork: in the other searches below those with the tags picked, its tags join the chips instead of taking the
+        // place of the search, see searchHistoryByTags
+        private val addsTags: Boolean = false,
     ) : Suggestion() {
         override val canDelete = true
         override fun onClick() {
-            searchFieldState.setTextAndPlaceCursorAtEnd(keyword)
+            if (addsTags) {
+                val (newTags, text) = pickSearchHistory(tags, keyword)
+                tags = newTags
+                inputState.setTextAndPlaceCursorAtEnd(text)
+            } else {
+                searchFieldState.setTextAndPlaceCursorAtEnd(keyword)
+            }
         }
+    }
+
+    // Fork: a heading in the history, see searchHistoryByTags
+    class SectionHeader(override val keyword: String) : Suggestion() {
+        override fun onClick() = Unit
     }
 
     fun mergedSuggestionFlow(): Flow<Suggestion> = with(context) {
@@ -276,14 +290,28 @@ fun SearchBarScreen(
             val query = searchFieldState.text.toString()
             suggestionProvider?.run { providerSuggestions(query).forEach { emit(it) } }
             val translate = Settings.showTagTranslations.value
-            mSearchDatabase.suggestions(query, 128).forEach { emit(KeywordSuggestion(it, if (translate) translateTagQuery(it) else null)) }
+            fun history(query: String, addsTags: Boolean = false) = KeywordSuggestion(query, if (translate) translateTagQuery(query) else null, addsTags)
             // Fork: the tag being typed is in the text after the chips, maybe with a `-` before it
             val text = inputState.text.toString()
+            val chips = if (tagChips) tags else emptyList()
+            if (chips.isEmpty()) {
+                mSearchDatabase.suggestions(query, 128).forEach { emit(history(it)) }
+            } else {
+                // Fork: with tags picked, the history having them first (picked, it takes the place of the search), then
+                // the rest of it (picked, its tags join the chips): another tag can still be taken from it
+                val (withTags, others) = searchHistoryByTags(mSearchDatabase.list(128), chips, text)
+                if (withTags.isNotEmpty()) emit(SectionHeader(getString(R.string.search_history_with_tags)))
+                withTags.forEach { emit(history(it)) }
+                if (others.isNotEmpty()) emit(SectionHeader(getString(R.string.search_history_others)))
+                others.forEach { emit(history(it, addsTags = true)) }
+            }
             val index = if (localSearch) text.lastIndexOf(' ') else text.lastIndexOfAny(TagTerminators)
             val keyword = text.substring(index + 1).trimStart().let { if (tagChips) it.trimStart('-', '~') else it }
             if (keyword.isNotEmpty()) {
-                EhTagDatabase.suggestion(keyword, Settings.showTagTranslations.value).take(50)
-                    .forEach { emit(TagSuggestion(it.hint, it.tag)) }
+                val tagSuggestions = EhTagDatabase.suggestion(keyword, Settings.showTagTranslations.value).take(50).toList()
+                // Fork: not under the other searches
+                if (chips.isNotEmpty() && tagSuggestions.isNotEmpty()) emit(SectionHeader(getString(R.string.search_tag_suggestions)))
+                tagSuggestions.forEach { emit(TagSuggestion(it.hint, it.tag)) }
             }
         }
     }
@@ -396,12 +424,25 @@ fun SearchBarScreen(
             ) {
                 // Workaround for prepending before the first item
                 item(span = StaggeredGridItemSpan.FullLine) {}
-                items(mSuggestionList, key = { it.keyword.hashCode() * 31 + it.canDelete.hashCode() }) {
-                    SearchSuggestionCell(
-                        suggestion = it,
-                        onDelete = { deleteKeyword(it.keyword) },
-                        modifier = Modifier.thenIf(animateItems) { animateItem() },
-                    )
+                items(
+                    mSuggestionList,
+                    key = { it.keyword.hashCode() * 31 + it.canDelete.hashCode() },
+                    span = { if (it is SectionHeader) StaggeredGridItemSpan.FullLine else StaggeredGridItemSpan.SingleLane },
+                ) {
+                    if (it is SectionHeader) {
+                        Text(
+                            text = it.keyword,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.thenIf(animateItems) { animateItem() }.padding(start = 4.dp, top = 4.dp),
+                        )
+                    } else {
+                        SearchSuggestionCell(
+                            suggestion = it,
+                            onDelete = { deleteKeyword(it.keyword) },
+                            modifier = Modifier.thenIf(animateItems) { animateItem() },
+                        )
+                    }
                 }
             }
         }

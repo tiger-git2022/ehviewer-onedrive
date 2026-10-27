@@ -48,4 +48,20 @@ fun pickedSearchTag(wrapped: String, typed: String): String = when (typed.trimSt
     else -> wrapped
 }
 
+/**
+ * The history of [entries] with [tags] picked: those having all of them first, then the others, so another tag can
+ * still be taken from them. Both only with [text] in them, while text is typed after the chips.
+ */
+fun searchHistoryByTags(entries: List<String>, tags: List<String>, text: String): Pair<List<String>, List<String>> {
+    val typed = text.trim()
+    val shown = if (typed.isEmpty()) entries else entries.filter { it.contains(typed, ignoreCase = true) }
+    return shown.partition { splitSearchTags(it).first.containsAll(tags) }
+}
+
+/** The chips and the text after picking the history [entry]: its tags join [tags], its text takes the place of the text. */
+fun pickSearchHistory(tags: List<String>, entry: String): Pair<List<String>, String> {
+    val (entryTags, text) = splitSearchTags(entry)
+    return (tags + entryTags).distinct() to text
+}
+
 private val Whitespace = Regex("\\s+")
