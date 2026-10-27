@@ -32,12 +32,17 @@ context(_: Context)
 fun translateTagQuery(query: String): String? {
     if (!EhTagDatabase.initialized || !EhTagDatabase.translatable) return null
     val parts = TagRegex.findAll(query).mapNotNull { match ->
-        val ns = match.groupValues[1]
-        val namespace = NAMESPACES.find { it.value == ns || it.prefix == ns } ?: return@mapNotNull null
-        val tag = match.groupValues[2].ifEmpty { match.groupValues[3] }.trim()
-        val translated = EhTagDatabase.getTranslation(namespace.prefix, tag) ?: return@mapNotNull null
-        val nsName = EhTagDatabase.getTranslation(tag = namespace.value) ?: namespace.value
-        "$nsName:$translated"
+        translateSearchTag(match.groupValues[1], match.groupValues[2].ifEmpty { match.groupValues[3] }.trim())
     }.toList()
     return parts.takeIf { it.isNotEmpty() }?.joinToString("  ")
+}
+
+/** "女性:巨乳" for the namespace `f` and the tag `big breasts`; null without a translation. */
+context(_: Context)
+fun translateSearchTag(ns: String, tag: String): String? {
+    if (!EhTagDatabase.initialized || !EhTagDatabase.translatable) return null
+    val namespace = NAMESPACES.find { it.value == ns || it.prefix == ns } ?: return null
+    val translated = EhTagDatabase.getTranslation(namespace.prefix, tag) ?: return null
+    val nsName = EhTagDatabase.getTranslation(tag = namespace.value) ?: namespace.value
+    return "$nsName:$translated"
 }

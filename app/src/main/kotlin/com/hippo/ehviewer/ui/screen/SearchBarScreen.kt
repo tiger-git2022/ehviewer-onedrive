@@ -80,6 +80,11 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -180,12 +185,62 @@ fun SearchBarScreen(
     val context = LocalContext.current
     val animateItems by Settings.animateItems.collectAsState()
 
+    // Fork: the tags of the search are chips before the text in the field, see SearchTags.kt. [searchFieldState] keeps
+    // the whole search, for the screens setting and reading it; the field edits only the text after the tags
+    val tagChips = !localSearch
+    val inputState = if (tagChips) remember { TextFieldState(splitSearchTags(searchFieldState.text.toString()).second) } else searchFieldState
+    var tags by remember { mutableStateOf(if (tagChips) splitSearchTags(searchFieldState.text.toString()).first else emptyList()) }
+    // The last search written from the chips and the text: coming back, it is no search set from outside, even when the
+    // text has changed again since
+    val writtenQuery = remember { arrayOfNulls<String>(1) }
+    if (tagChips) {
+        // The search set from outside (a tag of a gallery, the history, clearing it): its tags become chips
+        LaunchedEffect(Unit) {
+            snapshotFlow { searchFieldState.text.toString() }.collect {
+                // As it is now, it may have changed again since
+                val query = searchFieldState.text.toString()
+                if (query != writtenQuery[0] && query != joinSearchTags(tags, inputState.text)) {
+                    val (newTags, text) = splitSearchTags(query)
+                    tags = newTags
+                    inputState.setTextAndPlaceCursorAtEnd(text)
+                }
+            }
+        }
+        // Edited in the field: a tag typed out becomes a chip once a space follows it
+        LaunchedEffect(Unit) {
+            snapshotFlow { tags to inputState.text.toString() }.collect { (current, text) ->
+                if (text.isNotEmpty() && text.last().isWhitespace()) {
+                    val (typedTags, rest) = splitSearchTags(text)
+                    if (typedTags.isNotEmpty()) {
+                        tags = current + typedTags
+                        inputState.setTextAndPlaceCursorAtEnd(if (rest.isEmpty()) "" else "$rest ")
+                        return@collect
+                    }
+                }
+                val query = joinSearchTags(current, text)
+                if (query != searchFieldState.text.toString()) {
+                    writtenQuery[0] = query
+                    searchFieldState.setTextAndPlaceCursorAtEnd(query)
+                }
+            }
+        }
+    }
+
     class TagSuggestion(
         override val hint: String?,
         override val keyword: String,
     ) : Suggestion() {
         override fun onClick() {
-            val query = searchFieldState.text.toString()
+            if (tagChips && !keyword.endsWith(':')) {
+                // Fork: the tag becomes a chip in the place of what was typed for it; a `-` typed before it excludes it
+                val text = inputState.text.toString()
+                val index = tagSuggestionIndex(text)
+                val kept = text.take(index + 1).trimEnd()
+                tags = tags + pickedSearchTag(wrapTagKeyword(keyword), text.substring(index + 1))
+                inputState.setTextAndPlaceCursorAtEnd(if (kept.isEmpty()) "" else "$kept ")
+                return
+            }
+            val query = inputState.text.toString()
             val (index, keyword) = if (localSearch) {
                 query.lastIndexOf(' ') to
                     "${keyword.substringAfter(':')} "
@@ -199,7 +254,7 @@ fun SearchBarScreen(
             } else {
                 "${query.substring(0, index + 1).trimEnd()} $keyword"
             }
-            searchFieldState.setTextAndPlaceCursorAtEnd(keywords)
+            inputState.setTextAndPlaceCursorAtEnd(keywords)
         }
     }
 
@@ -220,8 +275,10 @@ fun SearchBarScreen(
             suggestionProvider?.run { providerSuggestions(query).forEach { emit(it) } }
             val translate = Settings.showTagTranslations.value
             mSearchDatabase.suggestions(query, 128).forEach { emit(KeywordSuggestion(it, if (translate) translateTagQuery(it) else null)) }
-            val index = if (localSearch) query.lastIndexOf(' ') else query.lastIndexOfAny(TagTerminators)
-            val keyword = query.substring(index + 1).trimStart()
+            // Fork: the tag being typed is in the text after the chips, maybe with a `-` before it
+            val text = inputState.text.toString()
+            val index = if (localSearch) text.lastIndexOf(' ') else text.lastIndexOfAny(TagTerminators)
+            val keyword = text.substring(index + 1).trimStart().let { if (tagChips) it.trimStart('-', '~') else it }
             if (keyword.isNotEmpty()) {
                 EhTagDatabase.suggestion(keyword, Settings.showTagTranslations.value).take(50)
                     .forEach { emit(TagSuggestion(it.hint, it.tag)) }
@@ -248,7 +305,9 @@ fun SearchBarScreen(
     fun onApplySearch() {
         // May have invalid whitespaces if pasted from clipboard, replace them with spaces
         // Fork: with its quoted tags closed, see SearchQuery.kt
-        val query = closeTagQuotes(searchFieldState.text.trim().replace(WhitespaceRegex, " "))
+        // Fork: the chips and the text, as typed this very moment
+        val typed = if (tagChips) joinSearchTags(tags, inputState.text) else searchFieldState.text
+        val query = closeTagQuotes(typed.trim().replace(WhitespaceRegex, " "))
         if (query.isNotEmpty()) {
             scope.launch {
                 mSearchDatabase.deleteQuery(query)
@@ -455,14 +514,26 @@ fun SearchBarScreen(
                     .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)),
                 inputField = {
                     InputField(
-                        state = searchFieldState,
+                        state = inputState,
                         onSearch = {
                             hideSearchView()
                             onApplySearch()
                         },
                         expanded = expanded,
                         onExpandedChange = onExpandedChange,
-                        modifier = Modifier.onSizeChanged { fieldHeight = it.height }.then(if (!expanded && !fieldMorphed) {
+                        modifier = Modifier.onSizeChanged { fieldHeight = it.height }
+                            // Fork: backspace in an empty field removes the last chip
+                            .thenIf(tagChips) {
+                                onPreviewKeyEvent {
+                                    if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && inputState.text.isEmpty() && tags.isNotEmpty()) {
+                                        tags = tags.dropLast(1)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                            .then(if (!expanded && !fieldMorphed) {
                             // Fork: closing, the field shrinks from the whole width into the floating field, see
                             // ClosingFieldGlass, its title and buttons fading in
                             val fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)
@@ -495,10 +566,29 @@ fun SearchBarScreen(
                         } else {
                             SearchBarDefaults.inputFieldColors()
                         },
-                        placeholder = {
-                            val contentActive by activeState.state
-                            val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
-                            Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
+                        placeholder = if (tags.isEmpty()) {
+                            {
+                                val contentActive by activeState.state
+                                val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
+                                Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
+                            }
+                        } else {
+                            null
+                        },
+                        // Fork: the tags of the search, see SearchTagChips
+                        prefix = if (tags.isNotEmpty()) {
+                            {
+                                SearchTagChips(
+                                    tags = tags,
+                                    interactive = expanded,
+                                    onRemove = { i -> tags = tags.filterIndexed { j, _ -> j != i } },
+                                    onToggleExcluded = { i -> tags = tags.mapIndexed { j, tag -> if (j == i) toggleExcludedTag(tag) else tag } },
+                                    minTextWidth = { if (inputState.text.isEmpty()) 8.dp else 96.dp },
+                                    glass = glass != null,
+                                )
+                            }
+                        } else {
+                            null
                         },
                         // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; the room goes to
                         // the buttons on the right
