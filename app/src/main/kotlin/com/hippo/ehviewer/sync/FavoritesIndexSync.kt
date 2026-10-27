@@ -720,6 +720,8 @@ object FavoritesIndexSync {
         val before = current()
         runEhStep { checkCloudFavorites() }
         if (current() != before && enabled) OneDriveSync.scheduleFavoritesIndexSync()
+        // Fork: what failed before (no network) is tried again, even when the list did not change since
+        AutoDownload.retry()
     }
 
     /**
@@ -733,6 +735,8 @@ object FavoritesIndexSync {
         ehCheckJob = scope.launch {
             val version = OneDriveSync.favoritesIndexVersion()
             runEhStep { checkCloudFavorites() }
+            // Fork: what auto download could not do before is tried again with every sync
+            AutoDownload.retry()
             runEhStep {
                 // Not shown: the sync shows its own steps
                 val progress = MutableStateFlow<StepProgress?>(null)

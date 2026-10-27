@@ -347,6 +347,8 @@ object OneDriveSync {
     fun init() {
         if (!OneDriveClient.isSupported) return
         trackSettings()
+        // Fork: auto download tries again what failed when the network is back
+        AutoDownload.init()
         scope.launch {
             ensureDeviceId()
             updateOneDriveSyncWork(appCtx)
