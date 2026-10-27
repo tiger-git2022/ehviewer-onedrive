@@ -13,11 +13,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.contentColorFor
@@ -25,15 +29,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -48,6 +57,7 @@ import kotlin.time.Duration.Companion.microseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 
 @Stable
 enum class FabLayoutValue { Hidden, Primary, Expand }
@@ -102,6 +112,7 @@ fun interface FabBuilder {
     fun onClick(icon: ImageVector, that: suspend () -> Unit) = onClick(icon, true, that)
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 context(_: CoroutineScope)
 fun FabLayout(
@@ -115,6 +126,17 @@ fun FabLayout(
     fabBuilder: FabBuilder.() -> Unit,
 ) {
     val primaryClick by rememberUpdatedState(onPrimaryClick)
+    // Fork: while [onPrimaryClick] runs, more taps are let go (each ran it again, and one landing once it was done hit
+    // the close button it had become), and past a moment the button shows it is working
+    var primaryRunning by remember { mutableStateOf(false) }
+    val primaryBusy by produceState(false, primaryRunning) {
+        value = false
+        if (primaryRunning) {
+            delay(PRIMARY_BUSY_DELAY)
+            value = true
+        }
+    }
+    val haptic = LocalHapticFeedback.current
     val updatedHidden by rememberUpdatedState(hidden)
     val updatedExpanded by rememberUpdatedState(expanded)
     val newState = when {
@@ -215,7 +237,18 @@ fun FabLayout(
             onClick = {
                 val action = primaryClick
                 if (!updatedExpanded && action != null) {
-                    launch(Dispatchers.Default) { action() }
+                    // Fork: felt at once, as the work may take a moment
+                    if (!primaryRunning) {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        primaryRunning = true
+                        launch(Dispatchers.Default) {
+                            try {
+                                action()
+                            } finally {
+                                primaryRunning = false
+                            }
+                        }
+                    }
                 } else {
                     onExpandChanged(!updatedExpanded)
                 }
@@ -230,7 +263,11 @@ fun FabLayout(
             elevation = glassElevation,
         ) {
             if (primaryIcon != null && !updatedExpanded) {
-                Icon(imageVector = primaryIcon, contentDescription = null)
+                if (primaryBusy) {
+                    LoadingIndicator(modifier = Modifier.size(PrimaryBusySize), color = LocalContentColor.current)
+                } else {
+                    Icon(imageVector = primaryIcon, contentDescription = null)
+                }
             } else {
                 Icon(
                     imageVector = Icons.Default.Close,
@@ -246,6 +283,10 @@ fun FabLayout(
 
 // Fork: how much of the bar color lies over the glass of the buttons
 private const val GLASS_FAB_TINT = 0.25f
+
+// Fork: how long the main button's action runs before the button shows it is working, and the size it shows it at
+private const val PRIMARY_BUSY_DELAY = 150L
+private val PrimaryBusySize = 36.dp
 
 private fun buildFab(builder: FabBuilder.() -> Unit) = buildList {
     builder { icon, autoClose, action ->

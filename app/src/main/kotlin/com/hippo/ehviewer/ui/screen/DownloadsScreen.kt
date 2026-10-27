@@ -83,6 +83,7 @@ import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import arrow.core.partially1
+import arrow.fx.coroutines.parMap
 import com.ehviewer.core.database.model.DownloadInfo
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.TagNamespace
@@ -715,8 +716,12 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
         primaryIcon = Icons.Default.Checklist,
         onPrimaryClick = {
             val progress = EhDB.getAllReadProgress().associate { it.gid to it.page }
-            // Fork: of the pages in the CBZ, as the list shows, counted now for those not shown yet
-            list.filter { it.gid in progress && it.state == DownloadInfo.STATE_FINISH }.forEach { ArchivePages.refresh(it) }
+            // Fork: of the pages in the CBZ, as the list shows, counted now for those not counted yet (shown ones are
+            // counted as they show), a few at a time: one by one, each a lookup and a read in the download folder, a
+            // long list took seconds and the tap seemed lost
+            val counted = ArchivePages.counts.value
+            list.filter { it.gid in progress && it.state == DownloadInfo.STATE_FINISH && it.gid !in counted }
+                .parMap(concurrency = ARCHIVE_COUNT_CONCURRENCY) { ArchivePages.refresh(it) }
             val counts = ArchivePages.counts.value
             val read = list.filter { info ->
                 val page = progress[info.gid] ?: return@filter false
@@ -764,3 +769,6 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
 }
 
 private const val LABEL_PREFIX = "label:"
+
+// Fork: archives counted at once when the main button picks the read galleries
+private const val ARCHIVE_COUNT_CONCURRENCY = 8
