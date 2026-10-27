@@ -43,4 +43,24 @@ class SearchTagsTest {
         assertEquals("f" to "big breasts", searchTagParts("-f:\"big breasts$\""))
         assertEquals("l" to "chinese", searchTagParts("l:chinese$"))
     }
+
+    @Test
+    fun historyWithThePickedTagsComesFirst() {
+        val history = listOf("f:\"mind control$\" chinese", "f:\"big breasts$\" l:chinese$", "f:netorare$ f:\"mind control$\"", "kanojo")
+        val tags = listOf("f:\"mind control$\"")
+        assertEquals(
+            listOf("f:\"mind control$\" chinese", "f:netorare$ f:\"mind control$\"") to listOf("f:\"big breasts$\" l:chinese$", "kanojo"),
+            searchHistoryByTags(history, tags, ""),
+        )
+        assertEquals(listOf("f:\"mind control$\" chinese") to listOf("f:\"big breasts$\" l:chinese$"), searchHistoryByTags(history, tags, "chin"))
+    }
+
+    @Test
+    fun otherHistoryAddsItsTags() {
+        assertEquals(
+            listOf("f:\"mind control$\"", "f:\"big breasts$\"", "l:chinese$") to "",
+            pickSearchHistory(listOf("f:\"mind control$\""), "f:\"big breasts$\" l:chinese$"),
+        )
+        assertEquals(listOf("f:\"mind control$\"") to "kanojo", pickSearchHistory(listOf("f:\"mind control$\""), "f:\"mind control$\" kanojo"))
+    }
 }

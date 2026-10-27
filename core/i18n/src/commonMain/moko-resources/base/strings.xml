@@ -876,4 +876,7 @@
     <string name="select_text_hint">Long-press the text, then drag the handles to pick the part to copy</string>
     <string name="select_text_close">Close</string>
     <string name="select_text_translation">Translation</string>
+    <string name="search_history_with_tags">With the tags picked</string>
+    <string name="search_history_others">Other searches, their tags are added</string>
+    <string name="search_tag_suggestions">Tags</string>
 </resources>
