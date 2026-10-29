@@ -3,7 +3,7 @@ package com.hippo.ehviewer.ui.main
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -40,10 +40,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -62,7 +63,7 @@ import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.floatingGlass
 import kotlin.math.abs
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 
 /*
  * Fork: a floating bar at the bottom of a gallery telling how its previews load: the progress while they load, a
@@ -117,21 +118,24 @@ fun PreviewProgressBar(refetcher: PreviewRefetcher, glass: FloatingGlass?, modif
         }
     }
     // Loading shows only when it takes a moment (previews from the cache load at once), "all loaded" only after the
-    // bar showed something, for half a second
+    // bar showed something, for half a second. Follows the kind of state as a flow, the newest always last: an effect
+    // keyed by the kind that read the state when it started could read a moment of loading between two "all loaded"
+    // (the previews of a sprite load one after another), show the bar for it and never hide it again
     var shown by remember { mutableStateOf(false) }
-    val kind = state::class
-    LaunchedEffect(kind) {
-        when (state) {
-            is BarState.Loading -> {
-                delay(400)
-                shown = true
+    LaunchedEffect(refetcher) {
+        snapshotFlow { state::class }.collectLatest { kind ->
+            when (kind) {
+                BarState.Loading::class -> {
+                    delay(400)
+                    shown = true
+                }
+                BarState.AllLoaded::class -> {
+                    delay(500)
+                    shown = false
+                }
+                BarState.Idle::class -> shown = false
+                else -> shown = true
             }
-            is BarState.AllLoaded -> {
-                delay(500)
-                shown = false
-            }
-            is BarState.Idle -> shown = false
-            else -> shown = true
         }
     }
     // The last state shown, kept while the bar fades out
@@ -151,31 +155,31 @@ fun PreviewProgressBar(refetcher: PreviewRefetcher, glass: FloatingGlass?, modif
     ) {
         val shape = RoundedCornerShape(22.dp)
         val color = MaterialTheme.colorScheme.surfaceContainerHigh
-        // Swiped to either side, it goes away
-        val offset = remember { Animatable(0f) }
+        // Swiped to either side, it goes away. The drag moves it at once, not through a launched snap: a snap still on
+        // its way when the finger lifted stopped the bar from sliding back and left it half off the screen
+        var offset by remember { mutableFloatStateOf(0f) }
         var barSize by remember { mutableStateOf(IntSize.Zero) }
-        val scope = rememberCoroutineScope()
         Box(
             modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth()
                 .graphicsLayer {
-                    translationX = offset.value
-                    if (barSize.width > 0) alpha = 1f - (abs(offset.value) / barSize.width).coerceIn(0f, 1f)
+                    translationX = offset
+                    if (barSize.width > 0) alpha = 1f - (abs(offset) / barSize.width).coerceIn(0f, 1f)
                 }
                 .draggable(
-                    state = rememberDraggableState { delta -> scope.launch { offset.snapTo(offset.value + delta) } },
+                    state = rememberDraggableState { delta -> offset += delta },
                     orientation = Orientation.Horizontal,
                     onDragStopped = { velocity ->
                         val width = barSize.width.toFloat()
-                        if (abs(offset.value) > width / 3 || abs(velocity) > 1500f) {
-                            val target = if (offset.value + velocity / 4 >= 0) width else -width
-                            offset.animateTo(target)
+                        if (abs(offset) > width / 3 || abs(velocity) > 1500f) {
+                            val target = if (offset + velocity / 4 >= 0) width else -width
                             when (val swiped = last[0]) {
                                 // Only these failures: what loads later still shows, and new failures too
                                 is BarState.Failed -> refetcher.dismissedFailures += swiped.failures.keys
                                 else -> refetcher.progressDismissed = true
                             }
+                            animate(offset, target, initialVelocity = velocity) { value, _ -> offset = value }
                         } else {
-                            offset.animateTo(0f)
+                            animate(offset, 0f, initialVelocity = velocity) { value, _ -> offset = value }
                         }
                     },
                 )
