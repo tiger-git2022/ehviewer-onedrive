@@ -400,9 +400,14 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             isRefreshing = isRefreshing,
             onRefresh = {
                 isRefreshing = true
+                // Fork: pulled at the top, it stays at the top. The list keeps the comment it showed first, and the
+                // comments that came above it (new ones, or all of them loaded) lay hidden below the top bar, which
+                // took them for comments scrolled below it and turned to glass
+                val atTop = !lazyListState.canScrollBackward
                 launchIO {
                     runSuspendCatching {
                         refreshComment(true)
+                        if (atTop) withUIContext { lazyListState.scrollToItem(0) }
                     }
                     isRefreshing = false
                 }
