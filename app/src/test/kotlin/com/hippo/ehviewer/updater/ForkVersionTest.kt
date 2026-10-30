@@ -14,6 +14,14 @@ class ForkVersionTest {
     }
 
     @Test
+    fun paddedBuildNumbersCompareWithOlderOnes() {
+        assertTrue(ForkVersion.isNewer("v1.15.0-t102", "1.15.0-t101"))
+        assertTrue(ForkVersion.isNewer("1.16.0-t001", "1.15.0-t101"))
+        assertTrue(ForkVersion.isNewer("1.15.0-t012", "1.15.0-t9"))
+        assertFalse(ForkVersion.isNewer("1.15.0-t009", "1.15.0-t9"))
+    }
+
+    @Test
     fun upstreamVersionComesFirst() {
         assertTrue(ForkVersion.isNewer("1.16.0-t1", "1.15.0-t9"))
         assertTrue(ForkVersion.isNewer("1.15.1-t1", "1.15-t5"))

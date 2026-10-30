@@ -54,7 +54,7 @@ android {
 
     val snapshot = !hasProperty("release")
 
-    // Fork: the Build APK workflow passes -Ptiger.buildNumber=N. The build is then version "<upstream>-tN" (upstream
+    // Fork: the Build APK workflow passes -Ptiger.buildNumber=N. The build is then version "<upstream>-tNNN" (upstream
     // without -SNAPSHOT), versionCode "<upstream versionCode> * 1000 + N", so every release of the fork is newer than
     // the one before; the in-app updater compares versions the same way (updater/ForkVersion.kt).
     val tigerBuildNumber = providers.gradleProperty("tiger.buildNumber").orNull?.toInt()
@@ -70,7 +70,8 @@ android {
         if (tigerBuildNumber != null) {
             require(tigerBuildNumber in 1..999) { "tiger.buildNumber must be between 1 and 999" }
             versionCode = versionCode!! * 1000 + tigerBuildNumber
-            versionName = "${versionName!!.removeSuffix("-SNAPSHOT")}-t$tigerBuildNumber"
+            // Three digits, so the releases page lists releases of the same day in order
+            versionName = "${versionName!!.removeSuffix("-SNAPSHOT")}-t${"%03d".format(tigerBuildNumber)}"
         }
         buildConfigField("boolean", "SNAPSHOT", "$snapshot")
         buildConfigField("String", "RAW_VERSION_NAME", "\"$versionName\"")

@@ -1,7 +1,7 @@
 package com.hippo.ehviewer.updater
 
 /**
- * Versions of the fork's releases: "<upstream version>-t<N>" (tag "v1.15.0-t3"), see the Build APK workflow and
+ * Versions of the fork's releases: "<upstream version>-t<N>" (tag "v1.15.0-t003", older ones "v1.15.0-t12"), see the Build APK workflow and
  * app/build.gradle.kts. A higher upstream version is newer, then a higher N.
  */
 object ForkVersion {

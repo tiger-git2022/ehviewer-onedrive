@@ -1,9 +1,10 @@
 # Builds the release APKs. On main every push becomes a numbered GitHub Release, like the Mihon fork
 # (tiger-git2022/mihon, .github/workflows/tiger-release.yml):
 #
-# Version scheme: tag/versionName "v<upstream versionName>-t<N>" (upstream without -SNAPSHOT), versionCode
+# Version scheme: tag/versionName "v<upstream versionName>-t<NNN>" (upstream without -SNAPSHOT), versionCode
 # "<upstream versionCode> * 1000 + N" (app/build.gradle.kts). N starts at 1 for every upstream version and increases
-# with each release of it, so versionCode always increases. The in-app updater compares versions the same way
+# with each release of it, so versionCode always increases. N has three digits because GitHub orders releases of the
+# same day by their tag's pre-release part as text, which put "t9" above "t12"; older tags have no padding. The in-app updater compares versions the same way
 # (updater/ForkVersion.kt). Runs on other branches (workflow_dispatch) only build and test.
 name: Build APK
 
@@ -78,8 +79,9 @@ jobs:
             exit 1
           fi
           last=$(git tag --list "v${upstream_name}-t*" | sed -E 's/^v.*-t//' | grep -E '^[0-9]+$' | sort -n | tail -n 1 || true)
-          build=$(( ${last:-0} + 1 ))
-          version_name="${upstream_name}-t${build}"
+          # 10# reads "012" as twelve, not as an octal number
+          build=$(( 10#${last:-0} + 1 ))
+          version_name=$(printf '%s-t%03d' "$upstream_name" "$build")
           {
             echo "skip=false"
             echo "publish=$PUBLISH"
