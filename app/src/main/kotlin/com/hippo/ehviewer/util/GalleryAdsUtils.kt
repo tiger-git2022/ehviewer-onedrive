@@ -5,7 +5,8 @@ import com.hippo.ehviewer.Settings
 import okio.Path.Companion.toOkioPath
 import splitties.init.appCtx
 
-fun detectAds(index: Int, size: Int) = index > size - 10 && Settings.stripExtraneousAds.value
+// Fork: how many pages from the end, see AdPages.kt
+fun detectAds(index: Int, size: Int) = isAdPageCandidate(index, size) && Settings.stripExtraneousAds.value
 
 val GalleryInfo.hasAds
     get() = simpleTags?.any { "extraneous ads" in it } == true
