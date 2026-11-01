@@ -70,6 +70,8 @@ fun SearchFilter(
     onLanguageChange: (Int) -> Unit,
     advancedOption: AdvancedSearchOption,
     onAdvancedOptionChange: (AdvancedSearchOption) -> Unit,
+    // Fork: a long press on a category searches it alone, see soloSearchCategory
+    onCategoryLongClick: ((Int) -> Unit)? = null,
 ) = Column(modifier) {
     val animateItems by Settings.animateItems.collectAsState()
     fun isCategoryChecked(bit: Int) = category and bit != 0
@@ -88,6 +90,7 @@ fun SearchFilter(
                 onClick = { onCategoryChange(category xor it.first) },
                 label = { Text(text = stringResource(id = it.second)) },
                 modifier = Modifier.thenIf(animateItems) { animateItem() },
+                onLongClick = onCategoryLongClick?.let { onLongClick -> { onLongClick(it.first) } },
             )
         }
     }
