@@ -11,6 +11,7 @@ import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +29,9 @@ import com.ehviewer.core.model.V2GalleryPreview
 import com.ehviewer.core.ui.component.CrystalCard
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.ui.tools.shouldCrop
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 @NonRestartableComposable
@@ -43,6 +47,9 @@ fun EhPreviewCard(
     onState: (State) -> Unit = {},
 ) {
     var contentScale by remember(model) { mutableStateOf(ContentScale.Fit) }
+    // Fork: the preview E-Hentai made is empty, see BlankPreview
+    var blank by remember(model) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val request = requestOf(model)
     val painter = rememberAsyncImagePainter(
         model = request,
@@ -65,6 +72,17 @@ fun EhPreviewCard(
             // Fork: see PreviewRefetcher
             onState(it)
             if (it is State.Success) {
+                (it.result.image as? BitmapImage)?.bitmap?.let { bitmap ->
+                    scope.launch {
+                        blank = withContext(Dispatchers.Default) {
+                            if (model is V2GalleryPreview) {
+                                isBlankPreview(bitmap, model.offsetX, model.clipWidth, model.clipHeight)
+                            } else {
+                                isBlankPreview(bitmap, 0, bitmap.width, bitmap.height)
+                            }
+                        }
+                    }
+                }
                 if (model is V2GalleryPreview) {
                     if (model.shouldCrop) {
                         contentScale = ContentScale.Crop
@@ -86,12 +104,15 @@ fun EhPreviewCard(
         },
         modifier = modifier,
     ) {
-        Image(
-            painter = painter,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = contentScale,
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Image(
+                painter = painter,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+            )
+            if (blank) BlankPreviewNote()
+        }
     }
 }
 

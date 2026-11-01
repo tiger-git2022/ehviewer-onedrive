@@ -827,6 +827,7 @@
     <string name="preview_loading_retrying">%1$s, retrying (%2$s)</string>
     <string name="preview_loading_retrying_no_host">%s, retrying</string>
     <string name="preview_all_loaded">All %d previews loaded</string>
+    <string name="preview_blank">No preview from the site</string>
     <string name="preview_failure_group">%1$s: %2$d (%3$s)</string>
     <string name="preview_failure_servers">Server %s</string>
     <string name="preview_refresh_again">Refresh again</string>
