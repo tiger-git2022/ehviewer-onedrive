@@ -2,7 +2,6 @@ package com.ehviewer.core.ui.component
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -92,11 +91,18 @@ private fun Modifier.longPressFirst(onLongClick: (() -> Unit)?): Modifier {
     val current by rememberUpdatedState(onLongClick)
     return semantics { onLongClick { current(); true } }.pointerInput(Unit) {
         awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             var ended = false
             withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                // An up, a scroll of the row or a move out of the chip before the time: a tap or nothing
-                waitForUpOrCancellation(PointerEventPass.Initial)
+                // An up, a move past the touch slop (the row scrolls), a move out of the chip or a touch taken by
+                // another before the time: a tap or nothing
+                while (true) {
+                    val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                    if (change == null || !change.pressed || change.isConsumed) break
+                    if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                    val final = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id }
+                    if (final == null || final.isConsumed) break
+                }
                 ended = true
             }
             if (ended) return@awaitEachGesture
