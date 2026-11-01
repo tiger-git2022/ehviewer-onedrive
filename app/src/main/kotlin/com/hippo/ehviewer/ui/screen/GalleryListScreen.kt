@@ -182,9 +182,14 @@ fun AnimatedVisibilityScope.GalleryListScreen(
 
     DrawerHandle(!searchBarExpanded)
 
+    // Fork: the category this page searches alone after a long press, not picked, see soloSearchCategory
+    var pageSoloCategory by rememberSaveable { mutableIntStateOf(EhUtils.NONE) }
+
     LaunchedEffect(urlBuilder) {
-        // Fork: a category searched alone by a long press is not picked, see soloSearchCategory
-        if (urlBuilder.category != EhUtils.NONE && urlBuilder.category != soloSearchCategory) category = urlBuilder.category
+        // Fork: the long press is taken by the page that shows its search, a page opened later keeps its category
+        if (soloSearchCategory != EhUtils.NONE && urlBuilder.category == soloSearchCategory) pageSoloCategory = soloSearchCategory
+        soloSearchCategory = EhUtils.NONE
+        if (urlBuilder.category != EhUtils.NONE && urlBuilder.category != pageSoloCategory) category = urlBuilder.category
         val keyword = urlBuilder.keyword?.let { keyword ->
             when (urlBuilder.mode) {
                 MODE_UPLOADER -> "uploader:\"$keyword\""
@@ -476,6 +481,7 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     // Fork: onlyCategory, a category searched alone by a long press, see soloSearchCategory
     fun onApplySearch(query: String, onlyCategory: Int = EhUtils.NONE) = launchIO {
         soloSearchCategory = onlyCategory
+        if (onlyCategory == EhUtils.NONE) pageSoloCategory = EhUtils.NONE
         val builder = ListUrlBuilder()
         val oldMode = urlBuilder.mode
         // If it's MODE_SUBSCRIPTION, keep it
