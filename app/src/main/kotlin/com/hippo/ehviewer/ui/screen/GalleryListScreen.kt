@@ -178,6 +178,8 @@ fun AnimatedVisibilityScope.GalleryListScreen(
 
     var category by rememberMutableStateInDataStore("SearchCategory") { EhUtils.ALL_CATEGORY }
     var advancedSearchOption by rememberMutableStateInDataStore("AdvancedSearchOption") { AdvancedSearchOption() }
+    // Fork: the categories picked before a long press on one, see CategoryPick
+    var categoryBefore by rememberMutableStateInDataStore("SearchCategoryBefore") { EhUtils.NONE }
 
     DrawerHandle(!searchBarExpanded)
 
@@ -573,11 +575,19 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         filter = {
             SearchFilter(
                 category = category,
-                onCategoryChange = { category = it },
+                onCategoryChange = {
+                    category = it
+                    categoryBefore = EhUtils.NONE
+                },
                 language = languageFilter,
                 onLanguageChange = { languageFilter = it },
                 advancedOption = advancedSearchOption,
                 onAdvancedOptionChange = { advancedSearchOption = it },
+                categoryBefore = categoryBefore,
+                onCategoryLongClick = {
+                    category = it.category
+                    categoryBefore = it.before
+                },
             )
         },
     ) { contentPadding ->
