@@ -119,3 +119,54 @@ object CommentListing {
         return leaders >= 3 || paged
     }
 }
+
+/**
+ * Fork: a comment that only points somewhere, the raw (the untranslated original) or where to buy it, is links and a
+ * label, nothing worth translating:
+ *
+ *     RAW: https://exhentai.org/g/4292915/252a0c089c/
+ *     Original / buy it at DLsite: https://www.dlsite.com/maniax/work/=/product_id/RJ01234567.html
+ *
+ * Told by what is left once the links and the labels around them are taken out: nothing. It needs a link or the word
+ * "raw", so a short remark ("Original", "Source?") is still translated, and so is a question about the link.
+ */
+object CommentLinks {
+    // With or without "https://": "exhentai.org/g/123/abc", "www.dlsite.com/..."
+    private val urlRegex = Regex(
+        """(?:https?://|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|jp|co|me|io|tv|moe|info|to|cc)\b(?:/\S*)?""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private val rawWords = setOf("raw", "raws")
+
+    // The words around such links; any other word and the comment says something
+    private val labelWords = rawWords + setOf(
+        "original", "originals", "orig", "source", "sauce", "src", "link", "links", "here", "mirror", "alt",
+        "buy", "purchase", "support", "store", "shop", "official", "available", "at", "on", "from", "in", "of", "for",
+        "and", "or", "the", "a", "it", "its", "their", "them", "by", "with", "via", "full", "page", "gallery", "work",
+        "artist", "artists", "author", "circle", "version", "ver", "edition", "digital", "hd", "jp", "jpn", "japanese",
+        "eng", "en", "english", "cn", "chinese", "kr", "korean", "uncensored", "uncen", "decensored", "censored",
+        "color", "colored", "colour", "coloured", "dl", "download", "dlsite", "fanza", "dmm", "melonbooks", "melon",
+        "toranoana", "tora", "booth", "fantia", "pixiv", "fanbox", "patreon", "twitter", "skeb", "amazon", "getchu",
+        "digiket", "kindle", "previous", "prev", "next", "part", "chapter", "ch", "vol", "volume",
+    )
+
+    // Japanese, Chinese and Korean labels, longest first: "DL版はこちら", "购买链接", "원본"
+    private val cjkLabels = listOf(
+        "無修正", "無修整", "同人誌", "単行本", "こちら", "ここ", "購入", "販売", "原作", "原本", "原版", "生肉", "公式", "作者",
+        "作品", "リンク", "サイト", "ページ", "支援", "応援", "購買", "购买", "鏈接", "链接", "連結", "连结", "来源", "來源", "出处",
+        "出處", "原图", "原圖", "원본", "구매", "링크", "여기", "版", "元", "先", "は", "で", "の", "から", "より", "在", "这里", "這裡",
+    )
+
+    fun isLinksOnly(text: String): Boolean {
+        val hasLink = urlRegex.containsMatchIn(text)
+        var rest = urlRegex.replace(text, " ")
+        // A question about the link is worth reading
+        if ('?' in rest || '？' in rest) return false
+        val words = rest.split(Regex("""[^\p{L}]+""")).filter(String::isNotEmpty)
+        val hasRaw = words.any { it.lowercase() in rawWords } || "生肉" in rest
+        if (!hasLink && !hasRaw) return false
+        cjkLabels.forEach { rest = rest.replace(it, " ") }
+        return rest.split(Regex("""[^\p{L}]+""")).all { it.isEmpty() || it.lowercase() in labelWords }
+    }
+}

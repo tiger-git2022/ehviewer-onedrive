@@ -68,6 +68,26 @@ class CommentTranslateTest {
     }
 
     @Test
+    fun linksOnly() {
+        assertTrue(CommentLinks.isLinksOnly("RAW: https://exhentai.org/g/4292915/252a0c089c/"))
+        assertTrue(CommentLinks.isLinksOnly("raw\nexhentai.org/g/4292915/252a0c089c"))
+        assertTrue(CommentLinks.isLinksOnly("Raw"))
+        assertTrue(CommentLinks.isLinksOnly("Raw: https://e-hentai.org/g/1/a/\nBuy the original at DLsite: https://www.dlsite.com/maniax/work/=/product_id/RJ01234567.html"))
+        assertTrue(CommentLinks.isLinksOnly("Support the artist: https://www.melonbooks.co.jp/detail/detail.php?product_id=123"))
+        assertTrue(CommentLinks.isLinksOnly("原作 / Raw: https://e-hentai.org/g/1/a/\nDL版はこちら https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_123/"))
+        assertTrue(CommentLinks.isLinksOnly("Japanese raw (uncensored) - https://e-hentai.org/g/1/a/"))
+        // Something said besides the links
+        assertFalse(CommentLinks.isLinksOnly("Thanks for the translation! Raw: https://e-hentai.org/g/1/a/"))
+        assertFalse(CommentLinks.isLinksOnly("The raw is uncensored, why is this one censored https://e-hentai.org/g/1/a/"))
+        assertFalse(CommentLinks.isLinksOnly("Is this the original? https://e-hentai.org/g/1/a/"))
+        assertFalse(CommentLinks.isLinksOnly("この作品の原作はこちら、続編も出てほしい https://e-hentai.org/g/1/a/"))
+        // No link and no "raw": a short remark, translated
+        assertFalse(CommentLinks.isLinksOnly("Original"))
+        assertFalse(CommentLinks.isLinksOnly("Source?"))
+        assertFalse(CommentLinks.isLinksOnly("Drawn so well"))
+    }
+
+    @Test
     fun endpoint() {
         assertEquals("https://api.deepseek.com/v1/chat/completions", TranslateConfig("https://api.deepseek.com/v1/", "", "m").endpoint)
         assertEquals("https://x.com/v1/chat/completions", TranslateConfig("https://x.com/v1/chat/completions", "", "m").endpoint)
