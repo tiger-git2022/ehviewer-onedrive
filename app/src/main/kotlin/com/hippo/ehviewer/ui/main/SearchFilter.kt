@@ -1,7 +1,6 @@
 package com.hippo.ehviewer.ui.main
 
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,7 +61,7 @@ private val categoryTable = [
 ]
 
 @Composable
-context(_: DialogState, _: CoroutineScope, ctx: Context)
+context(_: DialogState, _: CoroutineScope, _: Context)
 fun SearchFilter(
     modifier: Modifier = Modifier,
     category: Int,
@@ -71,9 +70,8 @@ fun SearchFilter(
     onLanguageChange: (Int) -> Unit,
     advancedOption: AdvancedSearchOption,
     onAdvancedOptionChange: (AdvancedSearchOption) -> Unit,
-    // Fork: a long press keeps only one category, the ones before wait in categoryBefore, see CategoryPick
-    categoryBefore: Int = EhUtils.NONE,
-    onCategoryLongClick: ((CategoryPick) -> Unit)? = null,
+    // Fork: a long press on a category searches it alone, see soloSearchCategory
+    onCategoryLongClick: ((Int) -> Unit)? = null,
 ) = Column(modifier) {
     val animateItems by Settings.animateItems.collectAsState()
     fun isCategoryChecked(bit: Int) = category and bit != 0
@@ -87,24 +85,12 @@ fun SearchFilter(
         item {}
         items(categories, { it.first }) {
             // Fork: a glass in the expanded search, see GlassFilterChip
-            val name = stringResource(id = it.second)
             GlassFilterChip(
                 selected = isCategoryChecked(it.first),
                 onClick = { onCategoryChange(category xor it.first) },
-                label = { Text(text = name) },
+                label = { Text(text = stringResource(id = it.second)) },
                 modifier = Modifier.thenIf(animateItems) { animateItem() },
-                onLongClick = onCategoryLongClick?.let { onPick ->
-                    {
-                        val pick = CategoryPick(category, categoryBefore).longPress(it.first)
-                        onPick(pick)
-                        val tip = when {
-                            pick.waiting -> ctx.getString(R.string.search_category_solo, name)
-                            pick.category != category -> ctx.getString(R.string.search_category_restored)
-                            else -> null
-                        }
-                        tip?.let { text -> Toast.makeText(ctx, text, Toast.LENGTH_SHORT).show() }
-                    }
-                },
+                onLongClick = onCategoryLongClick?.let { onLongClick -> { onLongClick(it.first) } },
             )
         }
     }

@@ -881,7 +881,4 @@
     <string name="search_history_with_tags">With the tags picked</string>
     <string name="search_history_others">Other searches, their tags are added</string>
     <string name="search_tag_suggestions">Tags</string>
-    <!-- Fork: a long press on a search category keeps only it -->
-    <string name="search_category_solo">Only %1$s now, long press it again for the categories picked before</string>
-    <string name="search_category_restored">The categories picked before are back</string>
 </resources>

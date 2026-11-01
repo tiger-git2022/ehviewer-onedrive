@@ -3,21 +3,9 @@ package com.hippo.ehviewer.ui.main
 import com.hippo.ehviewer.client.EhUtils
 
 /**
- * Fork: the categories of the search, with the ones picked before a long press. A long press on a category keeps only
- * it, the others wait in [before]; a long press on it again brings them back. A plain tap forgets them.
- * [before] is [EhUtils.NONE] when nothing waits.
+ * Fork: the category a long press searched alone, see SearchFilter. The list doesn't take it for the categories
+ * picked: they stay as they are, and the next plain search takes them all again. [EhUtils.NONE] when there is none.
+ * Kept out of the screen, as a search from the toplists opens a new list page.
  */
-data class CategoryPick(val category: Int, val before: Int = EhUtils.NONE) {
-    val waiting get() = before != EhUtils.NONE
-
-    fun tap(bit: Int) = CategoryPick(category xor bit)
-
-    fun longPress(bit: Int) = when {
-        // Only this one, after a long press: back to the ones before
-        category == bit && waiting -> CategoryPick(before)
-        // Already the only one, nothing to keep
-        category == bit -> this
-        // Another one alone: the ones from the first long press still wait
-        else -> CategoryPick(bit, if (waiting) before else category)
-    }
-}
+@Volatile
+var soloSearchCategory = EhUtils.NONE

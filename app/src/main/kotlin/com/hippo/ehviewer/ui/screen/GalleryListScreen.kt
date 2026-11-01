@@ -120,6 +120,7 @@ import com.hippo.ehviewer.ui.main.GalleryList
 import com.hippo.ehviewer.ui.main.HideFavoritedButton
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.SearchFilter
+import com.hippo.ehviewer.ui.main.soloSearchCategory
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitInputText
@@ -178,13 +179,12 @@ fun AnimatedVisibilityScope.GalleryListScreen(
 
     var category by rememberMutableStateInDataStore("SearchCategory") { EhUtils.ALL_CATEGORY }
     var advancedSearchOption by rememberMutableStateInDataStore("AdvancedSearchOption") { AdvancedSearchOption() }
-    // Fork: the categories picked before a long press on one, see CategoryPick
-    var categoryBefore by rememberMutableStateInDataStore("SearchCategoryBefore") { EhUtils.NONE }
 
     DrawerHandle(!searchBarExpanded)
 
     LaunchedEffect(urlBuilder) {
-        if (urlBuilder.category != EhUtils.NONE) category = urlBuilder.category
+        // Fork: a category searched alone by a long press is not picked, see soloSearchCategory
+        if (urlBuilder.category != EhUtils.NONE && urlBuilder.category != soloSearchCategory) category = urlBuilder.category
         val keyword = urlBuilder.keyword?.let { keyword ->
             when (urlBuilder.mode) {
                 MODE_UPLOADER -> "uploader:\"$keyword\""
@@ -473,14 +473,16 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         override val destination = ProgressScreenDestination(gid, pToken, page)
     }
 
-    fun onApplySearch(query: String) = launchIO {
+    // Fork: onlyCategory, a category searched alone by a long press, see soloSearchCategory
+    fun onApplySearch(query: String, onlyCategory: Int = EhUtils.NONE) = launchIO {
+        soloSearchCategory = onlyCategory
         val builder = ListUrlBuilder()
         val oldMode = urlBuilder.mode
         // If it's MODE_SUBSCRIPTION, keep it
         val newMode = if (oldMode == MODE_SUBSCRIPTION) MODE_SUBSCRIPTION else MODE_NORMAL
         builder.mode = newMode
         builder.keyword = query
-        builder.category = category
+        builder.category = if (onlyCategory != EhUtils.NONE) onlyCategory else category
         builder.language = languageFilter
         builder.advanceSearch = advancedSearchOption.advanceSearch
         builder.minRating = advancedSearchOption.minRating
@@ -500,7 +502,7 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     }
 
     SearchBarScreen(
-        onApplySearch = ::onApplySearch,
+        onApplySearch = { onApplySearch(it) },
         expanded = searchBarExpanded,
         onExpandedChange = {
             searchBarExpanded = it
@@ -575,18 +577,17 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         filter = {
             SearchFilter(
                 category = category,
-                onCategoryChange = {
-                    category = it
-                    categoryBefore = EhUtils.NONE
-                },
+                onCategoryChange = { category = it },
                 language = languageFilter,
                 onLanguageChange = { languageFilter = it },
                 advancedOption = advancedSearchOption,
                 onAdvancedOptionChange = { advancedSearchOption = it },
-                categoryBefore = categoryBefore,
-                onCategoryLongClick = {
-                    category = it.category
-                    categoryBefore = it.before
+                // Fork: the search as it is, with this category alone; the categories picked stay
+                onCategoryLongClick = { bit ->
+                    searchBarExpanded = false
+                    fabHidden = false
+                    val query = searchFieldState.text.trim().replace(Regex("\\s+"), " ")
+                    onApplySearch(closeTagQuotes(query), onlyCategory = bit)
                 },
             )
         },

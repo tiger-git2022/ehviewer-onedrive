@@ -863,7 +863,4 @@
     <string name="search_history_with_tags">包含已选 tag 的记录</string>
     <string name="search_history_others">其他记录（点了添加 tag）</string>
     <string name="search_tag_suggestions">标签</string>
-    <!-- Fork: a long press on a search category keeps only it -->
-    <string name="search_category_solo">只看 %1$s，再长按它恢复之前选的分类</string>
-    <string name="search_category_restored">已恢复之前选的分类</string>
 </resources>
