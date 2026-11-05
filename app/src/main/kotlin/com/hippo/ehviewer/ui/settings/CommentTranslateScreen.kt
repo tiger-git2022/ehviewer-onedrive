@@ -32,6 +32,7 @@ import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.translate.CommentTranslateApi
 import com.hippo.ehviewer.translate.CommentTranslations
 import com.hippo.ehviewer.translate.TargetLanguage
+import com.hippo.ehviewer.translate.ThinkingMode
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.tools.awaitInputText
@@ -138,6 +139,23 @@ fun AnimatedVisibilityScope.CommentTranslateScreen(navigator: DestinationsNaviga
                     CommentTranslations.forgetFailures()
                 }
             }
+            val thinking = Settings.commentTranslateThinking.asMutableState()
+            val thinkingModes = mapOf(
+                ThinkingMode.AUTO.code to stringResource(id = R.string.comment_translate_thinking_auto, CommentTranslateApi.SHORT_REQUEST_CHARS),
+                ThinkingMode.ON.code to stringResource(id = R.string.comment_translate_thinking_on),
+                ThinkingMode.OFF.code to stringResource(id = R.string.comment_translate_thinking_off),
+            )
+            DropdownListPreference(
+                state = thinking,
+                items = thinkingModes,
+                title = { Text(text = stringResource(id = R.string.comment_translate_thinking)) },
+                summary = { Text(text = thinkingModes[ThinkingMode.of(thinking.value).code].orEmpty()) },
+            )
+            SwitchPreference(
+                title = stringResource(id = R.string.comment_translate_stream),
+                summary = stringResource(id = R.string.comment_translate_stream_summary),
+                state = Settings.commentTranslateStream.asMutableState(),
+            )
             var testing by remember { mutableStateOf(false) }
             var testResult by remember { mutableStateOf<String?>(null) }
             val testSummary = when {

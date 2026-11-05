@@ -836,6 +836,12 @@
     <string name="comment_translate_model_fetch_failed">获取模型列表失败：%s</string>
     <string name="comment_translate_not_set">未设置</string>
     <string name="comment_translate_key_set">已设置（结尾 %s）</string>
+    <string name="comment_translate_thinking">思考模式</string>
+    <string name="comment_translate_thinking_auto">自动：短评论（%d 字以内）不思考</string>
+    <string name="comment_translate_thinking_on">总是思考（按接口默认）</string>
+    <string name="comment_translate_thinking_off">不思考：更快</string>
+    <string name="comment_translate_stream">流式输出</string>
+    <string name="comment_translate_stream_summary">用流式方式接收回复，适合只支持流式、或长时间等待会断开的中转</string>
     <string name="comment_translate_test">测试连接</string>
     <string name="comment_translate_test_summary">用一句韩语试翻一次</string>
     <string name="comment_translate_testing">正在测试…</string>
