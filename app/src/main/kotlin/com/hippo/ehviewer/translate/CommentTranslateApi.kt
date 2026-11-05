@@ -278,50 +278,65 @@ object CommentTranslateApi {
         return (delta["content"] as? JsonPrimitive)?.contentOrNull
     }
 
-    private val partialItemRegex = Regex("\"id\"\\s*:\\s*\"?(\\d+)\"?\\s*,\\s*\"text\"\\s*:\\s*\"")
+    private val partialTextRegex = Regex("\"text\"\\s*:\\s*\"")
+    private val partialIdRegex = Regex("\"id\"\\s*:\\s*\"?(\\d+)")
 
     /**
      * The translations by id in a reply still coming in, like `[{"id":1,"text":"done"},{"id":2,"text":"half wr`: the
-     * texts so far, the last one cut short. Nothing while the model is still thinking.
+     * texts so far, the last one cut short. The id may come before or after the text. Nothing while the model thinks.
      */
     fun partialTranslations(content: String): Map<Int, String> {
         val thinkEnd = content.lastIndexOf("</think>")
         if (thinkEnd < 0 && "<think>" in content) return emptyMap()
         val answer = if (thinkEnd < 0) content else content.substring(thinkEnd + "</think>".length)
-        return partialItemRegex.findAll(answer).mapNotNull { match ->
-            val id = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
-            val text = readJsonString(answer, match.range.last + 1)
-            if (text.isEmpty()) null else id to text
-        }.toMap()
+        val result = mutableMapOf<Int, String>()
+        var pos = 0
+        while (pos < answer.length) {
+            val match = partialTextRegex.find(answer, pos) ?: break
+            val (text, textEnd) = readJsonString(answer, match.range.last + 1)
+            // The object of the text: from its brace to the closing one after the text, the end of what came so far
+            val objectStart = answer.lastIndexOf('{', match.range.first).coerceAtLeast(pos)
+            val objectEnd = answer.indexOf('}', textEnd).let { if (it < 0) answer.length else it }
+            // The rest of the object, the text left out
+            val rest = answer.substring(objectStart, match.range.first) + answer.substring(minOf(textEnd, objectEnd), objectEnd)
+            val id = partialIdRegex.find(rest)?.groupValues?.get(1)?.toIntOrNull()
+            if (id != null && text.isNotEmpty()) result[id] = text
+            pos = maxOf(objectEnd, textEnd) + 1
+        }
+        return result
     }
 
-    /** The JSON string starting at [start] (after its opening quote) up to its closing quote or the end of [s]. */
-    private fun readJsonString(s: String, start: Int) = buildString {
+    /**
+     * The JSON string starting at [start] (after its opening quote) up to its closing quote or the end of [s], and where
+     * it ends: after the closing quote, or the end of [s].
+     */
+    private fun readJsonString(s: String, start: Int): Pair<String, Int> {
+        val text = StringBuilder()
         var i = start
         while (i < s.length) {
             val c = s[i]
             when {
-                c == '"' -> return@buildString
-                c != '\\' -> append(c)
-                i + 1 >= s.length -> return@buildString
+                c == '"' -> return text.toString() to i + 1
+                c != '\\' -> text.append(c)
+                i + 1 >= s.length -> break
                 else -> {
                     when (val e = s[i + 1]) {
-                        'n' -> append('\n')
-                        't' -> append('\t')
-                        'r' -> Unit
-                        'b', 'f' -> Unit
+                        'n' -> text.append('\n')
+                        't' -> text.append('\t')
+                        'r', 'b', 'f' -> Unit
                         'u' -> {
-                            if (i + 6 > s.length) return@buildString
-                            s.substring(i + 2, i + 6).toIntOrNull(16)?.let { append(it.toChar()) }
+                            if (i + 6 > s.length) break
+                            s.substring(i + 2, i + 6).toIntOrNull(16)?.let { text.append(it.toChar()) }
                             i += 4
                         }
-                        else -> append(e)
+                        else -> text.append(e)
                     }
                     i++
                 }
             }
             i++
         }
+        return text.toString() to s.length
     }
 
     /** The message of an error sent in a streamed reply. */

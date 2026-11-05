@@ -165,5 +165,10 @@ class CommentTranslateTest {
         assertEquals(emptyMap(), CommentTranslateApi.partialTranslations("""<think>[{"id":1,"text":"x"""))
         assertEquals(mapOf(1 to "y"), CommentTranslateApi.partialTranslations("""<think>hm</think>[{"id":1,"text":"y"""))
         assertEquals(emptyMap(), CommentTranslateApi.partialTranslations("""[{"id":1,"text":"""))
+        // The text before the id, as JSON allows
+        assertEquals(
+            mapOf(1 to "一 }", 2 to "二"),
+            CommentTranslateApi.partialTranslations("""[{"text":"一 }","id":1},{"text":"二","id":"2"},{"text":"三还没有 id"""),
+        )
     }
 }
