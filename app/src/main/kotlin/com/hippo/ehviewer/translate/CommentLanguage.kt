@@ -170,3 +170,18 @@ object CommentLinks {
         return rest.split(Regex("""[^\p{L}]+""")).all { it.isEmpty() || it.lowercase() in labelWords }
     }
 }
+
+/**
+ * Fork: whether [result], the reply of the model for [source], reads as a translation into [target], by its scripts. A
+ * model sometimes answers a comment instead ("Got it — noted..."), in the language of the comment; that is no
+ * translation, it is neither shown nor kept. A reply as the comment was (a name) or without letters passes.
+ */
+fun isTranslationInto(result: String, source: String, target: TargetLanguage): Boolean {
+    if (result.trim() == source.trim()) return true
+    val guess = CommentScript.guess(result) ?: return true
+    return when (target.primary) {
+        CommentScript.CHINESE, CommentScript.JAPANESE, CommentScript.KOREAN -> guess == target.primary
+        // Latin or any other script, not Chinese, Japanese or Korean
+        else -> guess == CommentScript.OTHER
+    }
+}

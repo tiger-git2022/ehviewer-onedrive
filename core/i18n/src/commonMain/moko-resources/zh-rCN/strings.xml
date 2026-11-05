@@ -854,6 +854,7 @@
     <string name="comment_translated_from">译自 %s</string>
     <string name="comment_translated">已翻译</string>
     <string name="comment_show_original">显示原文</string>
+    <string name="comment_retranslate">重新翻译</string>
     <string name="comment_original_in">%s原文</string>
     <string name="comment_original">原文</string>
     <string name="comment_show_translation">显示译文</string>
