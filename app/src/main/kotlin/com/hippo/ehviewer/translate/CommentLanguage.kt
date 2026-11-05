@@ -180,7 +180,9 @@ fun isTranslationInto(result: String, source: String, target: TargetLanguage): B
     if (result.trim() == source.trim()) return true
     val guess = CommentScript.guess(result) ?: return true
     return when (target.primary) {
-        CommentScript.CHINESE, CommentScript.JAPANESE, CommentScript.KOREAN -> guess == target.primary
+        // Japanese all in kanji ("最高") reads as Chinese by its script
+        CommentScript.JAPANESE -> guess == CommentScript.JAPANESE || guess == CommentScript.CHINESE
+        CommentScript.CHINESE, CommentScript.KOREAN -> guess == target.primary
         // Latin or any other script, not Chinese, Japanese or Korean
         else -> guess == CommentScript.OTHER
     }

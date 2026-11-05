@@ -185,5 +185,7 @@ class CommentTranslateTest {
         assertFalse(isTranslationInto("한글판도 올렸습니다", "한글판도 올렸습니다!", zh))
         assertTrue(isTranslationInto("I uploaded the Korean version too", "한글판도 올렸습니다", TargetLanguage.English))
         assertFalse(isTranslationInto("我也上传了韩文版", "한글판도 올렸습니다", TargetLanguage.English))
+        assertTrue(isTranslationInto("最高", "The best", TargetLanguage.Japanese))
+        assertFalse(isTranslationInto("The best!", "The best", TargetLanguage.Japanese))
     }
 }
