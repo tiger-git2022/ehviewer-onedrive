@@ -94,8 +94,14 @@ fun GalleryCommentCard(
         val textColor = LocalContentColor.current.toArgb()
         val linkTextColor = MaterialTheme.colorScheme.primary.toArgb()
         val redrawSignal = remember { mutableStateOf(Unit, neverEqualPolicy()) }
-        // Fork: the translation as the text of the comment, so the score and the edit time follow it as they do the original
-        val shown = if (translation is CommentTranslation.Done && !showOriginal) comment.copy(comment = translation.text.toCommentHtml()) else comment
+        // Fork: the translation as the text of the comment, so the score and the edit time follow it as they do the original;
+        // streamed, the translation so far
+        val translated = when (translation) {
+            is CommentTranslation.Done -> translation.text
+            is CommentTranslation.Pending -> translation.partial?.takeIf { it.isNotBlank() }
+            else -> null
+        }
+        val shown = if (translated != null && !showOriginal) comment.copy(comment = translated.toCommentHtml()) else comment
         val commentText = processComment(shown, CoilImageGetter { redrawSignal.value = Unit })
         // Fork: a new text view for another text. Set on the same view, a shorter text (the translation after the original)
         // left the list spaced for the longer one below the card

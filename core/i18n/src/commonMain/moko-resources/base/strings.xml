@@ -859,7 +859,7 @@
     <string name="comment_translate_thinking_on">Always (as the API does by default)</string>
     <string name="comment_translate_thinking_off">Never: faster</string>
     <string name="comment_translate_stream">Streaming</string>
-    <string name="comment_translate_stream_summary">Ask for the reply as a stream, for relays that only answer this way or cut off long waits</string>
+    <string name="comment_translate_stream_summary">The translation shows as it comes in. Also for relays that only answer this way or cut off long waits</string>
     <string name="comment_translate_test">Test</string>
     <string name="comment_translate_test_summary">Translate one Korean sentence</string>
     <string name="comment_translate_testing">Testing…</string>

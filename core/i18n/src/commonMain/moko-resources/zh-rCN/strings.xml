@@ -841,7 +841,7 @@
     <string name="comment_translate_thinking_on">总是思考（按接口默认）</string>
     <string name="comment_translate_thinking_off">不思考：更快</string>
     <string name="comment_translate_stream">流式输出</string>
-    <string name="comment_translate_stream_summary">用流式方式接收回复，适合只支持流式、或长时间等待会断开的中转</string>
+    <string name="comment_translate_stream_summary">译文边收边显示，逐字出现；也适合只支持流式、或等太久会断开的中转</string>
     <string name="comment_translate_test">测试连接</string>
     <string name="comment_translate_test_summary">用一句韩语试翻一次</string>
     <string name="comment_translate_testing">正在测试…</string>

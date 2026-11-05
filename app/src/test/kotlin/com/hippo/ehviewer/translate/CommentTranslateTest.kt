@@ -156,4 +156,19 @@ class CommentTranslateTest {
         assertTrue("\"stream\":true" in off)
         assertFalse("thinking" in CommentTranslateApi.requestBody(config, "s", "u", noThinking = false).toString())
     }
+
+    @Test
+    fun partialTranslations() {
+        val content = """[{"id":1,"text":"第一条\n完了"},{"id": 2, "text": "第二条说到一半\"引"""
+        assertEquals(mapOf(1 to "第一条\n完了", 2 to "第二条说到一半\"引"), CommentTranslateApi.partialTranslations(content))
+        assertEquals(mapOf(1 to "好"), CommentTranslateApi.partialTranslations("""[{"id":"1","text":"好\u"""))
+        assertEquals(emptyMap(), CommentTranslateApi.partialTranslations("""<think>[{"id":1,"text":"x"""))
+        assertEquals(mapOf(1 to "y"), CommentTranslateApi.partialTranslations("""<think>hm</think>[{"id":1,"text":"y"""))
+        assertEquals(emptyMap(), CommentTranslateApi.partialTranslations("""[{"id":1,"text":"""))
+        // The text before the id, as JSON allows
+        assertEquals(
+            mapOf(1 to "一 }", 2 to "二"),
+            CommentTranslateApi.partialTranslations("""[{"text":"一 }","id":1},{"text":"二","id":"2"},{"text":"三还没有 id"""),
+        )
+    }
 }
