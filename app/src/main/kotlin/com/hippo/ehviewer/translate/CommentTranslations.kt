@@ -27,7 +27,8 @@ sealed interface CommentTranslation {
     /** In the target language already, or without words: nothing to translate. */
     data class NotNeeded(override val language: String?) : CommentTranslation
 
-    data class Pending(override val language: String?) : CommentTranslation
+    /** Being translated; streamed, [partial] is the translation so far. */
+    data class Pending(override val language: String?, val partial: String? = null) : CommentTranslation
 
     data class Done(override val language: String?, val text: String) : CommentTranslation
 
@@ -149,7 +150,13 @@ object CommentTranslations {
     private suspend fun translateChunk(chunk: List<ToTranslate>, config: TranslateConfig, target: TargetLanguage, cache: LinkedHashMap<String, CachedTranslation>) {
         val items = chunk.mapIndexed { index, item -> CommentTranslateApi.Item(index + 1, item.text) }
         val result = try {
-            CommentTranslateApi.translate(config, items, target)
+            CommentTranslateApi.translate(config, items, target) { partial ->
+                // Streamed: the translations so far show as they come in
+                partial.forEach { (id, text) ->
+                    val item = chunk.getOrNull(id - 1) ?: return@forEach
+                    if (states[item.key] is CommentTranslation.Pending) states[item.key] = CommentTranslation.Pending(item.language, text)
+                }
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {

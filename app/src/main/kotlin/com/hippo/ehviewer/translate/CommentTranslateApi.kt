@@ -8,10 +8,13 @@ import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readLine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -95,17 +98,28 @@ object CommentTranslateApi {
         ThinkingMode.AUTO -> items.sumOf { it.text.length } <= SHORT_REQUEST_CHARS
     }
 
-    /** The translations of [items] by id; an item missing from the reply is missing here. */
-    suspend fun translate(config: TranslateConfig, items: List<Item>, target: TargetLanguage): Map<Int, String> {
+    /**
+     * The translations of [items] by id; an item missing from the reply is missing here. Streamed, [onPartial] gets the
+     * translations so far as they come in, the last one cut short.
+     */
+    suspend fun translate(
+        config: TranslateConfig,
+        items: List<Item>,
+        target: TargetLanguage,
+        onPartial: ((Map<Int, String>) -> Unit)? = null,
+    ): Map<Int, String> {
         if (!config.isComplete) throw TranslateException("API not configured")
-        val content = request(config, systemPrompt(target), userContent(items), thinkingOff(config.thinking, items))
+        val onContent: ((String) -> Unit)? = onPartial?.let { callback ->
+            { content -> partialTranslations(content).takeIf { it.isNotEmpty() }?.let(callback) }
+        }
+        val content = request(config, systemPrompt(target), userContent(items), thinkingOff(config.thinking, items), onContent)
         val parsed = parseTranslations(content)
         if (parsed != null) return parsed
         // Not the JSON asked for: a single comment is its own translation, a page is asked again comment by comment
         return if (items.size == 1) {
             mapOf(items[0].id to cleanContent(content))
         } else {
-            items.associate { item -> item.id to translate(config, listOf(item), target).getValue(item.id) }
+            items.associate { item -> item.id to translate(config, listOf(item), target, onPartial).getValue(item.id) }
         }
     }
 
@@ -138,17 +152,17 @@ object CommentTranslateApi {
         }.filter { it.isNotBlank() }.distinct().sorted()
     }.getOrNull()?.ifEmpty { null }
 
-    private suspend fun request(config: TranslateConfig, system: String, user: String, noThinking: Boolean): String {
+    private suspend fun request(config: TranslateConfig, system: String, user: String, noThinking: Boolean, onContent: ((String) -> Unit)?): String {
         val key = config.endpoint + " " + config.model.trim()
         val sendNoThinking = noThinking && synchronized(noThinkingParamsRejected) { key !in noThinkingParamsRejected }
         return try {
-            post(config, requestBody(config, system, user, sendNoThinking))
+            post(config, requestBody(config, system, user, sendNoThinking), onContent)
         } catch (e: HttpException) {
             // An API that knows none of the parameters may refuse them all: ask again as it is, and from now on
             if (!sendNoThinking || e.status !in 400..422) throw e.toTranslateException()
             synchronized(noThinkingParamsRejected) { noThinkingParamsRejected += key }
             try {
-                post(config, requestBody(config, system, user, false))
+                post(config, requestBody(config, system, user, false), onContent)
             } catch (e: HttpException) {
                 throw e.toTranslateException()
             }
@@ -184,16 +198,42 @@ object CommentTranslateApi {
         fun toTranslateException() = TranslateException("HTTP $status" + (errorMessage(body)?.let { ": $it" } ?: ""))
     }
 
-    private suspend fun post(config: TranslateConfig, body: JsonObject): String = ktorClient.preparePost(config.endpoint) {
+    // How often the translations so far are passed on while they stream in
+    private const val PARTIAL_INTERVAL_MILLIS = 150L
+
+    private suspend fun post(config: TranslateConfig, body: JsonObject, onContent: ((String) -> Unit)?): String = ktorClient.preparePost(config.endpoint) {
         timeout { requestTimeoutMillis = TIMEOUT_MILLIS }
         if (config.apiKey.isNotBlank()) header(HttpHeaders.Authorization, "Bearer ${config.apiKey.trim()}")
         header(HttpHeaders.Accept, if (config.stream) "text/event-stream, application/json" else "application/json")
         contentType(ContentType.Application.Json)
         setBody(body.toString())
     }.executeSafely { response ->
-        val text = response.bodyAsUtf8Text()
+        val text = if (config.stream && response.status.isSuccess()) {
+            readStream(response.bodyAsChannel(), onContent)
+        } else {
+            response.bodyAsUtf8Text()
+        }
         if (!response.status.isSuccess()) throw HttpException(response.status.value, text)
         replyContent(text) ?: throw TranslateException(errorMessage(text) ?: streamError(text) ?: "Empty reply")
+    }
+
+    /** The whole body, line by line; the answer so far goes to [onContent] as the events come in. */
+    private suspend fun readStream(channel: ByteReadChannel, onContent: ((String) -> Unit)?): String {
+        val body = StringBuilder()
+        val content = StringBuilder()
+        var lastSent = 0L
+        while (true) {
+            val line = channel.readLine() ?: break
+            body.append(line).append('\n')
+            if (onContent == null) continue
+            streamEvents(line).forEach { event -> deltaContent(event)?.let(content::append) }
+            val now = System.currentTimeMillis()
+            if (content.isNotEmpty() && now - lastSent >= PARTIAL_INTERVAL_MILLIS) {
+                lastSent = now
+                onContent(content.toString())
+            }
+        }
+        return body.toString()
     }
 
     fun systemPrompt(target: TargetLanguage) = """
@@ -229,12 +269,60 @@ object CommentTranslateApi {
 
     /** The answer of a streamed reply: the content of the deltas of the first choice, the thoughts left out. */
     fun streamedContent(body: String): String? = buildString {
-        streamEvents(body).forEach { event ->
-            val choice = (event["choices"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return@forEach
-            val delta = (choice["delta"] ?: choice["message"]) as? JsonObject ?: return@forEach
-            (delta["content"] as? JsonPrimitive)?.contentOrNull?.let(::append)
-        }
+        streamEvents(body).forEach { event -> deltaContent(event)?.let(::append) }
     }.takeIf { it.isNotBlank() }
+
+    private fun deltaContent(event: JsonObject): String? {
+        val choice = (event["choices"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return null
+        val delta = (choice["delta"] ?: choice["message"]) as? JsonObject ?: return null
+        return (delta["content"] as? JsonPrimitive)?.contentOrNull
+    }
+
+    private val partialItemRegex = Regex("\"id\"\\s*:\\s*\"?(\\d+)\"?\\s*,\\s*\"text\"\\s*:\\s*\"")
+
+    /**
+     * The translations by id in a reply still coming in, like `[{"id":1,"text":"done"},{"id":2,"text":"half wr`: the
+     * texts so far, the last one cut short. Nothing while the model is still thinking.
+     */
+    fun partialTranslations(content: String): Map<Int, String> {
+        val thinkEnd = content.lastIndexOf("</think>")
+        if (thinkEnd < 0 && "<think>" in content) return emptyMap()
+        val answer = if (thinkEnd < 0) content else content.substring(thinkEnd + "</think>".length)
+        return partialItemRegex.findAll(answer).mapNotNull { match ->
+            val id = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val text = readJsonString(answer, match.range.last + 1)
+            if (text.isEmpty()) null else id to text
+        }.toMap()
+    }
+
+    /** The JSON string starting at [start] (after its opening quote) up to its closing quote or the end of [s]. */
+    private fun readJsonString(s: String, start: Int) = buildString {
+        var i = start
+        while (i < s.length) {
+            val c = s[i]
+            when {
+                c == '"' -> return@buildString
+                c != '\\' -> append(c)
+                i + 1 >= s.length -> return@buildString
+                else -> {
+                    when (val e = s[i + 1]) {
+                        'n' -> append('\n')
+                        't' -> append('\t')
+                        'r' -> Unit
+                        'b', 'f' -> Unit
+                        'u' -> {
+                            if (i + 6 > s.length) return@buildString
+                            s.substring(i + 2, i + 6).toIntOrNull(16)?.let { append(it.toChar()) }
+                            i += 4
+                        }
+                        else -> append(e)
+                    }
+                    i++
+                }
+            }
+            i++
+        }
+    }
 
     /** The message of an error sent in a streamed reply. */
     private fun streamError(body: String): String? = if (isEventStream(body)) {
