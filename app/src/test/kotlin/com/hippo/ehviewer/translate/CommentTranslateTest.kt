@@ -120,4 +120,40 @@ class CommentTranslateTest {
         assertEquals("bad", CommentTranslateApi.errorMessage("""{"error":"bad"}"""))
         assertNull(CommentTranslateApi.errorMessage("<html>"))
     }
+
+    @Test
+    fun streamedReply() {
+        // As the relays send it: the thoughts in reasoning_content, the answer in content, then [DONE]
+        val body = """
+            data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}
+
+            data: {"choices":[{"delta":{"reasoning_content":"We need"},"index":0}]}
+
+            data: {"choices":[{"delta":{"content":"早上"},"index":0}]}
+
+            data: {"choices":[{"delta":{"content":"好"},"index":0}]}
+
+            data: [DONE]
+        """.trimIndent()
+        assertEquals("早上好", CommentTranslateApi.replyContent(body))
+        assertNull(CommentTranslateApi.replyContent("data: [DONE]"))
+    }
+
+    @Test
+    fun thinking() {
+        val short = listOf(CommentTranslateApi.Item(1, "Thanks!"))
+        val long = listOf(CommentTranslateApi.Item(1, "a".repeat(CommentTranslateApi.SHORT_REQUEST_CHARS + 1)))
+        assertTrue(CommentTranslateApi.thinkingOff(ThinkingMode.AUTO, short))
+        assertFalse(CommentTranslateApi.thinkingOff(ThinkingMode.AUTO, long))
+        assertFalse(CommentTranslateApi.thinkingOff(ThinkingMode.ON, short))
+        assertTrue(CommentTranslateApi.thinkingOff(ThinkingMode.OFF, long))
+        assertEquals(ThinkingMode.AUTO, ThinkingMode.of("?"))
+
+        val config = TranslateConfig("http://x/v1", "", "m", stream = true)
+        val off = CommentTranslateApi.requestBody(config, "s", "u", noThinking = true).toString()
+        assertTrue("\"thinking\":{\"type\":\"disabled\"}" in off)
+        assertTrue("\"reasoning_effort\":\"none\"" in off)
+        assertTrue("\"stream\":true" in off)
+        assertFalse("thinking" in CommentTranslateApi.requestBody(config, "s", "u", noThinking = false).toString())
+    }
 }

@@ -57,6 +57,8 @@ object CommentTranslations {
             apiUrl = Settings.commentTranslateApiUrl.value,
             apiKey = Settings.commentTranslateApiKey.value,
             model = Settings.commentTranslateModel.value,
+            thinking = ThinkingMode.of(Settings.commentTranslateThinking.value),
+            stream = Settings.commentTranslateStream.value,
         )
 
     val target: TargetLanguage

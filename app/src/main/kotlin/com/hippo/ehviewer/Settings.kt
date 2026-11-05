@@ -93,6 +93,8 @@ object Settings : DataStorePreferences(null) {
     val commentTranslateApiUrl = stringPref("comment_translate_api_url", "")
     val commentTranslateApiKey = stringPref("comment_translate_api_key", "")
     val commentTranslateModel = stringPref("comment_translate_model", "")
+    val commentTranslateThinking = stringPref("comment_translate_thinking", "auto")
+    val commentTranslateStream = boolPref("comment_translate_stream", false)
 
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
     val blackDarkTheme = boolPref("black_dark_theme", false)

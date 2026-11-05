@@ -16,4 +16,7 @@
   ~ If not, see <https://www.gnu.org/licenses/>.
   -->
 <network-security-config>
+    <!-- Fork: the comment translation API may be a relay or a local model on plain http (Android blocks it since API 28).
+         E-Hentai and OneDrive stay on https -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
