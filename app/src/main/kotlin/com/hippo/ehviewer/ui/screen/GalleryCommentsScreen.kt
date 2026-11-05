@@ -541,6 +541,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                         showOriginal = (item.id in flippedComments) == showTranslations,
                         onToggleOriginal = { if (!flippedComments.remove(item.id)) flippedComments.add(item.id) },
                         onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
+                        onRetranslate = { CommentTranslations.retranslate(item) },
                         onCardLongClick = {
                             launch { awaitSelectText(item.selectableSections(CommentTranslations.stateOf(item), originalLabel, translationLabel)) }
                         },

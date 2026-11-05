@@ -872,6 +872,7 @@
     <string name="comment_translated_from">Translated from %s</string>
     <string name="comment_translated">Translated</string>
     <string name="comment_show_original">Show original</string>
+    <string name="comment_retranslate">Translate again</string>
     <string name="comment_original_in">Original (%s)</string>
     <string name="comment_original">Original</string>
     <string name="comment_show_translation">Show translation</string>

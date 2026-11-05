@@ -76,6 +76,24 @@ object CommentTranslations {
         scope.launch { translate(comments, config, target, retry) }
     }
 
+    /**
+     * Translates [comment] again, its kept translation dropped: thinking first unless turned off, a short comment
+     * translated without it may have been answered rather than translated.
+     */
+    fun retranslate(comment: GalleryComment) {
+        val config = config.let { if (it.thinking == ThinkingMode.OFF) it else it.copy(thinking = ThinkingMode.ON) }
+        if (!config.isComplete) return
+        val target = target
+        val key = key(comment.comment, target)
+        scope.launch {
+            val cache = cache()
+            synchronized(cache) { cache.remove(key) }
+            saveCache()
+            synchronized(lock) { states.remove(key) }
+            translate(listOf(comment), config, target, retry = true)
+        }
+    }
+
     /** Failed comments are translated again on the next [request], after a change to the API settings. */
     fun forgetFailures() = synchronized(lock) {
         states.entries.filter { it.value is CommentTranslation.Failed }.map { it.key }.forEach(states::remove)
@@ -98,7 +116,8 @@ object CommentTranslations {
                     states[key] = CommentTranslation.NotNeeded(null)
                     return@mapNotNull null
                 }
-                val cached = synchronized(cache) { cache[key] }
+                // A kept reply that was no translation (from before the check) is asked for again
+                val cached = synchronized(cache) { cache[key] }?.takeIf { isTranslationInto(it.t, text, target) }
                 if (cached != null) {
                     states[key] = CommentTranslation.Done(cached.l, cached.t)
                     null
@@ -169,6 +188,9 @@ object CommentTranslations {
             val text = result[index + 1]?.trim()
             if (text.isNullOrEmpty()) {
                 states[item.key] = CommentTranslation.Failed(item.language, "No translation in the reply")
+            } else if (!isTranslationInto(text, item.text, target)) {
+                logcat(TAG) { "Not a translation into ${target.code}: $text" }
+                states[item.key] = CommentTranslation.Failed(item.language, "Reply not in ${target.displayName}: ${text.take(40)}")
             } else {
                 states[item.key] = CommentTranslation.Done(item.language, text)
                 synchronized(cache) { cache[item.key] = CachedTranslation(item.language, text) }

@@ -171,4 +171,21 @@ class CommentTranslateTest {
             CommentTranslateApi.partialTranslations("""[{"text":"一 }","id":1},{"text":"二","id":"2"},{"text":"三还没有 id"""),
         )
     }
+
+    @Test
+    fun translationCheck() {
+        val zh = TargetLanguage.SimplifiedChinese
+        val source = "Page 9 was water damaged, work with what is legible."
+        // The model answered the comment instead of translating it
+        assertFalse(isTranslationInto("Got it — noted. I'll work with what's legible.", source, zh))
+        assertTrue(isTranslationInto("第 9 页被水泡坏了，按能看清的来。", source, zh))
+        assertTrue(isTranslationInto("Kronii 太可爱了", "Kronii is so cute", zh))
+        assertTrue(isTranslationInto("Kronii", "Kronii", zh))
+        assertTrue(isTranslationInto("+1 👍", "+1 👍 lol", zh))
+        assertFalse(isTranslationInto("한글판도 올렸습니다", "한글판도 올렸습니다!", zh))
+        assertTrue(isTranslationInto("I uploaded the Korean version too", "한글판도 올렸습니다", TargetLanguage.English))
+        assertFalse(isTranslationInto("我也上传了韩文版", "한글판도 올렸습니다", TargetLanguage.English))
+        assertTrue(isTranslationInto("最高", "The best", TargetLanguage.Japanese))
+        assertFalse(isTranslationInto("The best!", "The best", TargetLanguage.Japanese))
+    }
 }

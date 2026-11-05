@@ -483,6 +483,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     showOriginal = item.id in originalShown,
                     onToggleOriginal = { if (!originalShown.remove(item.id)) originalShown.add(item.id) },
                     onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
+                    onRetranslate = { CommentTranslations.retranslate(item) },
                     // Fork: a long press picks part of the comment or of its translation, see ui/tools/SelectTextDialog.kt
                     onCardLongClick = {
                         launch {

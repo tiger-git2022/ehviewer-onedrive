@@ -53,6 +53,7 @@ fun GalleryCommentCard(
     showOriginal: Boolean = false,
     onToggleOriginal: () -> Unit = {},
     onRetryTranslation: () -> Unit = {},
+    onRetranslate: (() -> Unit)? = null,
     // Fork: a long press, to pick part of the text, see ui/tools/SelectTextDialog.kt
     onCardLongClick: (() -> Unit)? = null,
 ) = with(comment) {
@@ -122,7 +123,14 @@ fun GalleryCommentCard(
             }
         }
         if (translation != null) {
-            TranslationLine(translation, showOriginal, onToggleOriginal, onRetryTranslation, Modifier.padding(start = margin, end = margin, bottom = 10.dp))
+            TranslationLine(
+                translation,
+                showOriginal,
+                onToggleOriginal,
+                onRetryTranslation,
+                onRetranslate,
+                Modifier.padding(start = margin, end = margin, bottom = 10.dp),
+            )
         }
     }
 }
@@ -150,6 +158,7 @@ private fun TranslationLine(
     showOriginal: Boolean,
     onToggleOriginal: () -> Unit,
     onRetry: () -> Unit,
+    onRetranslate: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val language = translation.language?.let { CommentTranslations.languageName(it) }
@@ -185,18 +194,25 @@ private fun TranslationLine(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        if (action != null && onAction != null) {
-            Text(
-                text = " · ",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = action,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable(onClick = onAction),
-            )
+        if (action != null && onAction != null) LineAction(action, onAction)
+        // A wrong translation (one kept from before too) is asked for again
+        if (translation is CommentTranslation.Done && onRetranslate != null) {
+            LineAction(stringResource(R.string.comment_retranslate), onRetranslate)
         }
     }
+}
+
+@Composable
+private fun LineAction(text: String, onClick: () -> Unit) {
+    Text(
+        text = " · ",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
