@@ -71,6 +71,7 @@ import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.NO_CLOUD_SLOT
+import com.hippo.ehviewer.todownload.ToDownload
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.awaitSelectDate
@@ -83,11 +84,13 @@ import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.startDownload
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
+import com.hippo.ehviewer.wnacg.isWnacg
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import moe.tarsin.coroutines.runSwallowingWithUI
 import moe.tarsin.navigate
 
@@ -96,6 +99,7 @@ import moe.tarsin.navigate
 fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, viewModel: FavoritesViewModel = viewModel()) = Screen(navigator, recordsGlass = true) {
     // Immutables
     val localFavName = stringResource(R.string.local_favorites)
+    val toDownloadName = stringResource(R.string.to_download)
     val cloudFavName = stringResource(R.string.cloud_favorites)
     val animateItems by Settings.animateItems.collectAsState()
     val hasSignedIn by Settings.hasSignedIn.collectAsState()
@@ -113,6 +117,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         when (val favCat = urlBuilder.favCat) {
             in 0..9 -> Settings.favCat[favCat]
             FavListUrlBuilder.FAV_CAT_LOCAL -> localFavName.also { searchBarOffsetY = 0 }
+            FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD -> toDownloadName.also { searchBarOffsetY = 0 }
             else -> cloudFavName
         }
     }
@@ -139,8 +144,14 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         if (applied != null && applied != (languageFilter == CHINESE_LANGUAGE_FILTER)) refresh()
     }
 
+    // Fork: 「待下载」 shown reloads when it changed, here, on another page or by a sync, see ToDownload
+    LaunchedEffect(Unit) {
+        ToDownload.gids.drop(1).collect { if (urlBuilder.isToDownload) data.refresh() }
+    }
+
     ProvideSideSheetContent { sheetState ->
         val localFavCount by viewModel.localFavCount.collectAsState(0)
+        val toDownloadCount by viewModel.toDownloadCount.collectAsState(0)
         TopAppBar(
             title = { Text(text = stringResource(id = R.string.collections)) },
             windowInsets = WindowInsets(),
@@ -152,32 +163,36 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                 scope.invalidate()
             }
         }
-        val localFav = stringResource(id = R.string.local_favorites) to localFavCount
-        val faves = if (hasSignedIn) {
-            arrayOf(
-                localFav,
-                stringResource(id = R.string.cloud_favorites) to Settings.favCloudCount,
-                *Settings.favCat.zip(Settings.favCount.toTypedArray()).toTypedArray(),
-            )
-        } else {
-            arrayOf(localFav)
+        // Fork: (category, name, count); 「待下载」 under the local favorites, a part of them, see ToDownload
+        val faves = buildList {
+            add(Triple(FavListUrlBuilder.FAV_CAT_LOCAL, localFavName, localFavCount))
+            add(Triple(FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD, toDownloadName, toDownloadCount))
+            if (hasSignedIn) {
+                add(Triple(FavListUrlBuilder.FAV_CAT_ALL, cloudFavName, Settings.favCloudCount))
+                Settings.favCat.forEachIndexed { slot, name -> add(Triple(slot, name, Settings.favCount[slot])) }
+            }
         }
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom)),
         ) {
-            faves.forEachIndexed { index, (name, count) ->
+            faves.forEach { (newCat, name, count) ->
                 ListItem(
                     trailingContent = { Text(text = count.toString(), style = MaterialTheme.typography.bodyLarge) },
                     modifier = Modifier.clip(CardDefaults.shape).clickable {
-                        val newCat = index - 2
                         refresh(FavListUrlBuilder(newCat))
                         Settings.recentFavCat = newCat
                         fabHidden = false
                         launch { sheetState.close() }
                     },
-                    colors = listItemOnDrawerColor(urlBuilder.favCat == index - 2),
-                    content = { Text(text = name) },
+                    colors = listItemOnDrawerColor(urlBuilder.favCat == newCat),
+                    content = {
+                        if (newCat == FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD) {
+                            Text(text = "↳ $name", modifier = Modifier.padding(start = 16.dp))
+                        } else {
+                            Text(text = name)
+                        }
+                    },
                 )
             }
         }
@@ -302,7 +317,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                 }
             },
             searchBarOffsetY = { searchBarOffsetY },
-            scrollToTopOnRefresh = urlBuilder.favCat != FavListUrlBuilder.FAV_CAT_LOCAL,
+            scrollToTopOnRefresh = !urlBuilder.isLocal,
             onRefresh = { refresh() },
             onLoading = { searchBarOffsetY = 0 },
         )
@@ -327,7 +342,7 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
         autoCancel = !selectMode,
     ) {
         if (!selectMode) {
-            if (urlBuilder.isLocal) {
+            if (urlBuilder.favCat == FavListUrlBuilder.FAV_CAT_LOCAL) {
                 onClick(Icons.Default.Shuffle) {
                     EhDB.randomLocalFav()?.let { info ->
                         withUIContext { navigate(info.asDst()) }
@@ -357,10 +372,19 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
             }
             onClick(Icons.Default.Delete) {
                 val info = checkedInfoMap.takeAndClear()
+                val srcCat = urlBuilder.favCat
+                // Fork: out of 「待下载」 only, they stay in the local favorites
+                if (srcCat == FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD) {
+                    awaitConfirmationOrCancel(title = R.string.to_download_remove) {
+                        Text(text = stringResource(R.string.to_download_remove_message, info.size))
+                    }
+                    runSwallowingWithUI { ToDownload.remove(info.map { it.gid }) }
+                    data.refresh()
+                    return@onClick
+                }
                 awaitConfirmationOrCancel(title = R.string.delete_favorites_dialog_title) {
                     Text(text = stringResource(R.string.delete_favorites_dialog_message, info.size))
                 }
-                val srcCat = urlBuilder.favCat
                 runSwallowingWithUI {
                     if (srcCat == FavListUrlBuilder.FAV_CAT_LOCAL) { // Delete local fav
                         EhDB.removeLocalFavorites(info)
@@ -374,25 +398,39 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                 data.refresh()
             }
             onClick(Icons.AutoMirrored.Default.DriveFileMove) {
-                // First is local favorite, the other 10 is cloud favorite
+                // First is local favorite, then 「待下载」 (fork), the other 10 is cloud favorite
                 val items = buildList {
                     add(localFavName)
+                    add(toDownloadName)
                     if (hasSignedIn) {
                         addAll(Settings.favCat)
                     }
                 }
                 val index = awaitSelectItem(items, R.string.move_favorites_dialog_title)
                 val srcCat = urlBuilder.favCat
-                val dstCat = if (index == 0) FavListUrlBuilder.FAV_CAT_LOCAL else index - 1
+                val dstCat = when (index) {
+                    0 -> FavListUrlBuilder.FAV_CAT_LOCAL
+                    1 -> FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD
+                    else -> index - 2
+                }
                 val info = checkedInfoMap.takeAndClear()
                 if (srcCat != dstCat) {
                     runSwallowingWithUI {
-                        if (srcCat == FavListUrlBuilder.FAV_CAT_LOCAL) {
-                            // Move from local to cloud
-                            val galleryList = info.map { it.gid to it.token }
-                            EhEngine.addFavorites(galleryList, dstCat)
-                            FavoritesIndexSync.onAdded(info, dstCat)
-                            EhDB.removeLocalFavorites(info)
+                        if (dstCat == FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD) {
+                            // Fork: into 「待下载」, and the local favorites; a cloud favorite stays there too, as moved to local
+                            ToDownload.add(info)
+                        } else if (srcCat == FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD && dstCat == FavListUrlBuilder.FAV_CAT_LOCAL) {
+                            // Fork: out of 「待下载」, still a local favorite
+                            ToDownload.remove(info.map { it.gid })
+                        } else if (FavListUrlBuilder(srcCat).isLocal) {
+                            // Move from local to cloud. Fork: not an album of 紳士漫畫, E-Hentai has none of them
+                            val moved = info.filterNot { it.isWnacg }
+                            if (moved.isNotEmpty()) {
+                                val galleryList = moved.map { it.gid to it.token }
+                                EhEngine.addFavorites(galleryList, dstCat)
+                                FavoritesIndexSync.onAdded(moved, dstCat)
+                                EhDB.removeLocalFavorites(moved)
+                            }
                         } else if (dstCat == FavListUrlBuilder.FAV_CAT_LOCAL) {
                             // Move from cloud to local
                             EhDB.putLocalFavorites(info)

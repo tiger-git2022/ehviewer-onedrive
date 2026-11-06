@@ -44,6 +44,7 @@ import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.PendingProgress
 import com.hippo.ehviewer.sync.SyncCategory
+import com.hippo.ehviewer.todownload.ToDownload
 import kotlinx.coroutines.flow.Flow
 import okio.Path
 
@@ -192,6 +193,8 @@ object EhDB {
     suspend fun removeLocalFavorites(galleryInfo: GalleryInfo) {
         db.localFavoritesDao().deleteByKey(galleryInfo.gid)
         deleteGalleryInfo(galleryInfo.asEntity())
+        // Fork: out of 「待下载」 too
+        ToDownload.onFavoritesRemoved(listOf(galleryInfo.gid))
         OneDriveSync.notifyChanged(SyncCategory.FAVORITES)
     }
 

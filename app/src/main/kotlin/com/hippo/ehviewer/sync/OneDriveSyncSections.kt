@@ -20,6 +20,7 @@ import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhFilter
+import com.hippo.ehviewer.todownload.ToDownload
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
@@ -209,8 +210,12 @@ object FavoritesSection : SyncSection<List<SyncGalleryRecord>>(
     ListSerializer(SyncGalleryRecord.serializer()),
     emptyList(),
 ) {
-    override suspend fun collect(baseline: List<SyncGalleryRecord>?, changedAt: Long) = EhDB.getLocalFavoritesWithGallery().map { (info, gallery) ->
-        SyncGalleryRecord(info.gid, info.time, gallery.toSyncGallery())
+    // Fork: with the marks of 「待下载」, see ToDownload
+    override suspend fun collect(baseline: List<SyncGalleryRecord>?, changedAt: Long): List<SyncGalleryRecord> {
+        val marks = ToDownload.marks()
+        return EhDB.getLocalFavoritesWithGallery().map { (info, gallery) ->
+            SyncGalleryRecord(info.gid, info.time, gallery.toSyncGallery(), marks[info.gid] ?: 0)
+        }
     }
 
     override fun merge(local: List<SyncGalleryRecord>, cloud: List<SyncGalleryRecord>, baseline: List<SyncGalleryRecord>?) = OneDriveSyncMerger.mergeFavorites(local, cloud, baseline)
@@ -220,11 +225,19 @@ object FavoritesSection : SyncSection<List<SyncGalleryRecord>>(
         val mergedGids = merged.mapTo(HashSet()) { it.gid }
         val upsert = merged.filter { localByGid[it.gid]?.time != it.time }
         val delete = local.filter { it.gid !in mergedGids }.map { it.gid }
-        if (upsert.isEmpty() && delete.isEmpty()) return SyncCounts()
-        val (insertGalleries, updateGalleries) = galleryWrites(upsert)
-        EhDB.applySyncedFavorites(insertGalleries, updateGalleries, upsert.map { LocalFavoriteInfo(it.gid, it.time) }, delete)
+        // Fork: the marks of 「待下载」 of the favorites kept, after the favorites (auto download reads their galleries); a
+        // change of one only counted as an update
+        val marksOnly = merged.count { record -> localByGid[record.gid]?.let { it.time == record.time && it.queued != record.queued } == true }
+        if (upsert.isNotEmpty() || delete.isNotEmpty()) {
+            val (insertGalleries, updateGalleries) = galleryWrites(upsert)
+            EhDB.applySyncedFavorites(insertGalleries, updateGalleries, upsert.map { LocalFavoriteInfo(it.gid, it.time) }, delete)
+        }
+        ToDownload.applySynced(
+            synced = merged.filter { it.queued != 0L }.associate { it.gid to it.queued },
+            collected = local.filter { it.queued != 0L }.associate { it.gid to it.queued },
+        )
         val added = upsert.count { it.gid !in localByGid }
-        return SyncCounts(added = added, updated = upsert.size - added, removed = delete.size)
+        return SyncCounts(added = added, updated = upsert.size - added + marksOnly, removed = delete.size)
     }
 }
 

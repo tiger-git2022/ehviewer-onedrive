@@ -1,6 +1,7 @@
 package com.hippo.ehviewer.sync
 
 import java.io.IOException
+import kotlin.math.abs
 
 class SyncVersionException(val version: Int) : IOException("The sync data was written by a newer version (format $version)")
 
@@ -72,6 +73,8 @@ object OneDriveSyncMerger {
      * - Key in baseline and missing on one side: deleted there, unless the other side changed it since
      *   the baseline (a change wins over a deletion).
      * - Key on both sides: the side that changed it since the baseline wins, both changed → [resolve].
+     *
+     * Fork: [outlives] tells the changes that win over a deletion, all of them by default.
      */
     fun <K, V> mergeKeyed(
         local: Map<K, V>,
@@ -79,6 +82,7 @@ object OneDriveSyncMerger {
         baseline: Map<K, V>?,
         changed: (old: V, new: V) -> Boolean,
         resolve: (local: V, cloud: V) -> V,
+        outlives: (old: V, new: V) -> Boolean = changed,
     ): Map<K, V> {
         // Fork: sized for the larger side, the two sides mostly share their keys; their sum doubled the tables
         val result = LinkedHashMap<K, V>(maxOf(cloud.size, local.size))
@@ -99,8 +103,8 @@ object OneDriveSyncMerger {
             } else {
                 when {
                     l == null && c == null -> null
-                    l == null -> c!!.takeIf { changed(b, it) }
-                    c == null -> l.takeIf { changed(b, it) }
+                    l == null -> c!!.takeIf { outlives(b, it) }
+                    c == null -> l.takeIf { outlives(b, it) }
                     else -> {
                         val localChanged = changed(b, l)
                         val cloudChanged = changed(b, c)
@@ -138,7 +142,11 @@ object OneDriveSyncMerger {
 
     private fun moreComplete(local: SyncGallery, cloud: SyncGallery) = if (cloud.completeness > local.completeness) cloud else local
 
-    /** Local favorites: set with baseline, an addition wins over a deletion, the earlier time is kept. */
+    /**
+     * Local favorites: set with baseline, an addition wins over a deletion, the earlier time is kept. Fork: a change of
+     * the mark in 「待下载」 is a change too; changed on both sides, the later mark wins, see [laterMark]. Of those, only
+     * a gallery put in wins over a deletion: one taken out is deleted.
+     */
     fun mergeFavorites(
         local: List<SyncGalleryRecord>,
         cloud: List<SyncGalleryRecord>,
@@ -147,9 +155,13 @@ object OneDriveSyncMerger {
         local = local.associateBy { it.gid },
         cloud = cloud.associateBy { it.gid },
         baseline = baseline?.associateBy { it.gid },
-        changed = { old, new -> old.time != new.time },
-        resolve = { l, c -> SyncGalleryRecord(c.gid, minOf(l.time, c.time), moreComplete(l.gallery, c.gallery)) },
+        changed = { old, new -> old.time != new.time || old.queued != new.queued },
+        resolve = { l, c -> SyncGalleryRecord(c.gid, minOf(l.time, c.time), moreComplete(l.gallery, c.gallery), laterMark(l.queued, c.queued)) },
+        outlives = { old, new -> old.time != new.time || new.queued > 0 && old.queued != new.queued },
     ).values.sortedBy { it.gid }
+
+    /** Fork: of two marks in 「待下载」 (the time put in, minus the time taken out, 0 for none), the later one. */
+    fun laterMark(a: Long, b: Long) = if (abs(a) >= abs(b)) a else b
 
     /** History: set with baseline (single deletions and clearing sync), the later time is kept. */
     fun mergeHistory(

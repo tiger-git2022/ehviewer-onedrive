@@ -27,8 +27,10 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.FileDownloadOff
 import androidx.compose.material.icons.filled.HeartBroken
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
@@ -65,6 +67,7 @@ import com.hippo.ehviewer.download.downloadDir
 import com.hippo.ehviewer.download.downloadLocation
 import com.hippo.ehviewer.download.tempDownloadDir
 import com.hippo.ehviewer.restore.fromPandaChaika
+import com.hippo.ehviewer.todownload.ToDownload
 import com.hippo.ehviewer.ui.destinations.ReaderScreenDestination
 import com.hippo.ehviewer.ui.reader.ReaderScreenArgs
 import com.hippo.ehviewer.ui.tools.DialogState
@@ -204,26 +207,57 @@ suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): 
             val cloudFav = Settings.favCat.mapIndexed { index, name ->
                 getFavoriteIcon(galleryInfo.favoriteSlot == index) to name
             }
+            // Fork: 「待下载」 of the local favorites, see ToDownload
+            val toDownload = getFavoriteIcon(ToDownload.contains(galleryInfo.gid)) to appCtx.getString(R.string.local_favorites_to_download)
             val items = buildList {
                 if (isFavorited) {
                     val remove = Icons.Default.HeartBroken to appCtx.getString(R.string.remove_from_favourites)
                     add(remove)
                 }
                 add(localFav)
+                add(toDownload)
                 addAll(cloudFav)
             }
             if (galleryInfo.favoriteSlot >= 0 && galleryInfo.favoriteNote == null) {
                 galleryInfo.favoriteNote = bgWork { EhEngine.getFavoriteNote(galleryInfo.gid, galleryInfo.token) }
             }
             // Fork: no favorite note to write, the note already there is kept
-            val slot = awaitSelectItemWithIconInCircle(items, title = R.string.add_favorites_dialog_title)
-            return doModifyFavorites(galleryInfo, if (isFavorited) slot - 2 else slot - 1, localFavorited, galleryInfo.favoriteNote.orEmpty())
+            val picked = awaitSelectItemWithIconInCircle(items, title = R.string.add_favorites_dialog_title) - if (isFavorited) 1 else 0
+            return when {
+                picked < 0 -> doModifyFavorites(galleryInfo, NOT_FAVORITED, localFavorited)
+                picked == 0 -> doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited)
+                picked == 1 -> addToDownload(galleryInfo)
+                else -> doModifyFavorites(galleryInfo, picked - 2, localFavorited, galleryInfo.favoriteNote.orEmpty())
+            }
         } else {
             return doModifyFavorites(galleryInfo, if (isFavorited) NOT_FAVORITED else defaultFavSlot, localFavorited)
+        }
+    } else if (choose) {
+        // Fork: signed out, or an album of 紳士漫畫: the local favorites or 「待下载」
+        val items = buildList {
+            if (localFavorited) add(Icons.Default.HeartBroken to appCtx.getString(R.string.remove_from_favourites))
+            add(getFavoriteIcon(localFavorited) to appCtx.getString(R.string.local_favorites))
+            add(getFavoriteIcon(ToDownload.contains(galleryInfo.gid)) to appCtx.getString(R.string.local_favorites_to_download))
+        }
+        val picked = awaitSelectItemWithIconInCircle(items, title = R.string.add_favorites_dialog_title) - if (localFavorited) 1 else 0
+        return when (picked) {
+            // Removed: out of the local favorites (and so of 「待下载」)
+            -1 -> doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited = true)
+            // Already a local favorite: kept
+            0 -> if (localFavorited) true else doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited = false)
+            else -> addToDownload(galleryInfo)
         }
     } else {
         return doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited)
     }
+}
+
+/** Fork: puts [galleryInfo] in 「待下载」, and so in the local favorites, see ToDownload. Returns true: it is in. */
+suspend fun addToDownload(galleryInfo: GalleryInfo): Boolean {
+    ToDownload.add(listOf(galleryInfo))
+    if (galleryInfo.favoriteSlot == NOT_FAVORITED) galleryInfo.favoriteSlot = LOCAL_FAVORITED
+    FavouriteStatusRouter.notify(galleryInfo)
+    return true
 }
 
 /**
@@ -367,6 +401,22 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     }
     if (downloaded) {
         action(Icons.AutoMirrored.Default.DriveFileMove, R.string.download_move_dialog_title) { showMoveDownloadLabel(info) }
+    }
+    // Fork: 「待下载」, the local favorites to download on any device, see ToDownload
+    if (ToDownload.contains(info.gid)) {
+        action(Icons.Default.FileDownloadOff, R.string.to_download_remove) {
+            ToDownload.remove(listOf(info.gid))
+            tip(R.string.to_download_removed)
+        }
+    } else {
+        action(Icons.Default.DownloadForOffline, R.string.to_download_add) {
+            runSuspendCatching {
+                addToDownload(info)
+                tip(R.string.to_download_added)
+            }.onFailure {
+                tip(R.string.add_to_favorite_failure)
+            }
+        }
     }
     // Fork: last, the local favorites, like opening the gallery does (AutoLocalFavorite); the cloud collections are in
     // the item above
