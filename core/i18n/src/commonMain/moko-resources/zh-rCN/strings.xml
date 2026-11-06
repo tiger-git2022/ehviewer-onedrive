@@ -804,10 +804,7 @@
     <string name="wnacg_search_blocked">绅士漫画要先验证，这次结果里没有它的相册</string>
     <string name="to_download">待下载</string>
     <string name="local_favorites_to_download">本地收藏 · 待下载</string>
-    <string name="to_download_add">加入待下载</string>
     <string name="to_download_remove">移出待下载</string>
-    <string name="to_download_added">已加入待下载</string>
-    <string name="to_download_removed">已移出待下载</string>
     <string name="to_download_remove_message">从「待下载」移出 %d 本？它们仍在本地收藏中。</string>
     <string name="preview_error_unknown_host">找不到服务器</string>
     <string name="preview_error_unreachable">连不上服务器</string>

@@ -24,6 +24,16 @@ class WnacgSearchTest {
     }
 
     @Test
+    fun namesAsTheTitlesWriteThem() {
+        val names = mapOf("yamashita kurowo" to "山下クロヲ")
+        val nameOf = { _: String, value: String -> names[value] ?: value }
+        assertEquals(WnacgQuery("山下クロヲ", null), WnacgQuery.fromKeyword("""a:"yamashita kurowo$"""", nameOf))
+        assertEquals(WnacgQuery("山下クロヲ other", null), WnacgQuery.fromKeyword("""artist:"yamashita kurowo$" a:other$""", nameOf))
+        // Without the tag database: as the tag
+        assertEquals(WnacgQuery("yamashita kurowo", null), WnacgQuery.fromKeyword("""a:"yamashita kurowo$""""))
+    }
+
+    @Test
     fun cannotSearchOtherTags() {
         assertNull(WnacgQuery.fromKeyword("""f:"big breasts$""""))
         assertNull(WnacgQuery.fromKeyword("""word f:"big breasts$""""))

@@ -822,10 +822,7 @@
     <string name="wnacg_search_blocked">紳士漫畫 asked for its check, so its albums are not in these results</string>
     <string name="to_download">To download</string>
     <string name="local_favorites_to_download">Local favorites · To download</string>
-    <string name="to_download_add">Add to “To download”</string>
     <string name="to_download_remove">Remove from “To download”</string>
-    <string name="to_download_added">Added to “To download”</string>
-    <string name="to_download_removed">Removed from “To download”</string>
     <string name="to_download_remove_message">Remove %d from “To download”? They stay in the local favorites.</string>
     <string name="preview_error_unknown_host">Server not found</string>
     <string name="preview_error_unreachable">Cannot reach the server</string>

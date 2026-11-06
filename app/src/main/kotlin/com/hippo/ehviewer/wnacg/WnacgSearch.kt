@@ -2,10 +2,12 @@ package com.hippo.ehviewer.wnacg
 
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryInfo
+import com.ehviewer.core.model.TagNamespace
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.chapters.ChapterTitles
 import com.hippo.ehviewer.chapters.Wnacg
 import com.hippo.ehviewer.client.EhEngine
+import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.restore.BackupItem
@@ -42,8 +44,29 @@ data class WnacgQuery(val words: String, val language: String?) {
             else -> ""
         }
 
-        /** The words of an E-Hentai search ("f_search"), null when 紳士漫畫 cannot search it. */
-        fun fromKeyword(keyword: String): WnacgQuery? {
+        // Namespaces whose names its titles have as written (Japanese for most), which the tag database tells
+        private val WRITTEN = mapOf(
+            "a" to TagNamespace.Artist, "artist" to TagNamespace.Artist,
+            "g" to TagNamespace.Group, "group" to TagNamespace.Group, "circle" to TagNamespace.Group,
+            "cos" to TagNamespace.Cosplayer, "cosplayer" to TagNamespace.Cosplayer,
+        )
+
+        /**
+         * The name of an artist, a group or a cosplayer as the titles have it: "山下クロヲ" for `a:"yamashita kurowo$"`
+         * when the tag database has it, as the tag otherwise. Parodies and characters stay as they are, the database
+         * having their Chinese names, which the Japanese titles do not.
+         */
+        fun writtenName(namespace: String, value: String): String {
+            val ns = WRITTEN[namespace.lowercase()] ?: return value
+            if (!EhTagDatabase.initialized) return value
+            return runCatching { EhTagDatabase.getTranslation(ns.prefix, value.lowercase()) }.getOrNull() ?: value
+        }
+
+        /**
+         * The words of an E-Hentai search ("f_search"), null when 紳士漫畫 cannot search it. [nameOf] tells how the
+         * titles write a name of a tag.
+         */
+        fun fromKeyword(keyword: String, nameOf: (namespace: String, value: String) -> String = ::writtenName): WnacgQuery? {
             val words = mutableListOf<String>()
             var language: String? = null
             for (match in TOKEN.findAll(keyword)) {
@@ -55,7 +78,7 @@ data class WnacgQuery(val words: String, val language: String?) {
                 val namespace = ns.lowercase()
                 when {
                     namespace.isEmpty() -> words += value
-                    namespace in NAMES -> words += value
+                    namespace in NAMES -> words += nameOf(namespace, value)
                     namespace in LANGUAGES -> when (val lang = languageOf(value)) {
                         null -> Unit
                         "" -> return null
@@ -70,14 +93,14 @@ data class WnacgQuery(val words: String, val language: String?) {
         }
 
         /** The search of [lub], null when 紳士漫畫 cannot do it (the front page, the popular, a tag...). */
-        fun of(lub: ListUrlBuilder): WnacgQuery? {
+        fun of(lub: ListUrlBuilder, nameOf: (namespace: String, value: String) -> String = ::writtenName): WnacgQuery? {
             val keyword = lub.keyword?.trim()?.ifEmpty { null } ?: return null
             val query = when (lub.mode) {
-                ListUrlBuilder.MODE_NORMAL -> fromKeyword(keyword)
+                ListUrlBuilder.MODE_NORMAL -> fromKeyword(keyword, nameOf)
                 ListUrlBuilder.MODE_TAG -> {
                     val ns = keyword.substringBefore(':', "").lowercase()
                     val value = keyword.substringAfter(':').trim('$', '"', ' ')
-                    if (ns in NAMES && value.isNotEmpty()) WnacgQuery(value, null) else null
+                    if (ns in NAMES && value.isNotEmpty()) WnacgQuery(nameOf(ns, value), null) else null
                 }
                 else -> null
             } ?: return null
