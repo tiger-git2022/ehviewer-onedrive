@@ -859,14 +859,25 @@ object FavoritesIndexSync {
         if (!pandaDue()) return
         val missing = FavoritesIndexMerger.missingPandaTitles(currentIndex(), current())
         var failures = 0
-        var failed = false
+        var error: String? = null
         for ((i, gallery) in missing.withIndex()) {
             if (i != 0) delay(PANDA_INTERVAL_MILLIS)
             mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_panda_titles, i, missing.size)
             val query = FavoritesIndexMerger.pandaQuery(gallery) ?: continue
-            val title = searchPandaTitle(gallery, query)
+            val title = try {
+                searchPandaTitle(gallery, query)
+            } catch (e: TimeoutCancellationException) {
+                logcat(TAG) { "PandaChaika search timed out: $query" }
+                error = appCtx.getString(R.string.onedrive_sync_panda_timeout, PANDA_REQUEST_TIMEOUT_MILLIS / 1000)
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logcat(TAG, e)
+                error = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+                null
+            }
             if (title == null) {
-                failed = true
                 if (++failures >= PANDA_MAX_FAILURES) break
                 continue
             }
@@ -875,35 +886,36 @@ object FavoritesIndexSync {
             mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_panda_titles, i + 1, missing.size)
             onBatch()
         }
-        val retryAt = if (failed) now() + PANDA_RETRY_AFTER_MILLIS else 0L
-        if (OneDriveSyncState.pandaRetryAt.value != retryAt) {
-            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.pandaRetryAt] = retryAt }
+        // Fork: the reason is kept for the settings, which show it with the time of the next try
+        val retryAt = if (error != null) now() + PANDA_RETRY_AFTER_MILLIS else 0L
+        if (OneDriveSyncState.pandaRetryAt.value != retryAt || OneDriveSyncState.pandaError.value != error) {
+            OneDriveSyncState.withMutableSnapshot {
+                it[OneDriveSyncState.pandaRetryAt] = retryAt
+                it[OneDriveSyncState.pandaError] = error
+            }
         }
     }
 
     /**
      * The default title of [gallery] on panda.chaika.moe, "" when none matches. The match may be on a later page of a
-     * common title: a miss is kept only after the last page (or many). Null when a search failed or took too long.
+     * common title: a miss is kept only after the last page (or many). Throws when a search fails or takes longer than
+     * [PANDA_REQUEST_TIMEOUT_MILLIS] (a [TimeoutCancellationException]).
      */
-    private suspend fun searchPandaTitle(gallery: IndexedGallery, query: String): String? {
+    private suspend fun searchPandaTitle(gallery: IndexedGallery, query: String): String {
         var page = 1
         while (true) {
-            val result = try {
-                withTimeout(PANDA_REQUEST_TIMEOUT_MILLIS) { PandaChaika.search(query, page) }
-            } catch (e: TimeoutCancellationException) {
-                logcat(TAG) { "PandaChaika search timed out: $query, page $page" }
-                return null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                logcat(TAG, e)
-                return null
-            }
+            val result = withTimeout(PANDA_REQUEST_TIMEOUT_MILLIS) { PandaChaika.search(query, page) }
             val title = FavoritesIndexMerger.pandaDefaultTitle(gallery, result.archives.map { it.title to it.titleJpn })
             if (title.isNotEmpty() || !result.hasNext || page >= PANDA_MAX_PAGES) return title
             page++
             delay(PANDA_INTERVAL_MILLIS)
         }
+    }
+
+    /** Fork: asked from the settings, panda.chaika.moe is tried again with the next work, not after the wait. */
+    suspend fun retryPandaNow() {
+        if (OneDriveSyncState.pandaRetryAt.value == 0L) return
+        OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.pandaRetryAt] = 0L }
     }
 
     /** panda.chaika.moe did not fail lately, see [PANDA_RETRY_AFTER_MILLIS]. */

@@ -257,14 +257,19 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
                         val workError by OneDriveSyncState.cloudFavoritesWorkError.collectAsState()
                         val fullRequested by OneDriveSyncState.cloudFavoritesFullRequested.collectAsState()
+                        // Fork: PandaChaika failed, why and when it is tried again
+                        val pandaRetryAt by OneDriveSyncState.pandaRetryAt.collectAsState()
+                        val pandaError by OneDriveSyncState.pandaError.collectAsState()
+                        val pandaFailed = pandaError?.takeIf { pandaRetryAt > 0L }
                         // Read again when the work starts or stops
                         val status by produceState<FavoritesIndexSync.Status?>(null, working, workInfo) {
                             // Fork: the cloud favorites may fail to load (out of memory), the status is then left out
                             value = runSuspendCatching { FavoritesIndexSync.status() }.getOrNull()
                         }
                         // Also stopped before its first page was saved: no checkpoint yet, but the reason or the asked read is kept
-                        val unfinished = status?.let { it.unfinished || it.missingTitles > 0 } == true || workInfo.waiting || workError != null || fullRequested
-                        val statusText = status.takeIf { unfinished }?.let { cloudFavoritesStatusText(it, workInfo, workError) }
+                        val unfinished = status?.let { it.unfinished || it.missingTitles > 0 } == true || workInfo.waiting || workError != null || fullRequested ||
+                            pandaFailed != null
+                        val statusText = status.takeIf { unfinished }?.let { cloudFavoritesStatusText(it, workInfo, workError, pandaFailed, pandaRetryAt) }
                         Column {
                             Preference(
                                 title = stringResource(id = R.string.onedrive_sync_favorites_index_refresh),
@@ -289,6 +294,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                         working -> snackbar(workText)
                                         // Goes on from where it stopped, now and in the foreground
                                         unfinished -> {
+                                            FavoritesIndexSync.retryPandaNow()
                                             resumeCloudFavoritesWork(appCtx)
                                             snackbar(string(R.string.onedrive_sync_cloud_favorites_resumed))
                                         }
@@ -437,7 +443,13 @@ private fun dateTime(time: Long): String {
 
 /** Where an unfinished read of the cloud favorites stands while the work does not run, and why it stopped. */
 @Composable
-private fun cloudFavoritesStatusText(status: FavoritesIndexSync.Status, workInfo: CloudFavoritesWorkInfo, error: String?): String {
+private fun cloudFavoritesStatusText(
+    status: FavoritesIndexSync.Status,
+    workInfo: CloudFavoritesWorkInfo,
+    error: String?,
+    pandaError: String?,
+    pandaRetryAt: Long,
+): String {
     val context = LocalContext.current
     return buildList {
         if (status.unfinished) add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_read, status.read, status.total))
@@ -453,6 +465,7 @@ private fun cloudFavoritesStatusText(status: FavoritesIndexSync.Status, workInfo
             },
         )
         error?.let { add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_error, it)) }
+        pandaError?.let { add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_panda, it, dateTime(pandaRetryAt))) }
         add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_tap))
     }.joinToString("\n")
 }
