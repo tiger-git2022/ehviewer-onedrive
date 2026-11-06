@@ -15,6 +15,16 @@ fun splitSearchTags(query: String): Pair<List<String>, String> {
     return tags to text
 }
 
+// A tag with its namespace, quoted or not, `$` or not: its value
+private val TagValueRegex = Regex("""(?<!\S)[-~]?[a-z]+:(?:"([^"]*?)\$?"|([^\s"]+?)\$?)(?!\S)""")
+
+/**
+ * The text of [query] without the syntax of its tags: "yamashita kurowo mind control" for
+ * `a:"yamashita kurowo$" f:"mind control$"`, what a long press on it copies.
+ */
+fun plainSearchText(query: String): String = query.replace(TagValueRegex) { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+    .trim().replace(Whitespace, " ")
+
 /** The search of [tags] and [text], as E-Hentai takes it: tags and text apart from each other with a space. */
 fun joinSearchTags(tags: List<String>, text: CharSequence): String = buildString {
     tags.joinTo(this, " ")

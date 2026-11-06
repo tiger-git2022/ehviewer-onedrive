@@ -32,7 +32,7 @@ import com.hippo.ehviewer.util.addTextToClipboard
 /**
  * One search suggestion as a card of the two staggered columns of the search bar (fork, like the search history of
  * the Mihon fork): a history entry with its delete button, a tag with its translation, or a gallery link. A long press
- * copies its text (the tags of a history entry as searched).
+ * copies its text, the values of its tags only (see [plainSearchText]).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -58,7 +58,7 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
                 onClick = { suggestion.onClick() },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    with(context) { addTextToClipboard(suggestion.keyword, useToast = true) }
+                    with(context) { addTextToClipboard(plainSearchText(suggestion.keyword), useToast = true) }
                 },
             ),
         ) {

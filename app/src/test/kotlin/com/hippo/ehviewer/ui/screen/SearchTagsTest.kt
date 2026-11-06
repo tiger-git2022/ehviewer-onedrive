@@ -5,6 +5,14 @@ import kotlin.test.assertEquals
 
 class SearchTagsTest {
     @Test
+    fun theTextOfTheTags() {
+        assertEquals("yamashita kurowo", plainSearchText("""a:"yamashita kurowo$""""))
+        assertEquals("greco roman mind control", plainSearchText("""artist:"greco roman$" f:"mind control$""""))
+        assertEquals("chinese ムニテー", plainSearchText("""-l:chinese$  ムニテー"""))
+        assertEquals("ナマイキ盛り", plainSearchText("ナマイキ盛り"))
+    }
+
+    @Test
     fun tagsAreTakenOutOfTheSearch() {
         assertEquals(listOf("f:\"big breasts$\"", "l:chinese$") to "", splitSearchTags("f:\"big breasts$\" l:chinese$"))
         assertEquals(listOf("f:\"big breasts$\"", "l:chinese$") to "english", splitSearchTags("f:\"big breasts$\" english l:chinese$"))
