@@ -29,7 +29,8 @@ class BackupPage<T>(val items: List<BackupItem<T>>, val postedTimes: List<Long>,
  * [onError] is told when the other site failed: the page of E-Hentai then shows alone. [onEhPage] is told each page of
  * E-Hentai before the other site is asked for its galleries. [moreEhKeys] and [moreKeys] tell more keys of a gallery
  * listed and of one of the other site: one of the other site with a key of one listed, or of [hiddenKeys], does not
- * show.
+ * show. [samePages] tells if galleries of a same key and of these pages are the same (any are by default): one of a
+ * title and pages E-Hentai listed does not show.
  */
 open class BackupMerger<T>(
     private val accept: suspend (BaseGalleryInfo) -> Boolean,
@@ -43,6 +44,7 @@ open class BackupMerger<T>(
     private val moreEhKeys: (BaseGalleryInfo) -> List<String> = { emptyList() },
     private val moreKeys: (title: String) -> List<String> = { emptyList() },
     private val hiddenKeys: () -> Set<String> = { emptySet() },
+    private val samePages: (Int, Int) -> Boolean = { _, _ -> true },
 ) {
     enum class Load { Refresh, Append, Prepend }
 
@@ -62,7 +64,8 @@ open class BackupMerger<T>(
     private val loadedGids = mutableSetOf<Long>()
     private val shown = mutableSetOf<Long>()
     private val ehGids = mutableSetOf<Long>()
-    private val ehTitles = mutableSetOf<String>()
+    // The keys of the titles listed by E-Hentai, with the pages of the galleries of each
+    private val ehTitles = mutableMapOf<String, MutableSet<Int>>()
     private val askedTitles = mutableSetOf<Long>()
 
     // The newest a page appended at a key may have, and the oldest a page prepended at a key
@@ -76,9 +79,9 @@ open class BackupMerger<T>(
         runSuspendCatching { onEhPage(page) }.onFailure { logcat(TAG, it) }
         page.forEach { info ->
             ehGids += info.gid
-            info.title?.let { ehTitles += titleKeys(it, info.simpleLanguage) }
-            info.titleJpn?.let { ehTitles += titleKeys(it, info.simpleLanguage) }
-            ehTitles += moreEhKeys(info)
+            info.title?.let { addEhKeys(titleKeys(it, info.simpleLanguage), info.pages) }
+            info.titleJpn?.let { addEhKeys(titleKeys(it, info.simpleLanguage), info.pages) }
+            addEhKeys(moreEhKeys(info), info.pages)
         }
         val times = page.mapNotNull { it.postedMillis() }
         val upper = when {
@@ -110,6 +113,8 @@ open class BackupMerger<T>(
         interleave(page, picked)
     }
 
+    private fun addEhKeys(keys: List<String>, pages: Int) = keys.forEach { ehTitles.getOrPut(it) { mutableSetOf() } += pages }
+
     /** The titles of the galleries of the other site fetched so far, shown or not. */
     fun fetchedTitles(): List<String> = fetched
 
@@ -121,14 +126,16 @@ open class BackupMerger<T>(
         val asked = page.filter { it.gid !in askedTitles }
         if (asked.isEmpty()) return
         askedTitles += asked.map { it.gid }
-        val language = asked.associate { it.gid to it.simpleLanguage }
+        val byGid = asked.associateBy { it.gid }
         runSuspendCatching { moreTitles(asked) }.onFailure { logcat(TAG, it) }.getOrNull()?.forEach { (gid, titles) ->
-            titles.forEach { ehTitles += titleKeys(it, language[gid]) }
+            val info = byGid[gid]
+            titles.forEach { addEhKeys(titleKeys(it, info?.simpleLanguage), info?.pages ?: 0) }
         }
     }
 
     private fun Item<T>.sameTitleAsEh(hidden: Set<String>) = listOfNotNull(info.title, info.titleJpn).any { title ->
-        titleKeys(title, info.simpleLanguage).any { it in ehTitles } || moreKeys(title).any { it in ehTitles || it in hidden }
+        val listed = { key: String -> ehTitles[key]?.any { samePages(it, info.pages) } == true }
+        titleKeys(title, info.simpleLanguage).any(listed) || moreKeys(title).any { listed(it) || it in hidden }
     }
 
     private suspend fun loadUntil(lower: Long) = sources.forEach { source ->
