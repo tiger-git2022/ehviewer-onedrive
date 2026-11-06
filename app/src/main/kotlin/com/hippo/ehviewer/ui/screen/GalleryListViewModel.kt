@@ -108,9 +108,10 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                     if (params is LoadParams.Refresh) {
                         wnacgBlocked.value = false
                         // 紳士漫畫 first: PandaChika leaves out the works it has (mostly Chinese translations)
+                        val wnacg = wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true }
                         backups = listOfNotNull(
-                            wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true },
-                            PandaChaikaMerger.of(urlBuilder) { hideFavoritedPref.value },
+                            wnacg,
+                            PandaChaikaMerger.of(urlBuilder, { hideFavoritedPref.value }) { wnacg?.fetchedTitles().orEmpty() },
                         )
                     }
                     val mergers = backups

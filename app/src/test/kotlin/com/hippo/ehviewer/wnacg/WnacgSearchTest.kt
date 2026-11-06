@@ -45,6 +45,7 @@ class WnacgSearchTest {
             "[くろほんやさん (山下クロヲ)] メスガキ×無知×鞭 [DL版]",
             "(C104) [くろほんやさん (山下クロヲ、ねこ電力)] トモダチのママ [中国翻訳]",
             "[くろほんやさん (ねこ電力)] J○姪っ子の弱味を握ってから…",
+            "[くろほんやさん (山下クロヲ)] トモダチのママ2",
             "[Kurohonyasan (Yamashita Kurowo)] Mesugaki [English]",
         )
         assertEquals("山下クロヲ", guessWrittenName(WnacgName("a", "yamashita kurowo"), titles))
@@ -53,6 +54,8 @@ class WnacgSearchTest {
         // Latin letters only, or no one name for most: none
         assertNull(guessWrittenName(WnacgName("a", "x"), listOf("[Kurohonyasan (Yamashita Kurowo)] Mesugaki")))
         assertNull(guessWrittenName(WnacgName("a", "x"), listOf("[A] 本", "[B] 本", "[C] 本")))
+        // As many of two: none
+        assertNull(guessWrittenName(WnacgName("a", "x"), listOf("[作者] 本", "[別人] 本")))
     }
 
     @Test

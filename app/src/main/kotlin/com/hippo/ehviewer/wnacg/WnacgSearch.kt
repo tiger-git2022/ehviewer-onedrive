@@ -171,8 +171,10 @@ fun guessWrittenName(name: WnacgName, titles: List<String>): String? {
         }.map { it.trim() }.filter { it.isNotEmpty() && it.any { c -> c.code > 0x7f } }.toSet()
     }.filter { it.isNotEmpty() }
     if (named.isEmpty()) return null
-    val (best, count) = named.flatten().groupingBy { it }.eachCount().maxByOrNull { it.value } ?: return null
-    return best.takeIf { count * 2 >= named.size }
+    val counts = named.flatten().groupingBy { it }.eachCount()
+    val (best, count) = counts.maxByOrNull { it.value } ?: return null
+    // Most of them, and no other as many: else none
+    return best.takeIf { count * 2 > named.size && counts.values.count { it == count } == 1 }
 }
 
 /**

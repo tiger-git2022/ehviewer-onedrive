@@ -101,6 +101,14 @@ class PandaChaikaSearchTest {
         // An album of 紳士漫畫 (gid < -1) merged before: the same work in any language; of E-Hentai, only the same title
         val page = listOf(eh(-5, 1000, "[A (B)] Work [中国翻訳]"), eh(10, 990, "[A (B)] Other [中国翻訳]"), eh(11, 900))
         assertEquals(listOf(-5L, 10, 2, 11), merger.merge(Load.Refresh, null, page, null, "11").map { it.gid })
+        // An older album, fetched for a later page: already
+        val later = PandaChaikaMerger(
+            accept = { true },
+            sources = listOf { PandaChaikaApi.GalleryPage(listOf(panda(1, 950, "[A (B)] Work [DL版]")), hasNext = false) },
+            onFound = {},
+            wnacgTitles = { listOf("[A (B)] Work [中国翻訳]") },
+        )
+        assertEquals(listOf(10L, 11), later.merge(Load.Refresh, null, listOf(eh(10, 1000), eh(11, 900)), null, "11").map { it.gid })
     }
 
     @Test

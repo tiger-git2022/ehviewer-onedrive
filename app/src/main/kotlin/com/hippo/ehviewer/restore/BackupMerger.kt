@@ -28,7 +28,8 @@ class BackupPage<T>(val items: List<BackupItem<T>>, val postedTimes: List<Long>,
  * [moreTitles] can tell more titles of galleries of E-Hentai, asked only when a gallery of the other site would show.
  * [onError] is told when the other site failed: the page of E-Hentai then shows alone. [onEhPage] is told each page of
  * E-Hentai before the other site is asked for its galleries. [moreEhKeys] and [moreKeys] tell more keys of a gallery
- * listed and of one of the other site: one of the other site with a key of one listed does not show.
+ * listed and of one of the other site: one of the other site with a key of one listed, or of [hiddenKeys], does not
+ * show.
  */
 open class BackupMerger<T>(
     private val accept: suspend (BaseGalleryInfo) -> Boolean,
@@ -41,6 +42,7 @@ open class BackupMerger<T>(
     private val onEhPage: suspend (List<BaseGalleryInfo>) -> Unit = {},
     private val moreEhKeys: (BaseGalleryInfo) -> List<String> = { emptyList() },
     private val moreKeys: (title: String) -> List<String> = { emptyList() },
+    private val hiddenKeys: () -> Set<String> = { emptySet() },
 ) {
     enum class Load { Refresh, Append, Prepend }
 
@@ -100,12 +102,16 @@ open class BackupMerger<T>(
         val inRange = { item: Item<T> -> item.posted in lower..upper && item.info.gid !in shown && item.info.gid !in ehGids }
         if (loaded.none(inRange)) return page
         askMoreTitles(page)
-        val picked = loaded.filter { inRange(it) && !it.sameTitleAsEh() }
+        val hidden = hiddenKeys()
+        val picked = loaded.filter { inRange(it) && !it.sameTitleAsEh(hidden) }
         if (picked.isEmpty()) return page
         picked.forEach { shown += it.info.gid }
         onFound(picked.map { it.source })
         interleave(page, picked)
     }
+
+    /** The titles of the galleries of the other site fetched so far, shown or not. */
+    fun fetchedTitles(): List<String> = loaded.mapNotNull { it.info.title }
 
     private suspend fun askMoreTitles(page: List<BaseGalleryInfo>) {
         val asked = page.filter { it.gid !in askedTitles }
@@ -117,8 +123,8 @@ open class BackupMerger<T>(
         }
     }
 
-    private fun Item<T>.sameTitleAsEh() = listOfNotNull(info.title, info.titleJpn).any { title ->
-        titleKeys(title, info.simpleLanguage).any { it in ehTitles } || moreKeys(title).any { it in ehTitles }
+    private fun Item<T>.sameTitleAsEh(hidden: Set<String>) = listOfNotNull(info.title, info.titleJpn).any { title ->
+        titleKeys(title, info.simpleLanguage).any { it in ehTitles } || moreKeys(title).any { it in ehTitles || it in hidden }
     }
 
     private suspend fun loadUntil(lower: Long) = sources.forEach { source ->
