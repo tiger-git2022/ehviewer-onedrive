@@ -48,6 +48,9 @@ object ArchivePages {
     }
 }
 
-/** Pages shown for [this] download: once downloaded, those in its archive when known, else those of the gallery. */
+/**
+ * Pages shown for [this] download: once downloaded, those in its archive when known, else those picked for it (see
+ * [PartialDownloads]) or those of the gallery.
+ */
 fun DownloadInfo.shownPages(counts: Map<Long, Int>, finished: Boolean = state == DownloadInfo.STATE_FINISH) =
-    if (finished) counts[gid] ?: pages else pages
+    if (finished) counts[gid] ?: PartialDownloads.count(gid, pages) ?: pages else pages

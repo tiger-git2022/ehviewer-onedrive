@@ -33,6 +33,7 @@ import com.hippo.ehviewer.client.EhUrl.referer
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.exception.FatalException
 import com.hippo.ehviewer.client.exception.QuotaExceededException
+import com.hippo.ehviewer.download.PartialDownloads
 import com.hippo.ehviewer.util.displayString
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.decrementAndFetch
@@ -108,43 +109,68 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
     }
 
     private fun notifyPageSuccess(index: Int) {
+        val (finished, downloaded, total) = downloadCounts()
         synchronized(mSpiderListeners) {
             mSpiderListeners.forEach {
                 it.onPageSuccess(
                     index,
-                    mFinishedPages.load(),
-                    mDownloadedPages.load(),
-                    pageStates.size,
+                    finished,
+                    downloaded,
+                    total,
                 )
             }
         }
     }
 
     private fun notifyPageFailure(index: Int, error: String?) {
+        val (finished, downloaded, total) = downloadCounts()
         synchronized(mSpiderListeners) {
             mSpiderListeners.forEach {
                 it.onPageFailure(
                     index,
                     error,
-                    mFinishedPages.load(),
-                    mDownloadedPages.load(),
-                    pageStates.size,
+                    finished,
+                    downloaded,
+                    total,
                 )
             }
         }
     }
 
     private fun notifyAllPageDownloaded(failed: Boolean) {
+        val (finished, downloaded, total) = downloadCounts()
         synchronized(mSpiderListeners) {
             mSpiderListeners.forEach {
                 it.onFinish(
-                    mFinishedPages.load(),
-                    mDownloadedPages.load(),
-                    pageStates.size,
+                    finished,
+                    downloaded,
+                    total,
                     failed,
                 )
             }
         }
+    }
+
+    /**
+     * Fork: the pages to download when only some are, see PartialDownloads; null for all of them. Set on entering the
+     * download mode.
+     */
+    @Volatile
+    private var downloadTargets: Set<Int>? = null
+
+    /** Fork: finished, downloaded (or failed) and total pages of the download: of the pages picked for it, if any. */
+    private fun downloadCounts(): Triple<Int, Int, Int> {
+        val targets = downloadTargets ?: return Triple(mFinishedPages.load(), mDownloadedPages.load(), pageStates.size)
+        var finished = 0
+        var downloaded = 0
+        synchronized(mPageStateLock) {
+            targets.forEach {
+                val state = pageStates[it]
+                if (state == STATE_FINISHED) finished++
+                if (isStateDone(state)) downloaded++
+            }
+        }
+        return Triple(finished, downloaded, targets.size)
     }
 
     private fun notifyPageReady(index: Int) {
@@ -403,7 +429,16 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
         } else if (state == STATE_FINISHED) {
             notifyPageSuccess(index)
         }
-        if (mDownloadedPages.load() == size) {
+        // Fork: a download of some pages is done with them, see PartialDownloads
+        val targets = downloadTargets
+        if (targets != null) {
+            if (index in targets) {
+                val (finished, downloaded, total) = downloadCounts()
+                if (downloaded == total) {
+                    if (finished == total) archiveJob.start() else notifyAllPageDownloaded(failed = true)
+                }
+            }
+        } else if (mDownloadedPages.load() == size) {
             if (mFinishedPages.load() == size) {
                 archiveJob.start()
             } else {
@@ -474,7 +509,10 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
         @Synchronized
         fun enterDownloadMode() {
             if (isDownloadMode) return
-            updateRAList((0 until size).toList())
+            // Fork: only the pages picked, when only some are, see PartialDownloads
+            val targets = PartialDownloads.indices(galleryInfo.gid, size)
+            downloadTargets = targets?.toSet()
+            updateRAList(targets ?: (0 until size).toList())
             isDownloadMode = true
         }
 
@@ -524,7 +562,8 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
             check(index in 0 until size)
             val state = pageStates[index]
             if (!force && state == STATE_FINISHED) return notifyPageReady(index)
-            if (!isDownloadMode) {
+            // Fork: a page left out of a download of some pages is fetched for the reader as when reading
+            if (!isDownloadMode || downloadTargets?.contains(index) == false) {
                 synchronized(jobs) { doLaunchDownloadJob(index, force, orgImg) }
             }
             launch {

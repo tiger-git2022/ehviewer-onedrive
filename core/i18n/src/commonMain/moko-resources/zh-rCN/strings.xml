@@ -871,4 +871,12 @@
     <string name="search_history_with_tags">包含已选 tag 的记录</string>
     <string name="search_history_others">其他记录（点了添加 tag）</string>
     <string name="search_tag_suggestions">标签</string>
+    <string name="download_partial">下载部分页</string>
+    <string name="download_partial_hint">页码，如 1-30, 60-80</string>
+    <string name="download_partial_pages">共 %d 页，「60-」表示到最后一页</string>
+    <string name="download_partial_count">已选 %1$d 页，共 %2$d 页</string>
+    <string name="download_partial_all">已选全部 %d 页</string>
+    <string name="download_partial_none">1-%d 页内没有选中的页</string>
+    <string name="download_partial_invalid">格式不对，例：1-30, 60-80</string>
+    <string name="download_partial_replace_archive">这个本子已经打包成 CBZ。重新选页会删掉它，再重新下载所选的页。</string>
 </resources>

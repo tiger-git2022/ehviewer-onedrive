@@ -889,4 +889,12 @@
     <string name="search_history_with_tags">With the tags picked</string>
     <string name="search_history_others">Other searches, their tags are added</string>
     <string name="search_tag_suggestions">Tags</string>
+    <string name="download_partial">Download some pages</string>
+    <string name="download_partial_hint">Pages, e.g. 1-30, 60-80</string>
+    <string name="download_partial_pages">%d pages. 60- goes to the last one</string>
+    <string name="download_partial_count">%1$d of %2$d pages picked</string>
+    <string name="download_partial_all">All %d pages picked</string>
+    <string name="download_partial_none">No page picked within 1-%d</string>
+    <string name="download_partial_invalid">Type pages like 1-30, 60-80</string>
+    <string name="download_partial_replace_archive">This gallery is kept as a CBZ. Picking pages again deletes it and downloads the picked pages again.</string>
 </resources>

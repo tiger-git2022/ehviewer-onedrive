@@ -159,7 +159,9 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
                 mCurrentTask = info
                 with(info) {
                     archiveFile?.let {
-                        return onFinish(pages, pages, pages, failed = false)
+                        // Fork: of a download of some pages, those
+                        val count = PartialDownloads.count(gid, pages) ?: pages
+                        return onFinish(count, count, count, failed = false)
                     }
                     // Fork: a gallery E-Hentai removed downloads its archive from PandaChika
                     if (RestoredGalleries.isRestored(gid)) return startPandaChaikaDownload(this)
@@ -454,6 +456,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
         stopDownloadInternal(gid)
         val info = mAllInfoMap[gid]
         if (info != null) {
+            // Fork: and the pages picked, see PartialDownloads
+            PartialDownloads.remove(gid)
             // Remove from DB
             EhDB.removeDownloadInfo(info)
 
@@ -482,6 +486,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
         val list = gidList.mapNotNull { gid ->
             mAllInfoMap.remove(gid)
         }
+        // Fork: and the pages picked, see PartialDownloads
+        PartialDownloads.remove(list.map { it.gid })
         EhDB.removeDownloadInfo(list)
         sortMutex.withLock {
             allInfoList.removeAll(list.toSet())
@@ -718,7 +724,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
     override fun onGetPages(pages: Int) {
         launch {
             mCurrentTask?.let { info ->
-                info.total = pages
+                // Fork: of a download of some pages, those
+                info.total = PartialDownloads.count(info.gid, pages) ?: pages
                 mutableNotifyFlow.emit(info)
             } ?: logcat(TAG, LogPriority.ERROR) { "Current task is null, but it should not be" }
         }

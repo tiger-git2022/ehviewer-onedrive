@@ -8,6 +8,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.ehviewer.core.database.model.DownloadInfo
 import com.hippo.ehviewer.download.ArchivePages
 import com.hippo.ehviewer.download.DownloadManager
+import com.hippo.ehviewer.download.PartialDownloads
 import com.hippo.ehviewer.download.shownPages
 import kotlinx.coroutines.launch
 
@@ -20,11 +21,13 @@ fun rememberDownloadPages(info: DownloadInfo): Int {
     val state by DownloadManager.collectDownloadState(info.gid)
     val finished = state == DownloadInfo.STATE_FINISH
     val counts by ArchivePages.counts.collectAsState()
+    // Shown again when other pages are picked for it, see PartialDownloads
+    val picked by PartialDownloads.ranges.collectAsState()
     // Also when the app comes back: the CBZ may have been written back meanwhile
     val scope = rememberCoroutineScope()
     LifecycleResumeEffect(info.gid, finished) {
         val job = if (finished) scope.launch { ArchivePages.refresh(info) } else null
         onPauseOrDispose { job?.cancel() }
     }
-    return info.shownPages(counts, finished)
+    return picked.let { info.shownPages(counts, finished) }
 }
