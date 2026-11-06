@@ -330,6 +330,9 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                             LaunchedEffect(autoDownloadSlots) { AutoDownload.onOptionChanged() }
                             val slotFormat = stringResource(id = R.string.onedrive_sync_auto_download_slot)
                             val separator = stringResource(id = R.string.onedrive_sync_auto_download_separator)
+                            // Fork: 「待下载」 of the local favorites too, see ToDownload
+                            val toDownloadName = stringResource(id = R.string.local_favorites_to_download)
+                            fun slotName(slot: Int) = if (slot == AutoDownload.TO_DOWNLOAD_SLOT) toDownloadName else Settings.favCat[slot]
                             Preference(
                                 title = stringResource(id = R.string.onedrive_sync_auto_download),
                                 summary = if (chosenSlots.isEmpty()) {
@@ -337,20 +340,20 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                 } else {
                                     stringResource(
                                         id = R.string.onedrive_sync_auto_download_summary,
-                                        chosenSlots.joinToString(separator) { slotFormat.format(Settings.favCat[it]) },
+                                        chosenSlots.joinToString(separator) { slotFormat.format(slotName(it)) },
                                     )
                                 },
                             ) {
                                 launch {
                                     val chosen = awaitResult(chosenSlots, title = R.string.onedrive_sync_auto_download) {
                                         Column {
-                                            (0 until CLOUD_SLOT_COUNT).forEach { slot ->
+                                            (listOf(AutoDownload.TO_DOWNLOAD_SLOT) + (0 until CLOUD_SLOT_COUNT)).forEach { slot ->
                                                 LabeledCheckbox(
                                                     checked = slot in expectedValue,
                                                     onCheckedChange = { checked ->
                                                         expectedValue = if (checked) expectedValue + slot else expectedValue - slot
                                                     },
-                                                    label = Settings.favCat[slot],
+                                                    label = slotName(slot),
                                                 )
                                             }
                                         }
@@ -366,7 +369,7 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                                 // A label deleted meanwhile is not used, see AutoDownload.add
                                 val label = slotLabels[slot.toString()]?.takeIf { DownloadManager.containLabel(it) }
                                 Preference(
-                                    title = stringResource(id = R.string.onedrive_sync_auto_download_label, Settings.favCat[slot]),
+                                    title = stringResource(id = R.string.onedrive_sync_auto_download_label, slotName(slot)),
                                     summary = label ?: followDefault,
                                 ) {
                                     launch {

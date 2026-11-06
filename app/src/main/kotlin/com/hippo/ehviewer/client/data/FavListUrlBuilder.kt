@@ -29,8 +29,12 @@ data class FavListUrlBuilder(
     private var prev: String? = null,
     private var next: String? = null,
 ) {
+    // Fork: 「待下载」 is a part of the local favorites, see ToDownload
     val isLocal
-        get() = favCat == FAV_CAT_LOCAL
+        get() = favCat == FAV_CAT_LOCAL || favCat == FAV_CAT_TO_DOWNLOAD
+
+    val isToDownload
+        get() = favCat == FAV_CAT_TO_DOWNLOAD
 
     fun setIndex(index: String?, isNext: Boolean) {
         next = index.takeIf { isNext }
@@ -52,6 +56,9 @@ data class FavListUrlBuilder(
     companion object {
         const val FAV_CAT_ALL = -1
         const val FAV_CAT_LOCAL = -2
+
+        // Fork: 「待下载」 of the local favorites, see ToDownload
+        const val FAV_CAT_TO_DOWNLOAD = -3
         fun isValidFavCat(favCat: Int) = favCat in 0..9
     }
 }

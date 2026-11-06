@@ -379,6 +379,8 @@ object OneDriveSync {
                         }
                         // Fork: new favorites to download are looked for right away, not only by a sync
                         scope.launch { runCatching { FavoritesIndexSync.checkForAutoDownload() }.onFailure { logcat(TAG, it) } }
+                        // Fork: and what 「待下载」 could not start before
+                        AutoDownload.retryQueue()
                     }
                     Lifecycle.Event.ON_STOP -> {
                         inForeground = false
@@ -1098,7 +1100,7 @@ object OneDriveSync {
 
     /** Fork: the baseline of a merge with a changed cloud copy, only the gid and time of each record, see [readBaselineOrNull]. */
     private fun readShardedBaseline(cache: ShardCache<SyncGalleryRecord>, manifest: SectionManifest): List<SyncGalleryRecord>? = runCatching {
-        cache.read(manifest, SyncGalleryStamp.serializer()).map { SyncGalleryRecord(it.gid, it.time, BaselineGallery) }
+        cache.read(manifest, SyncGalleryStamp.serializer()).map { SyncGalleryRecord(it.gid, it.time, BaselineGallery, it.queued) }
     }.onFailure { logcat(TAG, it) }.getOrNull()
 
     /**
@@ -1185,7 +1187,7 @@ object OneDriveSync {
      */
     @Suppress("UNCHECKED_CAST")
     private fun <T> readBaselineOrNull(section: SyncSection<T>, file: File): T? = if (section === FavoritesSection || section === HistorySection) {
-        readSectionOrNull(file, ListSerializer(SyncGalleryStamp.serializer()))?.items?.map { SyncGalleryRecord(it.gid, it.time, BaselineGallery) } as T?
+        readSectionOrNull(file, ListSerializer(SyncGalleryStamp.serializer()))?.items?.map { SyncGalleryRecord(it.gid, it.time, BaselineGallery, it.queued) } as T?
     } else {
         readSectionOrNull(file, section.serializer)?.items
     }
@@ -1488,7 +1490,7 @@ object OneDriveSync {
 
 /** Fork: what a merge reads of a gallery of the baseline, see [OneDriveSync.readBaselineOrNull]. */
 @Serializable
-private class SyncGalleryStamp(val gid: Long, val time: Long)
+private class SyncGalleryStamp(val gid: Long, val time: Long, val queued: Long = 0)
 
 /** Fork: the gallery of every record of a baseline read as [SyncGalleryStamp]: the merge never takes it. */
 private val BaselineGallery = SyncGallery(gid = 0, token = "")

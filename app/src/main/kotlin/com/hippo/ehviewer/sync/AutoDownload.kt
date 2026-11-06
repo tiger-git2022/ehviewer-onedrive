@@ -8,10 +8,13 @@ import com.ehviewer.core.database.model.DownloadInfo
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.client.EhEngine
+import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.spider.downloadDirname
+import com.hippo.ehviewer.todownload.ToDownload
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
@@ -37,10 +40,17 @@ import splitties.systemservices.connectivityManager
  * to the front and with every sync, not only with the next change of the list. One listed while Android did not let the
  * app start a download from the background is started once it can, and a download that failed is started again when
  * the network is back, a few times (see [AutoDownloadRetry]).
+ *
+ * Fork: 「待下载」 (see [ToDownload]) works the same, as the slot [TO_DOWNLOAD_SLOT]: galleries put in on any device are
+ * added here, with a state of their own ([queueFile]).
  */
 object AutoDownload {
+    /** The slot of 「待下载」 in [OneDriveSyncState.autoDownloadSlots] and [OneDriveSyncState.autoDownloadLabels]. */
+    const val TO_DOWNLOAD_SLOT = FavListUrlBuilder.FAV_CAT_TO_DOWNLOAD
+
     private const val TAG = "AutoDownload"
     private val file get() = File(appCtx.filesDir, "auto_download.json")
+    private val queueFile get() = File(appCtx.filesDir, "auto_download_queue.json")
     private val json = Json { ignoreUnknownKeys = true }
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
@@ -65,6 +75,10 @@ object AutoDownload {
     @Volatile
     private var checkDue = true
 
+    /** The same as [checkDue], for 「待下载」. */
+    @Volatile
+    private var queueDue = true
+
     /**
      * Tracked downloads started, or seen waiting or downloading, in this process: one of them found not started was
      * stopped by the user. Not started without being here, it was cut off when the process ended, see [AutoDownloadRetry].
@@ -86,12 +100,18 @@ object AutoDownload {
             emptySet()
         }
 
+    /** The cloud favorites slots chosen. */
+    private val cloudSlots: Set<Int> get() = slots.filterTo(sortedSetOf()) { it >= 0 }
+
+    /** Galleries put in 「待下载」 are added. */
+    private val queueOn: Boolean get() = TO_DOWNLOAD_SLOT in slots
+
     /** Fork: new galleries of some slots are added, see [FavoritesIndexSync.checkForAutoDownload]. */
-    val isOn: Boolean get() = slots.isNotEmpty()
+    val isOn: Boolean get() = cloudSlots.isNotEmpty()
 
     /** After the cloud favorites list changed, see [FavoritesIndexSync]. */
     fun onCloudFavoritesSaved(cloud: CloudFavorites) {
-        if (slots.isEmpty()) {
+        if (cloudSlots.isEmpty()) {
             // Off: on again, it starts from then
             if (file.exists()) scope.launch { mutex.withLock { file.delete() } }
             return
@@ -125,13 +145,28 @@ object AutoDownload {
      * the network is back, when the app comes to the front and with every sync, see [FavoritesIndexSync].
      */
     fun retry() {
-        if (slots.isEmpty()) return
+        retryQueue()
+        if (cloudSlots.isEmpty()) return
         scope.launch {
             runCatching {
                 if (checkDue) {
                     check(FavoritesIndexSync.cloudFavorites())
                 } else {
-                    mutex.withLock { load()?.let { stored -> resume(stored).let { if (it != stored) save(it) } } }
+                    mutex.withLock { load(file)?.let { stored -> resume(stored).let { if (it != stored) save(file, it) } } }
+                }
+            }.onFailure { logcat(TAG, it) }
+        }
+    }
+
+    /** Fork: [retry] for 「待下载」 only, also when the app comes to the front, see [OneDriveSync]. */
+    fun retryQueue() {
+        if (!queueOn) return
+        scope.launch {
+            runCatching {
+                if (queueDue) {
+                    checkQueue()
+                } else {
+                    mutex.withLock { load(queueFile)?.let { stored -> resume(stored).let { if (it != stored) save(queueFile, it) } } }
                 }
             }.onFailure { logcat(TAG, it) }
         }
@@ -140,6 +175,13 @@ object AutoDownload {
     /** After the option changed: turning it on remembers what the slot holds now. */
     fun onOptionChanged() {
         scope.launch { runCatching { check(FavoritesIndexSync.cloudFavorites()) }.onFailure { logcat(TAG, it) } }
+        scope.launch { runCatching { checkQueue() }.onFailure { logcat(TAG, it) } }
+    }
+
+    /** Fork: 「待下载」 changed, on this device or by a sync, see [ToDownload]. */
+    fun onToDownloadChanged() {
+        if (!queueOn) return
+        scope.launch { runCatching { checkQueue() }.onFailure { logcat(TAG, it) } }
     }
 
     /** A download label renamed to [to], or deleted ([to] null): the slots that used it follow, see [OneDriveSyncState.autoDownloadLabels]. */
@@ -162,7 +204,7 @@ object AutoDownload {
     }
 
     private suspend fun checkLocked(cloud: CloudFavorites) {
-        val slots = slots
+        val slots = cloudSlots
         if (slots.isEmpty()) {
             // Turned off: turning it on again starts from then
             file.delete()
@@ -172,7 +214,7 @@ object AutoDownload {
         // Until the list was read completely once, galleries favorited long ago would look new
         if (cloud.refreshedAt == 0L) return
         val inSlots = cloud.galleries.filter { it.slot in slots }
-        val stored = load()?.takeIf { it.userKey == user }
+        val stored = load(file)?.takeIf { it.userKey == user }
         // A slot chosen just now: what it holds already is left alone
         val chosenNow = slots - stored?.slots.orEmpty()
         val state = State(
@@ -187,7 +229,7 @@ object AutoDownload {
         val kept = state.handled.intersect(inSlots.mapTo(HashSet()) { it.gid })
         if (new.isEmpty()) {
             val resumed = resume(state.copy(handled = kept))
-            if (resumed != stored) save(resumed)
+            if (resumed != stored) save(file, resumed)
             return
         }
         val infos = new.map {
@@ -211,8 +253,58 @@ object AutoDownload {
             running = state.running + started.associateWith { 0 },
         )
         // The ones just added are not in the downloads yet when started through the service
-        save(resume(added, skip = started + listed))
+        save(file, resume(added, skip = started + listed))
         logcat(TAG) { "Added ${infos.size} galleries of slots $slots to the downloads" }
+    }
+
+    private suspend fun checkQueue() = mutex.withLock {
+        try {
+            checkQueueLocked()
+            queueDue = false
+        } catch (e: Throwable) {
+            queueDue = true
+            throw e
+        }
+    }
+
+    /** [checkLocked] for 「待下载」: its galleries are local favorites, their details in the database. */
+    private suspend fun checkQueueLocked() {
+        if (!queueOn) {
+            // Turned off: turning it on again starts from then
+            queueFile.delete()
+            return
+        }
+        val queued = ToDownload.gids.value
+        val stored = load(queueFile)
+        // Chosen just now: what it holds already is left alone
+        val state = stored ?: State(userKey = "", slots = setOf(TO_DOWNLOAD_SLOT), handled = queued)
+        val new = queued - state.handled
+        // Galleries taken out are forgotten: put back in later, they count as new
+        val kept = state.handled.intersect(queued)
+        if (new.isEmpty()) {
+            val resumed = resume(state.copy(handled = kept))
+            if (resumed != stored) save(queueFile, resumed)
+            return
+        }
+        val infos: List<BaseGalleryInfo> = EhDB.loadGalleries(new)
+        // Pages unknown (a gallery the list told little of): asked to E-Hentai, tried again when it failed
+        infos.filter { it.pages <= 0 }.takeIf { it.isNotEmpty() }?.let { withContext(Dispatchers.IO) { EhEngine.fillGalleryListByApi(it) } }
+        val started = HashSet<Long>()
+        val listed = HashSet<Long>()
+        infos.forEach { info ->
+            if (info.pages > 0 && !DownloadManager.containDownloadInfo(info.gid)) {
+                if (add(info, TO_DOWNLOAD_SLOT)) started += info.gid else listed += info.gid
+            }
+        }
+        activeHere += started
+        val added = state.copy(
+            // One whose gallery is not in the database yet is looked at again with the next change
+            handled = kept + infos.map { it.gid },
+            unstarted = state.unstarted + listed,
+            running = state.running + started.associateWith { 0 },
+        )
+        save(queueFile, resume(added, skip = started + listed))
+        logcat(TAG) { "Added ${started.size + listed.size} galleries of 待下载 to the downloads" }
     }
 
     /**
@@ -272,11 +364,11 @@ object AutoDownload {
         }
     }
 
-    private fun load(): State? = runCatching { json.decodeFromString(State.serializer(), file.readText()) }
+    private fun load(file: File): State? = runCatching { json.decodeFromString(State.serializer(), file.readText()) }
         .onFailure { if (file.exists()) logcat(TAG, it) }
         .getOrNull()
 
-    private fun save(state: State) {
+    private fun save(file: File, state: State) {
         val temp = File(file.parentFile, "${file.name}.tmp")
         temp.writeText(json.encodeToString(State.serializer(), state))
         if (!temp.renameTo(file)) {

@@ -23,6 +23,7 @@ import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.PendingProgress
+import com.hippo.ehviewer.todownload.ToDownload
 import com.hippo.ehviewer.ui.main.CHINESE_LANGUAGE_FILTER
 import com.hippo.ehviewer.ui.main.isChinese
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
@@ -47,8 +48,30 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
     var chineseOnlyApplied: Boolean? = null
         private set
 
-    val data = snapshotFlow { urlBuilder.value.isLocal }.flatMapLatest { isLocalFav ->
-        if (isLocalFav) {
+    // Fork: and the size of 「待下载」, see ToDownload
+    val toDownloadCount = ToDownload.gids.map { it.size }
+
+    val data = snapshotFlow { urlBuilder.value.run { if (isToDownload) LIST_TO_DOWNLOAD else if (isLocal) LIST_LOCAL else LIST_CLOUD } }.flatMapLatest { list ->
+        if (list == LIST_TO_DOWNLOAD) {
+            // Fork: 「待下载」, a few galleries: all at once, the last put in first
+            Pager(PagingConfig(20)) {
+                object : PagingSource<Int, BaseGalleryInfo>() {
+                    override fun getRefreshKey(state: PagingState<Int, BaseGalleryInfo>): Int? = null
+                    override suspend fun load(params: LoadParams<Int>) = withIOContext {
+                        val marks = ToDownload.marks()
+                        val keyword = urlBuilder.value.keyword.orEmpty().trim()
+                        val galleries = EhDB.loadGalleries(ToDownload.gids.value)
+                            .filter { info -> keyword.isEmpty() || listOfNotNull(info.title, info.titleJpn).any { it.contains(keyword, ignoreCase = true) } }
+                            .sortedByDescending { marks[it.gid] ?: 0 }
+                        LoadResult.Page<Int, BaseGalleryInfo>(galleries, null, null)
+                    }
+                }
+            }.flow.map { data ->
+                val chineseOnly = Settings.languageFilter.value == CHINESE_LANGUAGE_FILTER
+                chineseOnlyApplied = chineseOnly
+                data.filter { !chineseOnly || it.isChinese() }
+            }
+        } else if (list == LIST_LOCAL) {
             Pager(PagingConfig(20, jumpThreshold = 40)) {
                 val keywordNow = urlBuilder.value.keyword.orEmpty()
                 if (keywordNow.isBlank()) {
@@ -105,3 +128,7 @@ class FavoritesViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
 }
 
 private const val DEFAULT_PAGE_SIZE = 50
+
+private const val LIST_CLOUD = 0
+private const val LIST_LOCAL = 1
+private const val LIST_TO_DOWNLOAD = 2

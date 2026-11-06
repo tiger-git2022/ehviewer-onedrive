@@ -61,7 +61,10 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** The download label of each slot of [autoDownloadSlots] (slot -> label), a slot not in it uses the default label. */
     val autoDownloadLabels = stringPref("auto_download_labels", "{}")
 
-    fun parseSlots(value: String): Set<Int> = value.split(',').mapNotNullTo(sortedSetOf()) { it.trim().toIntOrNull()?.takeIf { slot -> slot in 0 until CLOUD_SLOT_COUNT } }
+    // Fork: and 「待下载」, see AutoDownload.TO_DOWNLOAD_SLOT
+    fun parseSlots(value: String): Set<Int> = value.split(',').mapNotNullTo(sortedSetOf()) {
+        it.trim().toIntOrNull()?.takeIf { slot -> slot in 0 until CLOUD_SLOT_COUNT || slot == AutoDownload.TO_DOWNLOAD_SLOT }
+    }
 
     // Result of the last sync
     val lastSyncTime = longPref("last_sync_time", 0)

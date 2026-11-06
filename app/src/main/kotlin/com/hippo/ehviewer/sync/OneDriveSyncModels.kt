@@ -87,12 +87,16 @@ data class SyncGallery(
         ).count { it }
 }
 
-/** A local favorite or a history record. */
+/**
+ * A local favorite or a history record. Fork: [queued] is the mark of a local favorite in 「待下载」 (see
+ * com.hippo.ehviewer.todownload.ToDownload): the time it was put in, minus the time it was taken out, 0 for none.
+ */
 @Serializable
 data class SyncGalleryRecord(
     val gid: Long,
     val time: Long,
     val gallery: SyncGallery,
+    val queued: Long = 0,
 )
 
 @Serializable

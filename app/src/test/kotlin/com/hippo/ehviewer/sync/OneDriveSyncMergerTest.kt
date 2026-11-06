@@ -67,6 +67,23 @@ class OneDriveSyncMergerTest {
     }
 
     @Test
+    fun toDownloadMarksFollowTheLaterChange() {
+        fun queued(gid: Long, mark: Long) = SyncGalleryRecord(gid, 10, gallery(gid), mark)
+        val baseline = listOf(queued(1, 0), queued(2, 100))
+        // Put in on this device, taken out on the other: each side's own change goes through
+        val merged = OneDriveSyncMerger.mergeFavorites(listOf(queued(1, 200), queued(2, 100)), listOf(queued(1, 0), queued(2, -300)), baseline)
+        assertEquals(200, merged.first { it.gid == 1L }.queued)
+        assertEquals(-300, merged.first { it.gid == 2L }.queued)
+        // Changed on both sides: the later one wins, out (-400) after in (350)
+        val both = OneDriveSyncMerger.mergeFavorites(listOf(queued(2, 350)), listOf(queued(2, -400)), listOf(queued(2, -50))).single()
+        assertEquals(-400, both.queued)
+        // A favorite deleted on one side but put in 「待下载」 on the other stays
+        assertEquals(setOf(1L), OneDriveSyncMerger.mergeFavorites(emptyList(), listOf(queued(1, 500)), baseline.take(1)).gids())
+        assertEquals(-5, OneDriveSyncMerger.laterMark(3, -5))
+        assertEquals(7, OneDriveSyncMerger.laterMark(7, 0))
+    }
+
+    @Test
     fun historyKeepsLatestTimeAndSyncsDeletions() {
         val baseline = listOf(record(1, 10), record(2, 20))
         val merged = OneDriveSyncMerger.mergeHistory(

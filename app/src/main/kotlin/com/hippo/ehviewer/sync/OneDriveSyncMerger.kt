@@ -1,6 +1,7 @@
 package com.hippo.ehviewer.sync
 
 import java.io.IOException
+import kotlin.math.abs
 
 class SyncVersionException(val version: Int) : IOException("The sync data was written by a newer version (format $version)")
 
@@ -138,7 +139,10 @@ object OneDriveSyncMerger {
 
     private fun moreComplete(local: SyncGallery, cloud: SyncGallery) = if (cloud.completeness > local.completeness) cloud else local
 
-    /** Local favorites: set with baseline, an addition wins over a deletion, the earlier time is kept. */
+    /**
+     * Local favorites: set with baseline, an addition wins over a deletion, the earlier time is kept. Fork: a change of
+     * the mark in 「待下载」 is a change too; changed on both sides, the later mark wins, see [laterMark].
+     */
     fun mergeFavorites(
         local: List<SyncGalleryRecord>,
         cloud: List<SyncGalleryRecord>,
@@ -147,9 +151,12 @@ object OneDriveSyncMerger {
         local = local.associateBy { it.gid },
         cloud = cloud.associateBy { it.gid },
         baseline = baseline?.associateBy { it.gid },
-        changed = { old, new -> old.time != new.time },
-        resolve = { l, c -> SyncGalleryRecord(c.gid, minOf(l.time, c.time), moreComplete(l.gallery, c.gallery)) },
+        changed = { old, new -> old.time != new.time || old.queued != new.queued },
+        resolve = { l, c -> SyncGalleryRecord(c.gid, minOf(l.time, c.time), moreComplete(l.gallery, c.gallery), laterMark(l.queued, c.queued)) },
     ).values.sortedBy { it.gid }
+
+    /** Fork: of two marks in 「待下载」 (the time put in, minus the time taken out, 0 for none), the later one. */
+    fun laterMark(a: Long, b: Long) = if (abs(a) >= abs(b)) a else b
 
     /** History: set with baseline (single deletions and clearing sync), the later time is kept. */
     fun mergeHistory(
