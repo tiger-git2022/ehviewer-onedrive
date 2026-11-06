@@ -314,16 +314,19 @@ object ChapterCompare {
             onPages(done.coerceAtMost(total))
         }
         val list = hashes.toList()
-        runCatching {
-            hashDir.mkdirs()
-            file.writeText(list.joinToString("\n") { it?.let(ThumbHash::toHex) ?: "-" })
-        }.onFailure { logcat(TAG, it) }
+        // Kept only whole: a preview that failed to load is fetched again by the next compare
+        if (list.all { it != null }) {
+            runCatching {
+                hashDir.mkdirs()
+                file.writeText(list.joinToString("\n") { ThumbHash.toHex(it!!) })
+            }.onFailure { logcat(TAG, it) }
+        }
         return list
     }
 
     private fun readHashes(file: File): List<LongArray?>? = runCatching {
         if (!file.exists()) return null
-        file.readLines().map { line -> if (line == "-") null else ThumbHash.fromHex(line) }
+        file.readLines().map { line -> ThumbHash.fromHex(line) ?: return null }
     }.getOrNull()
 
     /** The hash of each preview, by its page; a sheet of several previews is fetched once. */
