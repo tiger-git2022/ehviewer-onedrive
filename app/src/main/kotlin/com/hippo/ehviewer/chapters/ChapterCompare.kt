@@ -304,10 +304,12 @@ object ChapterCompare {
         val pages = album.pages.coerceAtMost(MAX_WNACG_PAGES)
         val hashes = ArrayList<LongArray?>()
         var index = 1
+        var perPage = 0
         while (pages <= 0 || hashes.size < pages) {
             if (index > 1) delay(PREVIEW_PAGE_GAP)
-            val thumbnails = Wnacg.thumbnails(album.aid, index)
+            val thumbnails = Wnacg.thumbnails(album.aid, index, perPage)
             if (thumbnails.isEmpty()) break
+            if (index == 1) perPage = thumbnails.size
             thumbnails.forEach { (page, url) ->
                 while (hashes.size < page) hashes += null
                 hashes[page - 1] = try {

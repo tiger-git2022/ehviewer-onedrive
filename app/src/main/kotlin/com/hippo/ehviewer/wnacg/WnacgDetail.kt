@@ -68,8 +68,14 @@ suspend fun wnacgComments(gid: Long, detail: GalleryDetail): GalleryCommentList 
     return GalleryCommentList(description + Wnacg.comments(-gid).map { wnacgComment(it) }, hasMore = false)
 }
 
-/** Page [index] (from 0) of the previews of album [gid]. */
-suspend fun wnacgPreviewPage(gid: Long, index: Int): List<GalleryPreview> = wnacgPreviews(Wnacg.thumbnails(-gid, index + 1))
+/** Page [index] (from 0) of the previews of album [gid], of [perPage] each. */
+suspend fun wnacgPreviewPage(gid: Long, index: Int, perPage: Int): List<GalleryPreview> = wnacgPreviews(Wnacg.thumbnails(-gid, index + 1, perPage))
+
+/**
+ * A preview for [position] the pages of the album did not show (a page fewer than it tells): no thumbnail, not to fail
+ * the list of the previews.
+ */
+fun wnacgMissingPreview(position: Int): GalleryPreview = V1GalleryPreview(url = "", position = position, pToken = WNACG_TOKEN)
 
 private fun wnacgPreviews(thumbnails: List<Pair<Int, String>>) = thumbnails.map { (page, url) ->
     // The token marks a preview of the site, see coil/Extensions.kt

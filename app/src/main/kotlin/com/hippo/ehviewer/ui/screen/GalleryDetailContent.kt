@@ -164,6 +164,7 @@ import com.hippo.ehviewer.util.addTextToClipboard
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.displayString
 import com.hippo.ehviewer.wnacg.isWnacg
+import com.hippo.ehviewer.wnacg.wnacgMissingPreview
 import com.hippo.ehviewer.wnacg.wnacgPreviewPage
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import io.ktor.http.encodeURLParameter
@@ -883,7 +884,7 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                     (up..end).filterNot { it in previewPagesMap }.map { it / pageSize }.toSet()
                         .parMap(concurrency = Settings.multiThreadDownload.value) { page ->
                             // Fork: those of an album of 紳士漫畫 from its pages, see wnacg/
-                            if (isWnacg(gid)) return@parMap wnacgPreviewPage(gid, page)
+                            if (isWnacg(gid)) return@parMap wnacgPreviewPage(gid, page, pageSize)
                             val url = EhUrl.getGalleryDetailUrl(gid, token, page)
                             EhEngine.getPreviewList(url).previews
                         }.flattenForEach {
@@ -893,6 +894,8 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                             }
                         }
                 }.foldToLoadResult {
+                    // Fork: an album of 紳士漫畫 may show fewer pages than it tells
+                    if (isWnacg(gid)) (up..end).forEach { previewPagesMap.getOrPut(it) { wnacgMissingPreview(it) } }
                     val r = (up..end).map { requireNotNull(previewPagesMap[it]) }
                     val prevK = if (up <= 0 || r.isEmpty()) null else up
                     val nextK = if (end == pages - 1) null else end + 1
