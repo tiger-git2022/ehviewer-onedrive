@@ -111,7 +111,11 @@ open class BackupMerger<T>(
     }
 
     /** The titles of the galleries of the other site fetched so far, shown or not. */
-    fun fetchedTitles(): List<String> = loaded.mapNotNull { it.info.title }
+    fun fetchedTitles(): List<String> = fetched
+
+    // A copy for [fetchedTitles], asked from other merges while this one adds to [loaded]
+    @Volatile
+    private var fetched: List<String> = emptyList()
 
     private suspend fun askMoreTitles(page: List<BaseGalleryInfo>) {
         val asked = page.filter { it.gid !in askedTitles }
@@ -139,6 +143,7 @@ open class BackupMerger<T>(
                     if (item.info.gid !in loadedGids && accept(item.info)) {
                         loadedGids += item.info.gid
                         loaded += Item(item.source, item.info, item.posted)
+                        item.info.title?.let { fetched = fetched + it }
                     }
                 }
             }
