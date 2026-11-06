@@ -16,6 +16,7 @@ import com.hippo.ehviewer.restore.BackupPage
 import com.hippo.ehviewer.restore.normalized
 import com.hippo.ehviewer.restore.searchAccept
 import com.hippo.ehviewer.restore.searchCategories
+import moe.tarsin.coroutines.runSuspendCatching
 
 // Fork: a search of E-Hentai also looks on 紳士漫畫, see WnacgGalleries.kt. Its albums go between the galleries of
 // E-Hentai by the time they were put up, but not one of a title E-Hentai listed in the same language.
@@ -23,9 +24,13 @@ import com.hippo.ehviewer.restore.searchCategories
 /**
  * A search of E-Hentai as 紳士漫畫 can do it: words of the titles. Its tags are its own (in Chinese), so of the tags of
  * E-Hentai only the names of artists, groups, parodies and characters go, as words, which its titles have.
- * [language] is "ZH", "EN" when the search asks for one, null for all.
+ * [language] is "ZH", "EN" when the search asks for one, null for all. [unwritten] is the one name of an artist, a group
+ * or a cosplayer the tag database did not tell, in [words] as the tag: see [guessWrittenName].
  */
-data class WnacgQuery(val words: String, val language: String?) {
+data class WnacgQuery(val words: String, val language: String?, val unwritten: WnacgName? = null) {
+    /** The query with [name] for [unwritten]. */
+    fun withName(name: String): WnacgQuery = unwritten?.let { copy(words = words.replaceFirst(it.value, name), unwritten = null) } ?: this
+
     companion object {
         // Namespaces whose tags are names, which titles have
         private val NAMES = setOf(
@@ -68,6 +73,7 @@ data class WnacgQuery(val words: String, val language: String?) {
          */
         fun fromKeyword(keyword: String, nameOf: (namespace: String, value: String) -> String = ::writtenName): WnacgQuery? {
             val words = mutableListOf<String>()
+            val unwritten = mutableListOf<WnacgName>()
             var language: String? = null
             for (match in TOKEN.findAll(keyword)) {
                 val (prefix, ns, quoted, bare) = match.destructured
@@ -78,7 +84,11 @@ data class WnacgQuery(val words: String, val language: String?) {
                 val namespace = ns.lowercase()
                 when {
                     namespace.isEmpty() -> words += value
-                    namespace in NAMES -> words += nameOf(namespace, value)
+                    namespace in NAMES -> {
+                        val name = nameOf(namespace, value)
+                        if (name == value && namespace in WRITTEN) unwritten += WnacgName(namespace, value)
+                        words += name
+                    }
                     namespace in LANGUAGES -> when (val lang = languageOf(value)) {
                         null -> Unit
                         "" -> return null
@@ -89,7 +99,7 @@ data class WnacgQuery(val words: String, val language: String?) {
                 }
             }
             val text = words.joinToString(" ").ifBlank { return null }
-            return WnacgQuery(text, language)
+            return WnacgQuery(text, language, unwritten.singleOrNull())
         }
 
         /** The search of [lub], null when 紳士漫畫 cannot do it (the front page, the popular, a tag...). */
@@ -100,7 +110,12 @@ data class WnacgQuery(val words: String, val language: String?) {
                 ListUrlBuilder.MODE_TAG -> {
                     val ns = keyword.substringBefore(':', "").lowercase()
                     val value = keyword.substringAfter(':').trim('$', '"', ' ')
-                    if (ns in NAMES && value.isNotEmpty()) WnacgQuery(nameOf(ns, value), null) else null
+                    if (ns in NAMES && value.isNotEmpty()) {
+                        val name = nameOf(ns, value)
+                        WnacgQuery(name, null, WnacgName(ns, value).takeIf { name == value && ns in WRITTEN })
+                    } else {
+                        null
+                    }
                 }
                 else -> null
             } ?: return null
@@ -124,6 +139,35 @@ data class WnacgQuery(val words: String, val language: String?) {
     }
 }
 
+/** A name of a tag of E-Hentai: its namespace ("a", "group"...) and its value, in latin letters. */
+data class WnacgName(val namespace: String, val value: String)
+
+// The first [...] of a title, after an event in (...): "[サークル (作者)]" or "[作者]"
+private val TITLE_BRACKET = Regex("""^\s*(?:\([^)]*\)\s*)?\[([^\]]+)\]""")
+private val BRACKET_PARTS = Regex("""^(.*?)\s*[(（]([^)）]*)[)）]\s*$""")
+private val NAME_SEPARATORS = Regex("""\s*[、,，/&＆]\s*""")
+
+/**
+ * The name of [name] as the titles of E-Hentai of its search write it, from their first brackets: the one most of them
+ * have, not in latin letters only. "山下クロヲ" for the artist `yamashita kurowo` from "[くろほんやさん (山下クロヲ)] …";
+ * a group is the part before the brackets. Null when the titles tell none.
+ */
+fun guessWrittenName(name: WnacgName, titles: List<String>): String? {
+    val artist = name.namespace.lowercase() !in setOf("g", "group", "circle")
+    val named = titles.map { title ->
+        val bracket = TITLE_BRACKET.find(title)?.groupValues?.get(1)?.trim() ?: return@map emptySet()
+        val parts = BRACKET_PARTS.find(bracket)
+        when {
+            parts == null -> setOf(bracket)
+            artist -> parts.groupValues[2].split(NAME_SEPARATORS).toSet()
+            else -> setOf(parts.groupValues[1])
+        }.map { it.trim() }.filter { it.isNotEmpty() && it.any { c -> c.code > 0x7f } }.toSet()
+    }.filter { it.isNotEmpty() }
+    if (named.isEmpty()) return null
+    val (best, count) = named.flatten().groupingBy { it }.eachCount().maxByOrNull { it.value } ?: return null
+    return best.takeIf { count * 2 >= named.size }
+}
+
 /**
  * The titles that are the same for a search: the title as is, and its core (without what is in brackets) in its
  * language, so that a Chinese translation shows when E-Hentai listed only the Japanese one.
@@ -145,9 +189,21 @@ fun wnacgMerger(lub: ListUrlBuilder, hideFavorited: () -> Boolean, onBlocked: ()
     // No rating on the site: a search of a rating has none of its albums
     if (lub.mode == ListUrlBuilder.MODE_NORMAL && lub.minRating > 0) return null
     val accept = searchAccept(lub, hideFavorited)
+    // A name the tag database did not tell: as the titles of the first page of E-Hentai write it
+    var current = query
     return BackupMerger(
         accept = { info -> accept(info) },
+        onEhPage = { page ->
+            val unwritten = current.unwritten
+            if (unwritten != null && page.isNotEmpty()) {
+                val titles = page.flatMap { listOfNotNull(it.title, it.titleJpn) }
+                val name = guessWrittenName(unwritten, titles)
+                    ?: guessWrittenName(unwritten, runSuspendCatching { japaneseTitles(page) }.getOrNull()?.values?.flatten().orEmpty())
+                current = name?.let(current::withName) ?: current.copy(unwritten = null)
+            }
+        },
         sources = listOf { page ->
+            val query = current
             val result = Wnacg.searchPage(query.words, page)
             BackupPage(
                 items = result.albums.filter { WnacgQuery.languageMatches(query.language, wnacgLanguage(it.category)) }

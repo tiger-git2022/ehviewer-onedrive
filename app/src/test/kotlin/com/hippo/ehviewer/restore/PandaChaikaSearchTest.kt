@@ -96,6 +96,14 @@ class PandaChaikaSearchTest {
     }
 
     @Test
+    fun aWorkOfWnacgIsNotShownAgain() = runBlocking {
+        val merger = merger(listOf(panda(1, 950, "[A (B)] Work [DL版]"), panda(2, 940, "[A (B)] Other")))
+        // An album of 紳士漫畫 (gid < -1) merged before: the same work in any language; of E-Hentai, only the same title
+        val page = listOf(eh(-5, 1000, "[A (B)] Work [中国翻訳]"), eh(10, 990, "[A (B)] Other [中国翻訳]"), eh(11, 900))
+        assertEquals(listOf(-5L, 10, 2, 11), merger.merge(Load.Refresh, null, page, null, "11").map { it.gid })
+    }
+
+    @Test
     fun withoutHitsOnEHentai() = runBlocking {
         val merger = merger(listOf(panda(1, 300, "A"), panda(2, 200, "B")))
         assertEquals(listOf(1L, 2), merger.merge(Load.Refresh, null, emptyList(), null, null).map { it.gid })

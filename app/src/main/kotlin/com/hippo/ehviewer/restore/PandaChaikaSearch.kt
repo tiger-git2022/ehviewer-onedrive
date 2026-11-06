@@ -4,9 +4,11 @@ import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.chapters.ChapterTitles
 import com.hippo.ehviewer.client.EhFilter
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.data.ListUrlBuilder
+import com.hippo.ehviewer.wnacg.isWnacg
 
 // Fork: a search of E-Hentai also looks on PandaChika, which keeps galleries E-Hentai removed: E-Hentai never lists
 // those. Its galleries go between those of E-Hentai by posted time, but not one E-Hentai listed too (same gid or same
@@ -123,6 +125,10 @@ class PandaChaikaMerger(
     sources = sources.map { fetch -> { page: Int -> fetch(page).toBackupPage() } },
     onFound = onFound,
     maxPages = MAX_PAGES,
+    // Fork: a work 紳士漫畫 has, in any language, merged before: not again (its galleries are mostly in Chinese, those
+    // of PandaChika hardly ever)
+    moreEhKeys = { info -> if (info.isWnacg) listOfNotNull(info.title, info.titleJpn).mapNotNull(::workKey) else emptyList() },
+    moreKeys = { title -> listOfNotNull(workKey(title)) },
 ) {
     constructor(query: PandaChaikaQuery, accept: suspend (BaseGalleryInfo) -> Boolean) :
         this(accept, query.searches().map { search -> { page: Int -> search.search(page) } })
@@ -139,6 +145,9 @@ class PandaChaikaMerger(
         }
     }
 }
+
+/** The work of [title], whatever its language and translators: its title without what is in brackets. */
+private fun workKey(title: String) = ChapterTitles.core(title).ifEmpty { null }?.let { "work|$it" }
 
 /** The categories a search of [lub] shows: those picked, or Non-H only without an account (as E-Hentai does). */
 fun searchCategories(lub: ListUrlBuilder): Int {
