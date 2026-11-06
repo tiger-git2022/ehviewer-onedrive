@@ -232,7 +232,10 @@ object FavoritesSection : SyncSection<List<SyncGalleryRecord>>(
             val (insertGalleries, updateGalleries) = galleryWrites(upsert)
             EhDB.applySyncedFavorites(insertGalleries, updateGalleries, upsert.map { LocalFavoriteInfo(it.gid, it.time) }, delete)
         }
-        ToDownload.applySynced(merged.filter { it.queued != 0L }.associate { it.gid to it.queued })
+        ToDownload.applySynced(
+            synced = merged.filter { it.queued != 0L }.associate { it.gid to it.queued },
+            collected = local.filter { it.queued != 0L }.associate { it.gid to it.queued },
+        )
         val added = upsert.count { it.gid !in localByGid }
         return SyncCounts(added = added, updated = upsert.size - added + marksOnly, removed = delete.size)
     }

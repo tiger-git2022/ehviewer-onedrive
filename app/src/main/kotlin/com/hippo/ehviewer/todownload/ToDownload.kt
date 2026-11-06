@@ -62,13 +62,21 @@ object ToDownload {
         set(marks - gids.toSet())
     }
 
-    /** The marks the sync merged, of the local favorites it kept. Returns how many changed. */
-    suspend fun applySynced(synced: Map<Long, Long>): Int = mutex.withLock {
+    /**
+     * The marks the sync merged ([synced]) from the ones it read ([collected]), of the local favorites it kept. A mark
+     * changed here since it was read is kept, for the next sync to send. Returns how many changed.
+     */
+    suspend fun applySynced(synced: Map<Long, Long>, collected: Map<Long, Long>): Int = mutex.withLock {
         val old = marks
-        if (synced == old) return 0
-        val changed = (old.keys + synced.keys).count { old[it] != synced[it] }
-        set(synced)
-        if (queuedOf(synced).any { it !in queuedOf(old) }) AutoDownload.onToDownloadChanged()
+        val new = HashMap<Long, Long>()
+        for (gid in old.keys + synced.keys) {
+            val mark = if (old[gid] != collected[gid]) old[gid]?.takeIf { EhDB.containLocalFavorites(gid) } else synced[gid]
+            if (mark != null) new[gid] = mark
+        }
+        if (new == old) return 0
+        val changed = (old.keys + new.keys).count { old[it] != new[it] }
+        set(new)
+        if (queuedOf(new).any { it !in queuedOf(old) }) AutoDownload.onToDownloadChanged()
         changed
     }
 
