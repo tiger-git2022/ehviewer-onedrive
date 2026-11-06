@@ -349,12 +349,16 @@ object ChapterCompare {
         if (names.isEmpty()) return emptyList()
         val found = LinkedHashMap<Long, GalleryInfo>()
         if (Settings.hasSignedIn.value) {
+            // One more than taken, the book itself may be among them
+            fun full() = found.size > MAX_CANDIDATES
             names.forEach { name ->
+                if (full()) return@forEach
                 runCatching {
                     val builder = FavListUrlBuilder(FavListUrlBuilder.FAV_CAT_ALL, name)
                     repeat(MAX_FAVORITE_PAGES) {
                         val result = EhEngine.getFavorites(builder.build())
                         result.galleryInfoList.forEach { found.putIfAbsent(it.gid, it) }
+                        if (full()) return@runCatching
                         val next = result.next ?: return@runCatching
                         builder.setIndex(next, true)
                     }
