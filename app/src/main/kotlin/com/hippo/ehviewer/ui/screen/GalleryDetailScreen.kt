@@ -95,6 +95,7 @@ import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
+import com.hippo.ehviewer.ui.startPartialDownload
 import com.hippo.ehviewer.ui.tools.BarAction
 import com.hippo.ehviewer.ui.tools.BarActions
 import com.hippo.ehviewer.ui.tools.SelectableSection
@@ -217,6 +218,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val cacheCleared = stringResource(R.string.image_cache_cleared)
     val openInBrowser = stringResource(id = R.string.open_in_other_app)
     val searchInMihon = stringResource(id = R.string.search_in_mihon)
+    val downloadPartial = stringResource(id = R.string.download_partial)
     val mihonNotInstalled = stringResource(id = R.string.mihon_not_installed)
     val exportArchive = stringResource(id = R.string.export_as_archive)
     val exportSuccess = stringResource(id = R.string.export_as_archive_success)
@@ -321,6 +323,13 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         // Fork: fetches the links and the images of the previews that failed again, the progress on the
                         // floating bar at the bottom, see PreviewProgressBar
                         if (previewRefetcher != null) add(BarAction(refreshPreviews) { previewRefetcher.refreshFailed(contextOf<MainActivity>()) })
+                        // Fork: only the pages typed, as "1-30, 60-80", see PartialDownload.kt
+                        add(
+                            BarAction(downloadPartial) {
+                                val detail = galleryInfo as? GalleryDetail ?: return@BarAction
+                                launchIO { startPartialDownload(detail.galleryInfo) }
+                            },
+                        )
                         if (syncIconShown) add(shareAction)
                         add(
                             BarAction(clearCache) {

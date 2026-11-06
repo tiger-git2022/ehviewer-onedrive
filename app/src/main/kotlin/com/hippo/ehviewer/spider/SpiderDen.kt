@@ -42,6 +42,7 @@ import com.hippo.ehviewer.client.getImageKey
 import com.hippo.ehviewer.coil.read
 import com.hippo.ehviewer.coil.suspendEdit
 import com.hippo.ehviewer.download.DownloadManager
+import com.hippo.ehviewer.download.PartialDownloads
 import com.hippo.ehviewer.download.downloadLocation
 import com.hippo.ehviewer.download.tempDownloadDir
 import com.hippo.ehviewer.image.PathSource
@@ -313,12 +314,14 @@ class SpiderDen(val info: GalleryInfo) {
             f.openFileDescriptor("r")
         }
         val pages = info.pages
-        val (fdBatch, names) = (0 until pages).parMap { idx ->
+        // Fork: of a download of some pages, only those, under the names of their pages in the gallery
+        val indices = PartialDownloads.indices(gid, pages) ?: (0 until pages).toList()
+        val (fdBatch, names) = indices.parMap { idx ->
             val f = autoCloseable { getImageSource(idx) }
             closeable { f.source.openFileDescriptor("r") }.fd to perFilename(idx, f.type)
         }.run { plus(comicInfo.fd to COMIC_INFO_FILE) }.unzip()
         val arcFd = closeable { file.openFileDescriptor("rw") }
-        archiveFdBatch(fdBatch.toIntArray(), names.toTypedArray(), arcFd.fd, pages + 1)
+        archiveFdBatch(fdBatch.toIntArray(), names.toTypedArray(), arcFd.fd, indices.size + 1)
     }
 
     suspend fun initDownloadDirIfExist() {
