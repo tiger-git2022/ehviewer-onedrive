@@ -16,6 +16,8 @@ import com.hippo.ehviewer.restore.BackupPage
 import com.hippo.ehviewer.restore.normalized
 import com.hippo.ehviewer.restore.searchAccept
 import com.hippo.ehviewer.restore.searchCategories
+import java.text.Normalizer
+import kotlin.math.abs
 import moe.tarsin.coroutines.runSuspendCatching
 
 // Fork: a search of E-Hentai also looks on 紳士漫畫, see WnacgGalleries.kt. Its albums go between the galleries of
@@ -220,11 +222,34 @@ fun guessWrittenName(name: WnacgName, titles: List<String>): String? {
     return best.takeIf { count * 2 > named.size && counts.values.count { it == count } == 1 }
 }
 
+// Between the names of a title in two languages: "日本語｜中文"
+private val TITLE_NAMES = Regex("""\s*\|\s*""")
+
+/** The cores of [title] (see [ChapterTitles.core]): one for each of its names, full width letters as half, no spaces. */
+fun wnacgTitleCores(title: String): List<String> = ChapterTitles.core(Normalizer.normalize(title, Normalizer.Form.NFKC))
+    .split(TITLE_NAMES)
+    .map { it.replace(SPACES, "") }
+    .filter { it.isNotEmpty() }
+    .distinct()
+
 /**
- * The titles that are the same for a search: the title as is, and its core (without what is in brackets) in its
- * language, so that a Chinese translation shows when E-Hentai listed only the Japanese one.
+ * The titles that are the same for a search: the title as is, and its cores in its language, so that a Chinese
+ * translation shows when E-Hentai listed only the Japanese one.
  */
-fun wnacgTitleKeys(title: String, language: String?): List<String> = listOf(title.normalized(), "${ChapterTitles.core(title)}|${language.orEmpty()}")
+fun wnacgTitleKeys(title: String, language: String?): List<String> = listOf(title.normalized()) + wnacgTitleCores(title).map { "$it|${language.orEmpty()}" }
+
+/**
+ * Whether an album and a gallery of E-Hentai of the same title, of [a] and [b] pages, are the same: a page or two
+ * more or less (a page of the translators), a tenth for a long one. Not told (0): the same. Else a part of a work of
+ * several ("前編", "後編") whose title is the same once without what is in brackets.
+ */
+fun wnacgSamePages(a: Int, b: Int): Boolean = a <= 0 || b <= 0 || abs(a - b) <= maxOf(2, maxOf(a, b) / 10)
+
+/**
+ * More keys of an album of [title]: its cores in Chinese, the language of most albums of the site, whose language it
+ * does not always tell: one E-Hentai listed in Chinese is the same.
+ */
+fun wnacgChineseKeys(title: String): List<String> = wnacgTitleCores(title).map { "$it|ZH" }
 
 /** The searches on 紳士漫畫 a page of it fetches at most. */
 private const val WNACG_MAX_PAGES = 5
@@ -268,6 +293,8 @@ fun wnacgMerger(lub: ListUrlBuilder, hideFavorited: () -> Boolean, onBlocked: ()
         onFound = {},
         maxPages = WNACG_MAX_PAGES,
         titleKeys = ::wnacgTitleKeys,
+        moreKeys = ::wnacgChineseKeys,
+        samePages = ::wnacgSamePages,
         moreTitles = ::japaneseTitles,
         onError = { if (it is Wnacg.BlockedException) onBlocked() },
     )

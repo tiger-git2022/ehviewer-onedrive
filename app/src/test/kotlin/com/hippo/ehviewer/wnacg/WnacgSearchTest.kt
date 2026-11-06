@@ -119,6 +119,29 @@ class WnacgSearchTest {
     }
 
     @Test
+    fun theSameWorkOfEHentaiIsNotShownAgain() = runBlocking {
+        val merger = merger(
+            listOf(
+                // Its Chinese name after a ｜, its translators
+                album(1, 990, "[なごやか次郎] 君は可愛い王子様 (COMIC 快楽天ビースト 2026年5月号)｜你是可爱的王子殿下 [迟远个人汉化] [DL版]", 30),
+                // Its language not told, the magazine not in its title, a page more
+                album(2, 970, "[なごやか次郎] 甘えたっていいんですよ", 33, category = 6),
+                // Another work of the artist
+                album(3, 960, "[なごやか次郎] スーパーラブパワー [中国翻訳]", 167),
+                // A part of the same name in brackets, not of the same pages
+                album(4, 950, "[A] Title (後編) [中国翻訳]", 40),
+            ),
+        )
+        val page = listOf(
+            eh(10, 1000, "[なごやか次郎] 君は可愛い王子様 (COMIC 快楽天ビースト 2026年5月号) [中国翻訳] [DL版]", "ZH", 30),
+            eh(11, 980, "[なごやか次郎]甘えたっていいんですよ (COMIC 快楽天ビースト 2025年9月号) [中国翻訳] [DL版]", "ZH", 32),
+            eh(12, 955, "[A] Title (前編) [中国翻訳]", "ZH", 20),
+            eh(13, 900, "x"),
+        )
+        assertEquals(listOf(10L, 11, -3, 12, -4, 13), merger.merge(Load.Refresh, null, page, null, null).map { it.gid })
+    }
+
+    @Test
     fun theJapaneseTitlesAreAskedOnlyWhenNeeded() = runBlocking {
         var asked = 0
         val merger = BackupMerger(
@@ -160,18 +183,22 @@ class WnacgSearchTest {
         onFound = {},
         maxPages = 5,
         titleKeys = ::wnacgTitleKeys,
+        moreKeys = ::wnacgChineseKeys,
+        samePages = ::wnacgSamePages,
     )
 
     private fun item(album: com.hippo.ehviewer.chapters.Wnacg.Album) = BackupItem(album, album.toGalleryInfo(), album.created)
 
-    private fun album(aid: Long, minutes: Long, title: String) = com.hippo.ehviewer.chapters.Wnacg.Album(aid, title, 20, null, minutes(minutes), 1)
+    private fun album(aid: Long, minutes: Long, title: String, pages: Int = 20, category: Int = 1) =
+        com.hippo.ehviewer.chapters.Wnacg.Album(aid, title, pages, null, minutes(minutes), category)
 
-    private fun eh(gid: Long, minutes: Long, title: String, language: String? = null) = BaseGalleryInfo(
+    private fun eh(gid: Long, minutes: Long, title: String, language: String? = null, pages: Int = 20) = BaseGalleryInfo(
         gid = gid,
         token = "t$gid",
         title = title,
         posted = ParserUtils.formatDate(minutes(minutes)),
         simpleLanguage = language,
+        pages = pages,
     )
 
     private fun minutes(minutes: Long) = 1_700_000_000_000L + minutes * 60_000
