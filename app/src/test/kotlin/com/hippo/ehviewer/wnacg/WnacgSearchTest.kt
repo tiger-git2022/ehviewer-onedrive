@@ -28,11 +28,15 @@ class WnacgSearchTest {
         val names = mapOf("yamashita kurowo" to "山下クロヲ")
         val nameOf = { _: String, value: String -> names[value] ?: value }
         assertEquals(WnacgQuery("山下クロヲ", null), WnacgQuery.fromKeyword("""a:"yamashita kurowo$"""", nameOf))
-        assertEquals(WnacgQuery("山下クロヲ other", null, WnacgName("a", "other")), WnacgQuery.fromKeyword("""artist:"yamashita kurowo$" a:other$""", nameOf))
+        assertEquals(WnacgQuery("山下クロヲ other", null, WnacgName("a", "other", 6)), WnacgQuery.fromKeyword("""artist:"yamashita kurowo$" a:other$""", nameOf))
         // Without the tag database: as the tag, to be guessed from the titles
         val unwritten = WnacgName("a", "yamashita kurowo")
         assertEquals(WnacgQuery("yamashita kurowo", null, unwritten), WnacgQuery.fromKeyword("""a:"yamashita kurowo$""""))
         assertEquals(WnacgQuery("山下クロヲ word", null), WnacgQuery("yamashita kurowo word", null, unwritten).withName("山下クロヲ"))
+        // The name of the tag, not the same letters in a word before it
+        val fox = WnacgQuery.fromKeyword("""fox a:x$""")!!
+        assertEquals(WnacgQuery("fox x", null, WnacgName("a", "x", 4)), fox)
+        assertEquals(WnacgQuery("fox 名前", null), fox.withName("名前"))
     }
 
     @Test

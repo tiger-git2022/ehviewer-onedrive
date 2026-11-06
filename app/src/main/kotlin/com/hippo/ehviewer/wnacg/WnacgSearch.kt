@@ -29,7 +29,9 @@ import moe.tarsin.coroutines.runSuspendCatching
  */
 data class WnacgQuery(val words: String, val language: String?, val unwritten: WnacgName? = null) {
     /** The query with [name] for [unwritten]. */
-    fun withName(name: String): WnacgQuery = unwritten?.let { copy(words = words.replaceFirst(it.value, name), unwritten = null) } ?: this
+    fun withName(name: String): WnacgQuery = unwritten?.let {
+        copy(words = words.substring(0, it.index) + name + words.substring(it.index + it.value.length), unwritten = null)
+    } ?: this
 
     companion object {
         // Namespaces whose tags are names, which titles have
@@ -86,7 +88,9 @@ data class WnacgQuery(val words: String, val language: String?, val unwritten: W
                     namespace.isEmpty() -> words += value
                     namespace in NAMES -> {
                         val name = nameOf(namespace, value)
-                        if (name == value && namespace in WRITTEN) unwritten += WnacgName(namespace, value)
+                        if (name == value && namespace in WRITTEN) {
+                            unwritten += WnacgName(namespace, value, words.sumOf { it.length + 1 })
+                        }
                         words += name
                     }
                     namespace in LANGUAGES -> when (val lang = languageOf(value)) {
@@ -139,8 +143,11 @@ data class WnacgQuery(val words: String, val language: String?, val unwritten: W
     }
 }
 
-/** A name of a tag of E-Hentai: its namespace ("a", "group"...) and its value, in latin letters. */
-data class WnacgName(val namespace: String, val value: String)
+/**
+ * A name of a tag of E-Hentai: its namespace ("a", "group"...) and its value, in latin letters, at [index] of the words
+ * of its query.
+ */
+data class WnacgName(val namespace: String, val value: String, val index: Int = 0)
 
 // The first [...] of a title, after an event in (...): "[サークル (作者)]" or "[作者]"
 private val TITLE_BRACKET = Regex("""^\s*(?:\([^)]*\)\s*)?\[([^\]]+)\]""")
