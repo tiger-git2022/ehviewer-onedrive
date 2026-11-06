@@ -109,8 +109,8 @@ sealed interface ChapterCompareState {
  */
 object ChapterCompare {
     private const val TAG = "ChapterCompare"
-    private const val MAX_FAVORITE_PAGES = 10
-    private const val MAX_CANDIDATES = 60
+    private const val MAX_FAVORITE_PAGES = 20
+    private const val MAX_CANDIDATES = 200
     private const val MAX_OTHER_UPLOADS = 3
     private const val PREVIEW_PAGE_GAP = 300L
 
@@ -428,11 +428,12 @@ object ChapterCompare {
         found.remove(detail.gid)
         // Not an album of 紳士漫畫 in the local favorites: it has no previews on E-Hentai
         found.keys.removeAll { isWnacg(it) }
-        val list = found.values.take(MAX_CANDIDATES).map { BaseGalleryInfo(gid = it.gid, token = it.token, title = it.title, titleJpn = it.titleJpn, thumbKey = it.thumbKey, pages = it.pages) }
+        val list = found.values.map { BaseGalleryInfo(gid = it.gid, token = it.token, title = it.title, titleJpn = it.titleJpn, thumbKey = it.thumbKey, pages = it.pages) }
         // The page counts, and the covers of those gone, from the API
         val unknown = list.filter { it.pages <= 0 || it.thumbKey == null }
         if (unknown.isNotEmpty()) runCatching { EhEngine.fillGalleryListByApi(unknown, EhUrl.referer) }.onFailure { logcat(TAG, it) }
-        return list.map(::Candidate)
+        // The short ones first, as chapters are: kept when there are too many
+        return list.sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate)
     }
 
     private fun names(detail: GalleryDetail): List<String> {
