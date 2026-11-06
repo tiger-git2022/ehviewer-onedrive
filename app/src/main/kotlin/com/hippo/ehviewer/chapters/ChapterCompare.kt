@@ -399,7 +399,9 @@ object ChapterCompare {
         }
         val first = EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token))
         val total = first.total.takeIf { it > 0 } ?: pages
-        val perPage = first.previews.size.coerceAtLeast(1)
+        // No preview on the first page: none to read on the next ones either
+        if (first.previews.isEmpty()) return List(total.coerceAtLeast(0)) { null }
+        val perPage = first.previews.size
         val hashes = arrayOfNulls<LongArray>(total)
         var done = 0
         val previewPages = (total + perPage - 1) / perPage
