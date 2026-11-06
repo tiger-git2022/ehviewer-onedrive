@@ -43,6 +43,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** Why CloudFavoritesWork stopped last time, null when it ended well. */
     val cloudFavoritesWorkError = stringOrNullPref("cloud_favorites_work_error")
 
+    /** Fork: panda.chaika.moe failed (unreachable, too slow), not asked again before this time, see FavoritesIndexSync. */
+    val pandaRetryAt = longPref("panda_retry_at", 0)
+
     /** The index was deleted after sharing was turned off; cleared by the next upload. */
     val favoritesIndexRemoved = boolPref("favorites_index_removed", false)
 

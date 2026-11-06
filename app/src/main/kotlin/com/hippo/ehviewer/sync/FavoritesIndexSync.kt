@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
@@ -90,6 +92,12 @@ object FavoritesIndexSync {
     // panda.chaika.moe is a small site: one search every 3 seconds
     private const val PANDA_INTERVAL_MILLIS = 3_000L
     private const val PANDA_MAX_PAGES = 10
+
+    // Fork: a search taking longer is given up (the site blocked or down); failing twice in a row, the site is left
+    // alone for a while, and the work is not started again for it before
+    private const val PANDA_REQUEST_TIMEOUT_MILLIS = 15_000L
+    private const val PANDA_MAX_FAILURES = 2
+    private const val PANDA_RETRY_AFTER_MILLIS = 12 * 60 * 60_000L
 
     /** [CloudFavoritesWork] uploads the index this often, so other apps see the favorites read so far. */
     private const val WORK_UPLOAD_INTERVAL_MILLIS = 10 * 60_000L
@@ -413,7 +421,11 @@ object FavoritesIndexSync {
             var lastUpload = SystemClock.elapsedRealtime()
             val uploadIfDue: suspend () -> Unit = {
                 if (SystemClock.elapsedRealtime() - lastUpload > WORK_UPLOAD_INTERVAL_MILLIS) {
+                    // Fork: shown, the upload may wait for a sync running meanwhile
+                    val shown = mutableWorkProgress.value
+                    mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index)
                     OneDriveSync.uploadFavoritesIndex()
+                    mutableWorkProgress.value = shown
                     lastUpload = SystemClock.elapsedRealtime()
                 }
             }
@@ -427,6 +439,7 @@ object FavoritesIndexSync {
                 lookUpJapaneseTitles(currentIndex(), limit = Int.MAX_VALUE, progress = mutableWorkProgress, wait = true, onBatch = uploadIfDue)
             } while (hasUnfinishedRefresh(userKey()) && ++rounds < 3)
             lookUpPandaTitles(onBatch = uploadIfDue)
+            mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index)
             OneDriveSync.uploadFavoritesIndex()
             // The upload failed (no network, OneDrive unreachable): the work tries again, whatever the auto sync options
             check(!enabled || !OneDriveSyncState.favoritesIndexDirty.value) { appCtx.getString(R.string.onedrive_sync_favorites_index_upload_failed) }
@@ -745,7 +758,7 @@ object FavoritesIndexSync {
                 val index = currentIndex()
                 val cloud = current()
                 if (FavoritesIndexMerger.missingJapaneseTitles(index, limit = 1, cloud.defaultTitles).isNotEmpty() ||
-                    FavoritesIndexMerger.missingPandaTitles(index, cloud).isNotEmpty()
+                    pandaDue() && FavoritesIndexMerger.missingPandaTitles(index, cloud).isNotEmpty()
                 ) {
                     enqueueCloudFavoritesWork(appCtx)
                 }
@@ -839,35 +852,62 @@ object FavoritesIndexSync {
 
     /**
      * Default titles of the galleries the API has none for (removed), from the raw copies panda.chaika.moe archived:
-     * few, one search each. The site unreachable, the rest waits for the next work.
+     * few, one search each. A search failing or too slow skips its gallery; the site failing again, the rest waits
+     * [PANDA_RETRY_AFTER_MILLIS], so the work is not started again with every sync for nothing.
      */
     private suspend fun lookUpPandaTitles(onBatch: suspend () -> Unit) {
+        if (!pandaDue()) return
         val missing = FavoritesIndexMerger.missingPandaTitles(currentIndex(), current())
+        var failures = 0
+        var failed = false
         for ((i, gallery) in missing.withIndex()) {
             if (i != 0) delay(PANDA_INTERVAL_MILLIS)
             mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_panda_titles, i, missing.size)
             val query = FavoritesIndexMerger.pandaQuery(gallery) ?: continue
-            // The match may be on a later page of a common title: a miss is kept only after the last page (or many)
-            var title = ""
-            var page = 1
-            while (true) {
-                val result = try {
-                    PandaChaika.search(query, page)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    logcat(TAG, e)
-                    return
-                }
-                title = FavoritesIndexMerger.pandaDefaultTitle(gallery, result.archives.map { it.title to it.titleJpn })
-                if (title.isNotEmpty() || !result.hasNext || page >= PANDA_MAX_PAGES) break
-                page++
-                delay(PANDA_INTERVAL_MILLIS)
+            val title = searchPandaTitle(gallery, query)
+            if (title == null) {
+                failed = true
+                if (++failures >= PANDA_MAX_FAILURES) break
+                continue
             }
+            failures = 0
             update { cloud -> FavoritesIndexMerger.withPandaTitles(cloud, mapOf(gallery.gid to title)) }
+            mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_panda_titles, i + 1, missing.size)
             onBatch()
         }
+        val retryAt = if (failed) now() + PANDA_RETRY_AFTER_MILLIS else 0L
+        if (OneDriveSyncState.pandaRetryAt.value != retryAt) {
+            OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.pandaRetryAt] = retryAt }
+        }
     }
+
+    /**
+     * The default title of [gallery] on panda.chaika.moe, "" when none matches. The match may be on a later page of a
+     * common title: a miss is kept only after the last page (or many). Null when a search failed or took too long.
+     */
+    private suspend fun searchPandaTitle(gallery: IndexedGallery, query: String): String? {
+        var page = 1
+        while (true) {
+            val result = try {
+                withTimeout(PANDA_REQUEST_TIMEOUT_MILLIS) { PandaChaika.search(query, page) }
+            } catch (e: TimeoutCancellationException) {
+                logcat(TAG) { "PandaChaika search timed out: $query, page $page" }
+                return null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logcat(TAG, e)
+                return null
+            }
+            val title = FavoritesIndexMerger.pandaDefaultTitle(gallery, result.archives.map { it.title to it.titleJpn })
+            if (title.isNotEmpty() || !result.hasNext || page >= PANDA_MAX_PAGES) return title
+            page++
+            delay(PANDA_INTERVAL_MILLIS)
+        }
+    }
+
+    /** panda.chaika.moe did not fail lately, see [PANDA_RETRY_AFTER_MILLIS]. */
+    private fun pandaDue() = OneDriveSyncState.pandaRetryAt.value <= now()
 
     /** Half of the devices look up from the other end of the list: two at once meet in the middle. */
     private fun lookUpFromEnd() = (OneDriveSyncState.deviceId.value?.hashCode() ?: 0) and 1 == 1
