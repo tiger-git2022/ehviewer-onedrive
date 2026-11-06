@@ -46,6 +46,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** Fork: panda.chaika.moe failed (unreachable, too slow), not asked again before this time, see FavoritesIndexSync. */
     val pandaRetryAt = longPref("panda_retry_at", 0)
 
+    /** Fork: why panda.chaika.moe failed last time, shown with [pandaRetryAt]; null when the last lookup went well. */
+    val pandaError = stringOrNullPref("panda_error")
+
     /** The index was deleted after sharing was turned off; cleared by the next upload. */
     val favoritesIndexRemoved = boolPref("favorites_index_removed", false)
 

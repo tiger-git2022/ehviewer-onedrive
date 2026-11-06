@@ -758,6 +758,8 @@
     <string name="onedrive_sync_cloud_favorites_status_waiting">The background work waits to go on</string>
     <string name="onedrive_sync_cloud_favorites_status_stopped">The background work is not running</string>
     <string name="onedrive_sync_cloud_favorites_status_error">Last stop: %s</string>
+    <string name="onedrive_sync_cloud_favorites_status_panda">PandaChaika lookup failed: %1$s. Tried again after %2$s</string>
+    <string name="onedrive_sync_panda_timeout">no answer within %d s</string>
     <string name="onedrive_sync_cloud_favorites_status_tap">Tap to go on now</string>
     <string name="onedrive_sync_cloud_favorites_resumed">Going on in the background, the notification shows the progress</string>
     <string name="onedrive_sync_favorites_index_upload_failed">Uploading the favorites list failed, trying again later</string>
