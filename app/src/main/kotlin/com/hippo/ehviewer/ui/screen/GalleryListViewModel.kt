@@ -12,6 +12,7 @@ import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import androidx.savedstate.compose.serialization.serializers.MutableStateSerializer
 import com.ehviewer.core.model.BaseGalleryInfo
+import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhEngine
@@ -164,7 +165,13 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                             }
                             // Each between those listed so far: 紳士漫畫 leaves out the titles PandaChika added too
                             var merged: List<BaseGalleryInfo> = result.galleryInfoList
-                            mergers.forEach { merged = it.merge(load, params.key, merged, result.prev, result.next) }
+                            // A failure of the other site never takes the page of E-Hentai with it
+                            mergers.forEach { merger ->
+                                val page = merged
+                                merged = runSuspendCatching { merger.merge(load, params.key, page, result.prev, result.next) }
+                                    .onFailure { logcat(it) }
+                                    .getOrDefault(page)
+                            }
                             result = result.copy(galleryInfoList = merged.toMutableList())
                         }
                         noHits?.let { if (result.galleryInfoList.isEmpty()) throw it }
