@@ -66,6 +66,8 @@ object AutoDownload {
         val unstarted: Set<Long> = emptySet(),
         /** Added and started, not finished yet, with the times a failed download was started again. */
         val running: Map<Long, Int> = emptyMap(),
+        /** Fork: of 「待下载」, the mark (time put in) of each of [handled]: put in again later, it is new. */
+        val marks: Map<Long, Long> = emptyMap(),
     )
 
     /**
@@ -274,15 +276,15 @@ object AutoDownload {
             queueFile.delete()
             return
         }
-        val queued = ToDownload.gids.value
+        val marks = ToDownload.marks().filterValues { it > 0 }
         val stored = load(queueFile)
         // Chosen just now: what it holds already is left alone
-        val state = stored ?: State(userKey = "", slots = setOf(TO_DOWNLOAD_SLOT), handled = queued)
-        val new = queued - state.handled
-        // Galleries taken out are forgotten: put back in later, they count as new
-        val kept = state.handled.intersect(queued)
+        val state = stored ?: State(userKey = "", slots = setOf(TO_DOWNLOAD_SLOT), handled = marks.keys, marks = marks)
+        // Taken out and put back in since (another mark), a gallery is new again, even when not seen out
+        val kept = state.marks.filter { (gid, mark) -> marks[gid] == mark }
+        val new = marks.keys - kept.keys
         if (new.isEmpty()) {
-            val resumed = resume(state.copy(handled = kept))
+            val resumed = resume(state.copy(handled = kept.keys, marks = kept))
             if (resumed != stored) save(queueFile, resumed)
             return
         }
@@ -297,9 +299,11 @@ object AutoDownload {
             }
         }
         activeHere += started
+        // One whose gallery is not in the database yet is looked at again with the next change
+        val handled = kept + infos.associate { it.gid to marks.getValue(it.gid) }
         val added = state.copy(
-            // One whose gallery is not in the database yet is looked at again with the next change
-            handled = kept + infos.map { it.gid },
+            handled = handled.keys,
+            marks = handled,
             unstarted = state.unstarted + listed,
             running = state.running + started.associateWith { 0 },
         )

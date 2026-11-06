@@ -79,6 +79,8 @@ class OneDriveSyncMergerTest {
         assertEquals(-400, both.queued)
         // A favorite deleted on one side but put in 「待下载」 on the other stays
         assertEquals(setOf(1L), OneDriveSyncMerger.mergeFavorites(emptyList(), listOf(queued(1, 500)), baseline.take(1)).gids())
+        // ...but not one only taken out of it on the other side
+        assertEquals(emptySet(), OneDriveSyncMerger.mergeFavorites(emptyList(), listOf(queued(2, -500)), baseline.drop(1)).gids())
         assertEquals(-5, OneDriveSyncMerger.laterMark(3, -5))
         assertEquals(7, OneDriveSyncMerger.laterMark(7, 0))
     }
