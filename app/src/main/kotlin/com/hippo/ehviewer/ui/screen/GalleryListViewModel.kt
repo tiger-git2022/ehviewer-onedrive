@@ -50,6 +50,9 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
     @Volatile
     private var backups: List<BackupMerger<*>> = emptyList()
 
+    // Fork: 紳士漫畫 asked for its check in this search, so its albums are not in the results, see ui/WnacgCheck.kt
+    val wnacgBlocked = mutableStateOf(false)
+
     // Use a smaller prefetch distance to avoid prepending an additional page after jumping
     val data = Pager(PagingConfig(25, prefetchDistance = 20)) {
         object : PagingSource<String, BaseGalleryInfo>() {
@@ -102,9 +105,10 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                     // Fork: the galleries PandaChika keeps and the albums of 紳士漫畫 for the search, between those of
                     // E-Hentai, see BackupMerger. A refresh is a new search, or the same from its start
                     if (params is LoadParams.Refresh) {
+                        wnacgBlocked.value = false
                         backups = listOfNotNull(
                             PandaChaikaMerger.of(urlBuilder) { hideFavoritedPref.value },
-                            wnacgMerger(urlBuilder) { hideFavoritedPref.value },
+                            wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true },
                         )
                     }
                     val mergers = backups

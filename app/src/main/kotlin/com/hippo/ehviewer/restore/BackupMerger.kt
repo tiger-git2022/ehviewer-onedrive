@@ -26,6 +26,7 @@ class BackupPage<T>(val items: List<BackupItem<T>>, val postedTimes: List<Long>,
  *
  * [titleKeys] tells which titles are the same (the title as is by default), with the language of the gallery;
  * [moreTitles] can tell more titles of galleries of E-Hentai, asked only when a gallery of the other site would show.
+ * [onError] is told when the other site failed: the page of E-Hentai then shows alone.
  */
 open class BackupMerger<T>(
     private val accept: suspend (BaseGalleryInfo) -> Boolean,
@@ -34,6 +35,7 @@ open class BackupMerger<T>(
     private val maxPages: Int,
     private val titleKeys: (title: String, language: String?) -> List<String> = { title, _ -> listOf(title.normalized()) },
     private val moreTitles: suspend (List<BaseGalleryInfo>) -> Map<Long, List<String>> = { emptyMap() },
+    private val onError: (Throwable) -> Unit = {},
 ) {
     enum class Load { Refresh, Append, Prepend }
 
@@ -85,6 +87,7 @@ open class BackupMerger<T>(
         if (upper < lower) return page
         runSuspendCatching { loadUntil(lower) }.onFailure {
             logcat(TAG, it)
+            onError(it)
             return page
         }
         val inRange = { item: Item<T> -> item.posted in lower..upper && item.info.gid !in shown && item.info.gid !in ehGids }

@@ -110,8 +110,11 @@ fun wnacgTitleKeys(title: String, language: String?): List<String> = listOf(titl
 /** The searches on 紳士漫畫 a page of it fetches at most. */
 private const val WNACG_MAX_PAGES = 5
 
-/** For the search of [lub] when on in the settings, with its categories, rating, pages and the filters. */
-fun wnacgMerger(lub: ListUrlBuilder, hideFavorited: () -> Boolean): BackupMerger<Wnacg.Album>? {
+/**
+ * For the search of [lub] when on in the settings, with its categories, rating, pages and the filters. [onBlocked] is
+ * told when the site asks for its check (see ui/WnacgCheck.kt): the results then have none of its albums.
+ */
+fun wnacgMerger(lub: ListUrlBuilder, hideFavorited: () -> Boolean, onBlocked: () -> Unit = {}): BackupMerger<Wnacg.Album>? {
     if (!Settings.wnacgInSearch.value) return null
     val query = WnacgQuery.of(lub) ?: return null
     val categories = searchCategories(lub)
@@ -134,6 +137,7 @@ fun wnacgMerger(lub: ListUrlBuilder, hideFavorited: () -> Boolean): BackupMerger
         maxPages = WNACG_MAX_PAGES,
         titleKeys = ::wnacgTitleKeys,
         moreTitles = ::japaneseTitles,
+        onError = { if (it is Wnacg.BlockedException) onBlocked() },
     )
 }
 

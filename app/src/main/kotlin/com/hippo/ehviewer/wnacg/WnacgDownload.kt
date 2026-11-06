@@ -15,8 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.io.asInputStream
 import kotlinx.io.asOutputStream
-import kotlinx.io.readByteArray
 
 /**
  * Fork: the download of an album of 紳士漫畫: its images, saved one by one in a folder "<gid>.wnacg" (kept when stopped,
@@ -57,7 +57,7 @@ object WnacgDownload {
                     zip.setLevel(Deflater.NO_COMPRESSION)
                     names.forEach { name ->
                         zip.putNextEntry(ZipEntry(name))
-                        zip.write((images / name).read { readByteArray() })
+                        (images / name).read { asInputStream().copyTo(zip) }
                         zip.closeEntry()
                     }
                 }

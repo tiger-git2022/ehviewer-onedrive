@@ -80,6 +80,22 @@ class WnacgSearchTest {
         assertEquals(1, asked)
     }
 
+    @Test
+    fun aCheckAskedForIsTold() = runBlocking {
+        var told: Throwable? = null
+        val merger = BackupMerger<com.hippo.ehviewer.chapters.Wnacg.Album>(
+            accept = { true },
+            sources = listOf { throw com.hippo.ehviewer.chapters.Wnacg.BlockedException() },
+            onFound = {},
+            maxPages = 5,
+            onError = { told = it },
+        )
+        // The page of E-Hentai shows alone, and the check is told
+        val page = listOf(eh(10, 1000, "a"), eh(11, 900, "b"))
+        assertEquals(listOf(10L, 11), merger.merge(Load.Refresh, null, page, null, null).map { it.gid })
+        assertEquals(true, told is com.hippo.ehviewer.chapters.Wnacg.BlockedException)
+    }
+
     private fun merger(albums: List<com.hippo.ehviewer.chapters.Wnacg.Album>) = BackupMerger(
         accept = { true },
         sources = listOf { BackupPage(albums.map(::item), albums.map { it.created }, hasNext = false) },
