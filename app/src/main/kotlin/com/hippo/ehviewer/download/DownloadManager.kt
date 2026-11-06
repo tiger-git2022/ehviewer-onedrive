@@ -63,6 +63,8 @@ import com.hippo.ehviewer.sync.AutoDownload
 import com.hippo.ehviewer.util.AppConfig
 import com.hippo.ehviewer.util.insertWith
 import com.hippo.ehviewer.util.runAssertingNotMainThread
+import com.hippo.ehviewer.wnacg.WnacgDownload
+import com.hippo.ehviewer.wnacg.isWnacg
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -165,6 +167,8 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
                     }
                     // Fork: a gallery E-Hentai removed downloads its archive from PandaChika
                     if (RestoredGalleries.isRestored(gid)) return startPandaChaikaDownload(this)
+                    // Fork: an album of 紳士漫畫 downloads from its site, see wnacg/
+                    if (isWnacg(gid)) return startWnacgDownload(this)
                 }
                 startSpider(info)
             }
@@ -253,6 +257,67 @@ object DownloadManager : OnSpiderListener, CoroutineScope {
             if (mCurrentTask === info) {
                 mCurrentPanda = null
                 onFinish(if (failed) 0 else pages, if (failed) 0 else pages, pages, failed)
+            }
+        }
+    }
+
+    /**
+     * Fork: downloads [info], an album of 紳士漫畫, as "<gid>.zip", see WnacgDownload. In place of a spider, as
+     * startPandaChaikaDownload.
+     */
+    private suspend fun startWnacgDownload(info: DownloadInfo) {
+        with(info) {
+            state = DownloadInfo.STATE_DOWNLOAD
+            speed = -1
+            remaining = -1
+            total = pages.coerceAtLeast(1)
+            finished = 0
+            downloaded = 0
+            legacy = -1
+        }
+        EhDB.putDownloadInfo(info)
+        mSpeedReminder.start()
+        mDownloadListener?.onStart(info)
+        mutableNotifyFlow.emit(info)
+        mCurrentPanda = launch {
+            var total = info.total
+            val failed = try {
+                WnacgDownload.download(
+                    info,
+                    onPages = { pages ->
+                        total = pages
+                        if (mCurrentTask === info) {
+                            info.total = pages
+                            if (info.pages != pages) {
+                                info.pages = pages
+                                EhDB.putDownloadInfo(info)
+                            }
+                            mutableNotifyFlow.emit(info)
+                        }
+                    },
+                    onPage = { index, done ->
+                        mSpeedReminder.onDone(index)
+                        if (mCurrentTask === info) {
+                            info.finished = done
+                            info.downloaded = done
+                            mDownloadListener?.onDownload(info)
+                            mutableNotifyFlow.emit(info)
+                        }
+                    },
+                    onProgress = { index, size, done, read ->
+                        if (size != Long.MAX_VALUE && size > 0) mSpeedReminder.onDownload(index, size, done, read)
+                    },
+                )
+                false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logcat(TAG, e)
+                true
+            }
+            if (mCurrentTask === info) {
+                mCurrentPanda = null
+                onFinish(if (failed) info.finished else total, if (failed) info.downloaded else total, total, failed)
             }
         }
     }

@@ -19,9 +19,11 @@ import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.client.data.ListUrlBuilder.Companion.MODE_TOPLIST
 import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.GalleryListResult
+import com.hippo.ehviewer.restore.BackupMerger
 import com.hippo.ehviewer.restore.PandaChaikaMerger
 import com.hippo.ehviewer.restore.RestoredGalleries
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
+import com.hippo.ehviewer.wnacg.wnacgMerger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import moe.tarsin.coroutines.runSuspendCatching
@@ -44,9 +46,12 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
     var hideFavoritedApplied: Boolean? = null
         private set
 
-    // Fork: the search on PandaChika of the pages loaded, see PandaChaikaMerger
+    // Fork: the searches on PandaChika and 紳士漫畫 of the pages loaded, see BackupMerger
     @Volatile
-    private var pandaChaika: PandaChaikaMerger? = null
+    private var backups: List<BackupMerger<*>> = emptyList()
+
+    // Fork: 紳士漫畫 asked for its check in this search, so its albums are not in the results, see ui/WnacgCheck.kt
+    val wnacgBlocked = mutableStateOf(false)
 
     // Use a smaller prefetch distance to avoid prepending an additional page after jumping
     val data = Pager(PagingConfig(25, prefetchDistance = 20)) {
@@ -97,10 +102,16 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         LoadResult.Page(result.galleryInfoList, prev?.toString(), next?.toString())
                     }
                 } else {
-                    // Fork: the galleries PandaChika keeps for the search, between those of E-Hentai, see
-                    // PandaChaikaMerger. A refresh is a new search, or the same from its start
-                    if (params is LoadParams.Refresh) pandaChaika = PandaChaikaMerger.of(urlBuilder) { hideFavoritedPref.value }
-                    val merger = pandaChaika
+                    // Fork: the galleries PandaChika keeps and the albums of 紳士漫畫 for the search, between those of
+                    // E-Hentai, see BackupMerger. A refresh is a new search, or the same from its start
+                    if (params is LoadParams.Refresh) {
+                        wnacgBlocked.value = false
+                        backups = listOfNotNull(
+                            PandaChaikaMerger.of(urlBuilder) { hideFavoritedPref.value },
+                            wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true },
+                        )
+                    }
+                    val mergers = backups
                     val url = mutex.withLock {
                         with(urlBuilder) {
                             when (params) {
@@ -112,12 +123,12 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         }
                     }
                     runSuspendCatching {
-                        // Fork: without a hit on E-Hentai, PandaChika may have some
+                        // Fork: without a hit on E-Hentai, PandaChika or 紳士漫畫 may have some
                         var noHits: NoHitsFoundException? = null
                         var result = try {
                             EhEngine.getGalleryList(url)
                         } catch (e: NoHitsFoundException) {
-                            if (merger == null || params !is LoadParams.Refresh) throw e
+                            if (mergers.isEmpty() || params !is LoadParams.Refresh) throw e
                             noHits = e
                             GalleryListResult(null, null, mutableListOf())
                         }
@@ -145,13 +156,15 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         }
                         // Fork: listed by E-Hentai, not removed: no badge
                         RestoredGalleries.listed(result.galleryInfoList.map { it.gid })
-                        if (merger != null) {
+                        if (mergers.isNotEmpty()) {
                             val load = when (params) {
-                                is LoadParams.Refresh -> PandaChaikaMerger.Load.Refresh
-                                is LoadParams.Append -> PandaChaikaMerger.Load.Append
-                                is LoadParams.Prepend -> PandaChaikaMerger.Load.Prepend
+                                is LoadParams.Refresh -> BackupMerger.Load.Refresh
+                                is LoadParams.Append -> BackupMerger.Load.Append
+                                is LoadParams.Prepend -> BackupMerger.Load.Prepend
                             }
-                            val merged = merger.merge(load, params.key, result.galleryInfoList, result.prev, result.next)
+                            // Each between those listed so far: 紳士漫畫 leaves out the titles PandaChika added too
+                            var merged: List<BaseGalleryInfo> = result.galleryInfoList
+                            mergers.forEach { merged = it.merge(load, params.key, merged, result.prev, result.next) }
                             result = result.copy(galleryInfoList = merged.toMutableList())
                         }
                         noHits?.let { if (result.galleryInfoList.isEmpty()) throw it }

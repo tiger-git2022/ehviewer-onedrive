@@ -52,6 +52,7 @@ import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.restore.RestoredBadge
 import com.hippo.ehviewer.util.FavouriteStatusRouter
+import com.hippo.ehviewer.wnacg.isWnacg
 
 @Composable
 context(_: SharedTransitionScope, _: TransitionsVisibilityScope)
@@ -187,7 +188,8 @@ fun GalleryInfoListItem(
                             maxLines = 1,
                             softWrap = false,
                         )
-                        RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp)
+                        // Fork: 紳士漫畫 has no rating, see wnacg/
+                        if (!isWnacg(info.gid)) RatingWidgetReuse(rating = info.rating, ratingSize = 12.dp, ratingInterval = 0.dp)
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(

@@ -301,7 +301,8 @@ class SpiderDen(val info: GalleryInfo) {
         return archived
     }
 
-    suspend fun exportAsCbz(file: Path) = downloadDir!!.find(archiveName)?.sendTo(file) ?: archiveTo(file)
+    // Fork: or "<gid>.zip", the archive a download of PandaChika or 紳士漫畫 saves, whose pages are in no other file
+    suspend fun exportAsCbz(file: Path) = downloadDir!!.run { find(archiveName) ?: find("$gid.zip") }?.sendTo(file) ?: archiveTo(file)
 
     private suspend fun archiveTo(file: Path) = resourceScope {
         val comicInfo = closeable {

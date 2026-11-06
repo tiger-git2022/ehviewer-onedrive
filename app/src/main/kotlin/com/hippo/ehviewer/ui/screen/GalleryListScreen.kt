@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBoxDefaults
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -108,6 +109,8 @@ import com.hippo.ehviewer.sync.OneDriveClient
 import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.WnacgCheck
+import com.hippo.ehviewer.ui.wnacgCheckUrl
 import com.hippo.ehviewer.ui.awaitSelectDate
 import com.hippo.ehviewer.ui.destinations.ProgressScreenDestination
 import com.hippo.ehviewer.ui.doGalleryInfoAction
@@ -236,6 +239,26 @@ fun AnimatedVisibilityScope.GalleryListScreen(
             urlBuilder.setRange(0)
             data.refresh()
         }
+    }
+    // Fork: 紳士漫畫 asked for its check while searching: told once, passed in a page of the app, then searched again
+    val wnacgBlocked by viewModel.wnacgBlocked
+    var wnacgCheck by remember { mutableStateOf(false) }
+    val wnacgBlockedText = stringResource(R.string.wnacg_search_blocked)
+    val wnacgOpen = stringResource(R.string.chapter_wnacg_open)
+    LaunchedEffect(wnacgBlocked) {
+        if (wnacgBlocked && snackbar(wnacgBlockedText, wnacgOpen, withDismissAction = true) == SnackbarResult.ActionPerformed) {
+            wnacgCheck = true
+        }
+    }
+    if (wnacgCheck) {
+        WnacgCheck(
+            url = wnacgCheckUrl(null),
+            onCancel = { wnacgCheck = false },
+            onDone = {
+                wnacgCheck = false
+                data.refresh()
+            },
+        )
     }
 
     fun getFirstVisibleItemIndex() = if (listMode == 0) {

@@ -85,6 +85,9 @@ object Settings : DataStorePreferences(null) {
     // Fork: a search also looks on PandaChika for galleries E-Hentai removed, see restore/PandaChaikaSearch.kt
     val pandaChaikaInSearch = boolPref("pandachaika_in_search", true)
 
+    // Fork: a search also lists the albums of 紳士漫畫 (wnacg), see wnacg/WnacgSearch.kt
+    val wnacgInSearch = boolPref("wnacg_in_search", true)
+
     // Fork: comments not in the target language translated by a large language model, see translate/CommentTranslations.kt.
     // The API key never leaves this device (OneDriveSyncMerger)
     val commentTranslateAuto = boolPref("comment_translate_auto", true)

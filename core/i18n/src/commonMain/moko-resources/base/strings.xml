@@ -813,6 +813,11 @@
     <string name="pandachaika_in_search">Search PandaChika too</string>
     <string name="pandachaika_in_search_summary">Galleries E-Hentai removed and PandaChika keeps show in the search results by posted time, with a “Restored” badge</string>
     <string name="refresh_previews">Refresh previews</string>
+    <string name="wnacg_in_search">Search 紳士漫畫 (wnacg) too</string>
+    <string name="wnacg_in_search_summary">Its albums of a title E-Hentai has not in the same language show in the search results by upload time, with a “紳” badge. Searches of words and of artist, group, parody and character names only</string>
+    <string name="wnacg_badge">From 紳士漫畫</string>
+    <string name="wnacg_tags">Tags</string>
+    <string name="wnacg_search_blocked">紳士漫畫 asked for its check, so its albums are not in these results</string>
     <string name="preview_error_unknown_host">Server not found</string>
     <string name="preview_error_unreachable">Cannot reach the server</string>
     <string name="preview_error_ssl">Secure connection failed</string>

@@ -141,6 +141,8 @@ import com.hippo.ehviewer.ui.tools.updateSpan
 import com.hippo.ehviewer.util.ReadableTime
 import com.hippo.ehviewer.util.addTextToClipboard
 import com.hippo.ehviewer.util.displayString
+import com.hippo.ehviewer.wnacg.isWnacg
+import com.hippo.ehviewer.wnacg.wnacgComments
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -226,6 +228,11 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     val density = LocalDensity.current
 
     suspend fun refreshComment(showAll: Boolean) {
+        // Fork: those of an album of 紳士漫畫 from its page of comments, see wnacg/
+        if (isWnacg(galleryDetail.gid)) {
+            comments = wnacgComments(galleryDetail.gid, galleryDetail)
+            return
+        }
         val url = EhUrl.getGalleryDetailUrl(galleryDetail.gid, galleryDetail.token, allComment = showAll)
         val detail = EhEngine.getGalleryDetail(url)
         comments = detail.comments
@@ -366,7 +373,8 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             )
         },
         floatingActionButton = {
-            if (hasSignedIn && !commenting) {
+            // Fork: no commenting on 紳士漫畫 from here
+            if (hasSignedIn && !commenting && !isWnacg(galleryDetail.gid)) {
                 FloatingActionButton(
                     onClick = {
                         if (commentId != -1L) {
