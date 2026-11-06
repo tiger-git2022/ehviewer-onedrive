@@ -25,13 +25,34 @@ import moe.tarsin.coroutines.runSuspendCatching
  * A search of E-Hentai as 紳士漫畫 can do it: words of the titles. Its tags are its own (in Chinese), so of the tags of
  * E-Hentai only the names of artists, groups, parodies and characters go, as words, which its titles have.
  * [language] is "ZH", "EN" when the search asks for one, null for all. [unwritten] is the one name of an artist, a group
- * or a cosplayer the tag database did not tell, in [words] as the tag: see [guessWrittenName].
+ * or a cosplayer the tag database did not tell, in [words] as the tag: see [guessWrittenName]. [names] are the names of
+ * artists, groups and cosplayers searched, as written: see [accepts].
  */
-data class WnacgQuery(val words: String, val language: String?, val unwritten: WnacgName? = null) {
+data class WnacgQuery(
+    val words: String,
+    val language: String?,
+    val unwritten: WnacgName? = null,
+    val names: List<String> = emptyList(),
+) {
     /** The query with [name] for [unwritten]. */
     fun withName(name: String): WnacgQuery = unwritten?.let {
-        copy(words = words.substring(0, it.index) + name + words.substring(it.index + it.value.length), unwritten = null)
+        copy(
+            words = words.substring(0, it.index) + name + words.substring(it.index + it.value.length),
+            unwritten = null,
+            names = names.map { n -> if (n == it.value) name else n },
+        )
     } ?: this
+
+    /**
+     * Whether an album of [title] is one of the search: the site looks for the words anywhere in its titles, so a
+     * short name ("も") finds most of its albums. One of a name of an artist, a group or a cosplayer has it in the
+     * brackets of its title, as "[サークル (作者)]" has them.
+     */
+    fun accepts(title: String): Boolean {
+        if (names.isEmpty()) return true
+        val written = bracketNames(title)
+        return names.all { nameKey(it) in written }
+    }
 
     companion object {
         // Namespaces whose tags are names, which titles have
@@ -76,6 +97,7 @@ data class WnacgQuery(val words: String, val language: String?, val unwritten: W
         fun fromKeyword(keyword: String, nameOf: (namespace: String, value: String) -> String = ::writtenName): WnacgQuery? {
             val words = mutableListOf<String>()
             val unwritten = mutableListOf<WnacgName>()
+            val names = mutableListOf<String>()
             var language: String? = null
             for (match in TOKEN.findAll(keyword)) {
                 val (prefix, ns, quoted, bare) = match.destructured
@@ -88,8 +110,9 @@ data class WnacgQuery(val words: String, val language: String?, val unwritten: W
                     namespace.isEmpty() -> words += value
                     namespace in NAMES -> {
                         val name = nameOf(namespace, value)
-                        if (name == value && namespace in WRITTEN) {
-                            unwritten += WnacgName(namespace, value, words.sumOf { it.length + 1 })
+                        if (namespace in WRITTEN) {
+                            if (name == value) unwritten += WnacgName(namespace, value, words.sumOf { it.length + 1 })
+                            names += name
                         }
                         words += name
                     }
@@ -103,7 +126,7 @@ data class WnacgQuery(val words: String, val language: String?, val unwritten: W
                 }
             }
             val text = words.joinToString(" ").ifBlank { return null }
-            return WnacgQuery(text, language, unwritten.singleOrNull())
+            return WnacgQuery(text, language, unwritten.singleOrNull(), names)
         }
 
         /** The search of [lub], null when 紳士漫畫 cannot do it (the front page, the popular, a tag...). */
@@ -116,7 +139,13 @@ data class WnacgQuery(val words: String, val language: String?, val unwritten: W
                     val value = keyword.substringAfter(':').trim('$', '"', ' ')
                     if (ns in NAMES && value.isNotEmpty()) {
                         val name = nameOf(ns, value)
-                        WnacgQuery(name, null, WnacgName(ns, value).takeIf { name == value && ns in WRITTEN })
+                        val written = ns in WRITTEN
+                        WnacgQuery(
+                            name,
+                            null,
+                            WnacgName(ns, value).takeIf { name == value && written },
+                            if (written) listOf(name) else emptyList(),
+                        )
                     } else {
                         null
                     }
@@ -153,6 +182,20 @@ data class WnacgName(val namespace: String, val value: String, val index: Int = 
 private val TITLE_BRACKET = Regex("""^\s*(?:\([^)]*\)\s*)?\[([^\]]+)\]""")
 private val BRACKET_PARTS = Regex("""^(.*?)\s*[(（]([^)）]*)[)）]\s*$""")
 private val NAME_SEPARATORS = Regex("""\s*[、,，/&＆]\s*""")
+
+// Any [...] or 【...】 of a title: of the artist, the group, the translators, the language...
+private val TITLE_BRACKETS = Regex("""[\[【]([^\]】]+)[\]】]""")
+private val SPACES = Regex("""\s+""")
+
+private fun nameKey(name: String) = name.replace(SPACES, "").lowercase()
+
+/** The names in the brackets of [title], as [nameKey]: "サークル", "作者" and both from "[サークル (作者)]". */
+fun bracketNames(title: String): Set<String> = TITLE_BRACKETS.findAll(title).flatMap { match ->
+    val bracket = match.groupValues[1].trim()
+    val parts = BRACKET_PARTS.find(bracket)
+    val names = if (parts == null) listOf(bracket) else listOf(parts.groupValues[1]) + parts.groupValues[2].split(NAME_SEPARATORS)
+    (names + bracket.split(NAME_SEPARATORS)).map(::nameKey).filter { it.isNotEmpty() }
+}.toSet()
 
 /**
  * The name of [name] as the titles of E-Hentai of its search write it, from their first brackets: the one most of them
@@ -215,7 +258,8 @@ fun wnacgMerger(lub: ListUrlBuilder, hideFavorited: () -> Boolean, onBlocked: ()
             val query = current
             val result = Wnacg.searchPage(query.words, page)
             BackupPage(
-                items = result.albums.filter { WnacgQuery.languageMatches(query.language, wnacgLanguage(it.category)) }
+                items = result.albums
+                    .filter { WnacgQuery.languageMatches(query.language, wnacgLanguage(it.category)) && query.accepts(it.title) }
                     .map { BackupItem(it, it.toGalleryInfo(), it.created) },
                 postedTimes = result.albums.map { it.created }.filter { it > 0 },
                 hasNext = result.hasNext,
