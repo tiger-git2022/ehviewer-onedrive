@@ -913,7 +913,7 @@ object FavoritesIndexSync {
     }
 
     /** Fork: asked from the settings, panda.chaika.moe is tried again with the next work, not after the wait. */
-    fun retryPandaNow() {
+    suspend fun retryPandaNow() {
         if (OneDriveSyncState.pandaRetryAt.value == 0L) return
         OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.pandaRetryAt] = 0L }
     }
