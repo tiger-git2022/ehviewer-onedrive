@@ -323,11 +323,11 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         // Fork: fetches the links and the images of the previews that failed again, the progress on the
                         // floating bar at the bottom, see PreviewProgressBar
                         if (previewRefetcher != null) add(BarAction(refreshPreviews) { previewRefetcher.refreshFailed(contextOf<MainActivity>()) })
-                        // Fork: only the pages typed, as "1-30, 60-80", see PartialDownload.kt
+                        // Fork: only the pages picked, see PartialDownload.kt; a tankoubon is compared with the favorites
                         add(
                             BarAction(downloadPartial) {
                                 val detail = galleryInfo as? GalleryDetail ?: return@BarAction
-                                launchIO { startPartialDownload(detail.galleryInfo) }
+                                launchIO { startPartialDownload(detail.galleryInfo, detail) }
                             },
                         )
                         if (syncIconShown) add(shareAction)

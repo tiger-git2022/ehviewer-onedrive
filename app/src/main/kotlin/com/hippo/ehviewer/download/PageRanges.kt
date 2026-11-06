@@ -47,6 +47,21 @@ object PageRanges {
         return picked.indices.filter { picked[it] }
     }
 
+    /** The pages [picked] (from 0, a page of each) as the fewest ranges, in order. */
+    fun runs(picked: BooleanArray): List<PageRange> {
+        val ranges = ArrayList<PageRange>()
+        var start = -1
+        for (index in 0..picked.size) {
+            val on = index < picked.size && picked[index]
+            if (on && start < 0) start = index
+            if (!on && start >= 0) {
+                ranges += PageRange(start + 1, index)
+                start = -1
+            }
+        }
+        return ranges
+    }
+
     /** [ranges] as text, to be read again by [parse]. */
     fun format(ranges: List<PageRange>) = ranges.joinToString(",")
 }
