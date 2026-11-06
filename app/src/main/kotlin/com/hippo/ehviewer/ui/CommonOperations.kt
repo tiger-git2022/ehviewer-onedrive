@@ -241,10 +241,11 @@ suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): 
         }
         val picked = awaitSelectItemWithIconInCircle(items, title = R.string.add_favorites_dialog_title) - if (localFavorited) 1 else 0
         return when (picked) {
-            1 -> addToDownload(galleryInfo)
+            // Removed: out of the local favorites (and so of 「待下载」)
+            -1 -> doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited = true)
             // Already a local favorite: kept
             0 -> if (localFavorited) true else doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited = false)
-            else -> doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited = true)
+            else -> addToDownload(galleryInfo)
         }
     } else {
         return doModifyFavorites(galleryInfo, LOCAL_FAVORITED, localFavorited)

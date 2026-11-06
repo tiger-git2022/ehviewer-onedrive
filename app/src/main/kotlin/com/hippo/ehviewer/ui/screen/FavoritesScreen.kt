@@ -90,6 +90,7 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import moe.tarsin.coroutines.runSwallowingWithUI
 import moe.tarsin.navigate
 
@@ -141,6 +142,11 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
     LaunchedEffect(languageFilter) {
         val applied = viewModel.chineseOnlyApplied
         if (applied != null && applied != (languageFilter == CHINESE_LANGUAGE_FILTER)) refresh()
+    }
+
+    // Fork: 「待下载」 shown reloads when it changed, here, on another page or by a sync, see ToDownload
+    LaunchedEffect(Unit) {
+        ToDownload.gids.drop(1).collect { if (urlBuilder.isToDownload) data.refresh() }
     }
 
     ProvideSideSheetContent { sheetState ->
