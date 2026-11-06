@@ -668,6 +668,8 @@ fun BoxScope.EhModalBottomSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     sheetState: SheetState = rememberModalBottomSheetState(),
+    // Fork: the color of the glass, that of the drawers when null
+    glassColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val glass = rememberLiquidGlass(LocalPageBackdrop.current)
@@ -733,7 +735,7 @@ fun BoxScope.EhModalBottomSheet(
                         .onSizeChanged { sheetHeight = it.height }
                         .nestedScroll(scrollConnection)
                         .draggable(dragState, Orientation.Vertical, onDragStopped = { settle(it) })
-                        .widthIn(max = BottomSheetDefaults.SheetMaxWidth).fillMaxWidth().edgeGlass(glass, GlassEdge.Top, colors.surfaceContainerLow.copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
+                        .widthIn(max = BottomSheetDefaults.SheetMaxWidth).fillMaxWidth().edgeGlass(glass, GlassEdge.Top, (glassColor ?: colors.surfaceContainerLow).copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
                     shape = GlassBottomSheetShape,
                     color = Color.Transparent,
                     contentColor = colors.onSurface,

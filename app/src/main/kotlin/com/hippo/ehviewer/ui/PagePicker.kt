@@ -64,8 +64,6 @@ import com.hippo.ehviewer.chapters.UncomparedChapter
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PageRanges
 import com.hippo.ehviewer.ui.settings.SyncLinearProgress
-import com.hippo.ehviewer.ui.settings.SyncProgressLine
-import com.hippo.ehviewer.ui.settings.SyncProgressLineText
 
 /** Fork: blue for the pages favorited as chapters, see [ChapterCompare]. */
 private val FavoritedBlue = Color(0xFF4A86E8)
@@ -157,7 +155,7 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
             keyboardOptions = numbers,
             lineLimits = TextFieldLineLimits.SingleLine,
             isError = from.text.isNotEmpty() && first == null,
-            modifier = Modifier.width(80.dp),
+            modifier = Modifier.weight(1f),
         )
         Text(text = stringResource(R.string.download_partial_to))
         OutlinedTextField(
@@ -165,11 +163,10 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
             keyboardOptions = numbers,
             lineLimits = TextFieldLineLimits.SingleLine,
             isError = lastText.isNotEmpty() && last == null,
-            modifier = Modifier.width(80.dp),
+            modifier = Modifier.weight(1f),
         )
         val suffix = stringResource(R.string.download_partial_suffix)
         if (suffix.isNotBlank()) Text(text = suffix)
-        Spacer(Modifier.weight(1f))
         TextButton(
             onClick = {
                 onAdd(minOf(first!!, last!!)..maxOf(first, last))
@@ -179,7 +176,7 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
             enabled = valid,
             shapes = ButtonDefaults.shapes(),
         ) {
-            Text(text = "+ " + stringResource(R.string.download_partial_add))
+            Text(text = "+ " + stringResource(R.string.download_partial_add), maxLines = 1, softWrap = false)
         }
     }
 }
@@ -267,31 +264,36 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 }
 
-/** The progress as the one of the sync below the search bar: a line of text, the numbers on the right, and a bar. */
+/**
+ * The progress as the one of the sync below the search bar: what is done and the share of all the thumbnails, a bar,
+ * then each gallery read now with its thumbnails, the title wrapping rather than cut.
+ */
 @Composable
 private fun CompareProgressCard(progress: ChapterCompareProgress) {
     val label = when (progress.stage) {
         ChapterCompareProgress.Stage.Finding -> stringResource(R.string.chapter_compare_finding)
-        ChapterCompareProgress.Stage.Book -> stringResource(R.string.chapter_compare_book)
-        ChapterCompareProgress.Stage.Chapter -> stringResource(R.string.chapter_compare_chapter, progress.index, progress.count, progress.title.orEmpty())
+        ChapterCompareProgress.Stage.Comparing -> stringResource(R.string.chapter_compare_chapter, progress.finished, progress.count)
     }
     val fraction = progress.fraction
-    val numbers = listOfNotNull(
-        "${progress.done}/${progress.total}".takeIf { progress.total > 0 },
-        fraction?.let { "${(it * 100).toInt()}%" },
-    ).joinToString("  ")
+    val small = MaterialTheme.typography.labelMedium
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f), MaterialTheme.shapes.large)
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        SyncProgressLineText(
-            line = SyncProgressLine(label = label, numbers = numbers, full = if (numbers.isEmpty()) label else "$label  $numbers"),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = label, style = small, color = color, modifier = Modifier.weight(1f))
+            fraction?.let { Text(text = "${(it * 100).toInt()}%", style = small, color = color, maxLines = 1, modifier = Modifier.padding(start = 8.dp)) }
+        }
         SyncLinearProgress(fraction = fraction, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+        progress.active.forEach { gallery ->
+            Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(top = 6.dp)) {
+                val title = if (gallery.book) stringResource(R.string.chapter_compare_book, gallery.title) else gallery.title
+                Text(text = title, style = small, color = color, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(text = "${gallery.done}/${gallery.total}", style = small, color = color, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
     }
 }
 

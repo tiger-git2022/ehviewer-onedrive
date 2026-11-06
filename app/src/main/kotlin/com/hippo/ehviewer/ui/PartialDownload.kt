@@ -1,6 +1,9 @@
 package com.hippo.ehviewer.ui
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import com.ehviewer.core.database.model.DownloadInfo
 import com.ehviewer.core.files.delete
@@ -63,13 +66,20 @@ suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? =
  */
 context(_: DialogState)
 private suspend fun awaitPageRanges(pages: Int, initial: String, detail: GalleryDetail?) = dialog<List<PageRange>> { cont ->
-    EhModalBottomSheet(onDismissRequest = { cont.cancel() }) {
-        PagePicker(
-            pages = pages,
-            initial = initial,
-            detail = detail?.takeIf(ChapterCompare::isTankoubon),
-            onCancel = { cont.cancel() },
-            onDownload = { cont.resume(it) },
-        )
+    // As the glass menu of the top bars, its text white in dark themes: the gray text of the sheets was hard to read
+    // over the busy page behind
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.surface.luminance() < 0.5f
+    val text = if (dark) colors.copy(onSurface = Color.White, onSurfaceVariant = Color.White.copy(alpha = 0.85f)) else colors
+    MaterialTheme(colorScheme = text) {
+        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer) {
+            PagePicker(
+                pages = pages,
+                initial = initial,
+                detail = detail?.takeIf(ChapterCompare::isTankoubon),
+                onCancel = { cont.cancel() },
+                onDownload = { cont.resume(it) },
+            )
+        }
     }
 }
