@@ -2,6 +2,8 @@ package com.hippo.ehviewer.chapters
 
 import android.graphics.Bitmap
 import coil3.BitmapImage
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
 import coil3.request.CachePolicy
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
@@ -88,7 +90,7 @@ sealed interface ChapterCompareState {
  * Fork: which pages of a tankoubon the user already has as favorites of single chapters. The favorites of the same
  * artist (all the cloud slots, searched on the site, and the local ones) are compared by their thumbnails with the
  * book, see [ChapterMatcher]. A favorite gone from E-H is compared by another upload of it still there, in any
- * language; else the page its cover looks like is told.
+ * language, or by its album on 紳士漫畫 ([Wnacg]); else the page its cover looks like is told.
  *
  * It runs on when the sheet is closed; the result is kept in a file per gallery.
  */
@@ -98,6 +100,8 @@ object ChapterCompare {
     private const val MAX_CANDIDATES = 60
     private const val MAX_OTHER_UPLOADS = 3
     private const val PREVIEW_PAGE_GAP = 400L
+    private const val MAX_WNACG_PAGES = 400
+    private const val WNACG_REFERER = "https://www.wnacg.com/"
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true }
@@ -220,6 +224,14 @@ object ChapterCompare {
                 return null
             }
         }
+        // Its album on 紳士漫畫, where many Chinese translations gone from E-H still are
+        for (album in wnacgAlbums(info)) {
+            val ranges = runCatching { ChapterMatcher.locate(book, wnacgHashes(album, onPages)) }.onFailure { logcat(TAG, it) }.getOrNull()
+            if (!ranges.isNullOrEmpty()) {
+                ranges.forEach { found += it to source }
+                return null
+            }
+        }
         // Its cover, which E-H still has: where it looks like a page of the book, told but not taken
         val cover = runCatching { coverHash(info) }.onFailure { logcat(TAG, it) }.getOrNull()
         val page = cover?.let { ChapterMatcher.locateCover(book, it) }
@@ -239,6 +251,51 @@ object ChapterCompare {
             }.onFailure { logcat(TAG, it) }
         }
         return found.values.take(MAX_OTHER_UPLOADS)
+    }
+
+    /** Albums on 紳士漫畫 of the title of [info], the language and the translators left out; a few at most. */
+    private suspend fun wnacgAlbums(info: GalleryInfo): List<Wnacg.Album> {
+        val titles = listOfNotNull(info.titleJpn, info.title).map(ChapterTitles::core).filter { it.isNotBlank() }.distinct()
+        val found = LinkedHashMap<Long, Wnacg.Album>()
+        titles.forEach { title ->
+            runCatching {
+                Wnacg.search(title).filter { ChapterTitles.core(it.title) in titles }.forEach { found.putIfAbsent(it.aid, it) }
+            }.onFailure { logcat(TAG, it) }
+        }
+        return found.values.take(MAX_OTHER_UPLOADS)
+    }
+
+    /** The hashes of the thumbnails of [album], by page from 0. */
+    private suspend fun wnacgHashes(album: Wnacg.Album, onPages: (Int) -> Unit): List<LongArray?> {
+        val pages = album.pages.coerceAtMost(MAX_WNACG_PAGES)
+        val hashes = ArrayList<LongArray?>()
+        var index = 1
+        while (pages <= 0 || hashes.size < pages) {
+            if (index > 1) delay(PREVIEW_PAGE_GAP)
+            val thumbnails = Wnacg.thumbnails(album.aid, index)
+            if (thumbnails.isEmpty()) break
+            thumbnails.forEach { (page, url) ->
+                while (hashes.size < page) hashes += null
+                hashes[page - 1] = runCatching { urlHash(url, WNACG_REFERER) }.onFailure { logcat(TAG, it) }.getOrNull()
+            }
+            onPages(hashes.size)
+            index++
+            if (pages <= 0 && index > MAX_WNACG_PAGES / 12) break
+        }
+        return hashes
+    }
+
+    private suspend fun urlHash(url: String, referer: String): LongArray? {
+        val request = with(appCtx) {
+            imageRequest {
+                data(url)
+                httpHeaders(NetworkHeaders.Builder().set("Referer", referer).build())
+                allowHardware(false)
+                memoryCachePolicy(CachePolicy.DISABLED)
+            }
+        }
+        val bitmap = ((request.execute() as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
+        return withContext(Dispatchers.Default) { hashOf(bitmap, 0, 0, bitmap.width, bitmap.height) }
     }
 
     /** The favorites of the artists (or groups) of [detail]: on the site and local. */
