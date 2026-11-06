@@ -21,6 +21,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -38,6 +40,7 @@ import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.WnacgCheck
 import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.destinations.FilterScreenDestination
 import com.hippo.ehviewer.ui.destinations.MyTagsScreenDestination
@@ -47,6 +50,7 @@ import com.hippo.ehviewer.ui.main.showImageLimits
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
 import com.hippo.ehviewer.ui.tools.awaitSelectTime
+import com.hippo.ehviewer.ui.wnacgCheckUrl
 import com.hippo.ehviewer.util.copyTextToClipboard
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -61,6 +65,11 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     fun launchSnackBar(content: String) = launch { snackbar(content) }
     val hasSignedIn by Settings.hasSignedIn.collectAsState()
+    // Fork: the check of 紳士漫畫, passed by hand at any time, see ui/WnacgCheck.kt
+    var wnacgCheck by remember { mutableStateOf(false) }
+    if (wnacgCheck) {
+        WnacgCheck(url = wnacgCheckUrl(null), onCancel = { wnacgCheck = false }, onDone = { wnacgCheck = false })
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -184,6 +193,11 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                 summary = stringResource(id = R.string.wnacg_in_search_summary),
                 state = Settings.wnacgInSearch.asMutableState(),
             )
+            // Fork
+            Preference(
+                title = stringResource(id = R.string.wnacg_check),
+                summary = stringResource(id = R.string.wnacg_check_summary),
+            ) { wnacgCheck = true }
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.dark_theme),
                 entry = com.hippo.ehviewer.R.array.night_mode_entries,

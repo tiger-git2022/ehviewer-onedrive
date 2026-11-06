@@ -2,7 +2,8 @@ package com.hippo.ehviewer.chapters
 
 /** Fork: titles of uploads of one work told apart only by language, translators, edition, see [ChapterCompare]. */
 object ChapterTitles {
-    private val BRACKETS = Regex("\\[[^\\]]*]|【[^】]*】|\\([^)]*\\)|（[^）]*）|\\{[^}]*}")
+    // Brackets escaped: on Android (ICU) a bare "}" does not compile
+    private val BRACKETS = Regex("""\[[^\]]*\]|【[^】]*】|\([^)]*\)|（[^）]*）|\{[^}]*\}""")
     private val SPACES = Regex("\\s+")
 
     /**

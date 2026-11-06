@@ -817,6 +817,8 @@
     <string name="wnacg_in_search_summary">Its albums of a title E-Hentai has not in the same language show in the search results by upload time, with a “紳” badge. Searches of words and of artist, group, parody and character names only</string>
     <string name="wnacg_badge">From 紳士漫畫</string>
     <string name="wnacg_tags">Tags</string>
+    <string name="wnacg_check">Pass the check of 紳士漫畫</string>
+    <string name="wnacg_check_summary">When its albums are missing from the search results, or their covers and thumbnails do not load</string>
     <string name="wnacg_search_blocked">紳士漫畫 asked for its check, so its albums are not in these results</string>
     <string name="to_download">To download</string>
     <string name="local_favorites_to_download">Local favorites · To download</string>

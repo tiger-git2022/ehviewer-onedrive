@@ -385,7 +385,7 @@ object ChapterCompare {
         fun tags(namespace: TagNamespace) = detail.tagGroups.filter { it.namespace == namespace }.flatMap { group -> group.tags.map { it.text } }
         return tags(TagNamespace.Artist).ifEmpty { tags(TagNamespace.Group) }.ifEmpty {
             // No tag: the name in the first brackets of the title, "[Circle (Artist)]" taking the artist
-            val bracket = Regex("\\[([^\\]]+)]").find(detail.title.orEmpty())?.groupValues?.get(1)?.trim()
+            val bracket = Regex("""\[([^\]]+)\]""").find(detail.title.orEmpty())?.groupValues?.get(1)?.trim()
             val inner = bracket?.let { Regex("\\(([^)]+)\\)").find(it)?.groupValues?.get(1)?.trim() } ?: bracket
             listOfNotNull(inner?.takeIf { it.isNotEmpty() })
         }.distinct()

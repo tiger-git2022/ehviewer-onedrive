@@ -799,6 +799,8 @@
     <string name="wnacg_in_search_summary">E-Hentai 没有同名同语言版本的绅士漫画相册按上传时间显示在搜索结果中，封面带「绅」角标。只查关键词，以及作者、社团、原作、角色名</string>
     <string name="wnacg_badge">来自绅士漫画</string>
     <string name="wnacg_tags">标签</string>
+    <string name="wnacg_check">绅士漫画验证</string>
+    <string name="wnacg_check_summary">搜索结果里没有绅士漫画的相册，或者封面、缩略图加载不出来时，在这里过一次验证</string>
     <string name="wnacg_search_blocked">绅士漫画要先验证，这次结果里没有它的相册</string>
     <string name="to_download">待下载</string>
     <string name="local_favorites_to_download">本地收藏 · 待下载</string>
