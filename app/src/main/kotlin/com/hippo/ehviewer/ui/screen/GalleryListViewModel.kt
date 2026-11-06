@@ -107,9 +107,11 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                     // E-Hentai, see BackupMerger. A refresh is a new search, or the same from its start
                     if (params is LoadParams.Refresh) {
                         wnacgBlocked.value = false
+                        // 紳士漫畫 first: PandaChika leaves out the works it has (mostly Chinese translations)
+                        val wnacg = wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true }
                         backups = listOfNotNull(
-                            PandaChaikaMerger.of(urlBuilder) { hideFavoritedPref.value },
-                            wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true },
+                            wnacg,
+                            PandaChaikaMerger.of(urlBuilder, { hideFavoritedPref.value }) { wnacg?.fetchedTitles().orEmpty() },
                         )
                     }
                     val mergers = backups
@@ -163,7 +165,7 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                                 is LoadParams.Append -> BackupMerger.Load.Append
                                 is LoadParams.Prepend -> BackupMerger.Load.Prepend
                             }
-                            // Each between those listed so far: 紳士漫畫 leaves out the titles PandaChika added too
+                            // Each between those listed so far: PandaChika leaves out the works 紳士漫畫 added
                             var merged: List<BaseGalleryInfo> = result.galleryInfoList
                             // A failure of the other site never takes the page of E-Hentai with it
                             mergers.forEach { merger ->

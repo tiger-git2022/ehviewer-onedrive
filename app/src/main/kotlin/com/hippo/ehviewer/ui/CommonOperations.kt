@@ -27,10 +27,8 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.FileDownloadOff
 import androidx.compose.material.icons.filled.HeartBroken
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
@@ -401,22 +399,6 @@ suspend fun doGalleryInfoAction(info: BaseGalleryInfo) {
     }
     if (downloaded) {
         action(Icons.AutoMirrored.Default.DriveFileMove, R.string.download_move_dialog_title) { showMoveDownloadLabel(info) }
-    }
-    // Fork: 「待下载」, the local favorites to download on any device, see ToDownload
-    if (ToDownload.contains(info.gid)) {
-        action(Icons.Default.FileDownloadOff, R.string.to_download_remove) {
-            ToDownload.remove(listOf(info.gid))
-            tip(R.string.to_download_removed)
-        }
-    } else {
-        action(Icons.Default.DownloadForOffline, R.string.to_download_add) {
-            runSuspendCatching {
-                addToDownload(info)
-                tip(R.string.to_download_added)
-            }.onFailure {
-                tip(R.string.add_to_favorite_failure)
-            }
-        }
     }
     // Fork: last, the local favorites, like opening the gallery does (AutoLocalFavorite); the cloud collections are in
     // the item above

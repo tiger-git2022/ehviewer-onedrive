@@ -1,5 +1,7 @@
 package com.hippo.ehviewer.ui.screen
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -16,17 +18,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.GLASS_TILE_TINT
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.component.leavingWithSearch
+import com.hippo.ehviewer.util.addTextToClipboard
 
 /**
  * One search suggestion as a card of the two staggered columns of the search bar (fork, like the search history of
- * the Mihon fork): a history entry with its delete button, a tag with its translation, or a gallery link.
+ * the Mihon fork): a history entry with its delete button, a tag with its translation, or a gallery link. A long press
+ * copies its text, the values of its tags only (see [plainSearchText]).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     // Fork: on the glass of the expanded search, a card of glass refracting it; its text and icons in the color of the
@@ -34,8 +42,9 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
     val glass = LocalTileGlass.current
     val scheme = MaterialTheme.colorScheme
     val shape = MaterialTheme.shapes.medium
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     Surface(
-        onClick = { suggestion.onClick() },
         shape = shape,
         // The expanded search bar is surfaceContainerHigh itself: a brighter card stands out from it
         color = if (glass != null) Color.Transparent else scheme.surfaceBright,
@@ -43,7 +52,16 @@ fun SearchSuggestionCell(suggestion: Suggestion, onDelete: () -> Unit, modifier:
         // Closing the search, the card leaves with it, see LocalSearchExit
         modifier = modifier.leavingWithSearch().floatingGlass(glass, shape, scheme.surfaceBright.copy(alpha = GLASS_TILE_TINT), GlassStyle.Tile),
     ) {
-        Row(verticalAlignment = Alignment.Top) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.combinedClickable(
+                onClick = { suggestion.onClick() },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    with(context) { addTextToClipboard(plainSearchText(suggestion.keyword), useToast = true) }
+                },
+            ),
+        ) {
             if (suggestion.canOpenDirectly) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Default.MenuBook,

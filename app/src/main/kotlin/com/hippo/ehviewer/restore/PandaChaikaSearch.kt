@@ -4,9 +4,11 @@ import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.chapters.ChapterTitles
 import com.hippo.ehviewer.client.EhFilter
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.data.ListUrlBuilder
+import com.hippo.ehviewer.wnacg.isWnacg
 
 // Fork: a search of E-Hentai also looks on PandaChika, which keeps galleries E-Hentai removed: E-Hentai never lists
 // those. Its galleries go between those of E-Hentai by posted time, but not one E-Hentai listed too (same gid or same
@@ -118,27 +120,36 @@ class PandaChaikaMerger(
     accept: suspend (BaseGalleryInfo) -> Boolean,
     sources: List<suspend (page: Int) -> PandaChaikaApi.GalleryPage>,
     onFound: (Collection<PandaChaikaApi.Gallery>) -> Unit = RestoredGalleries::found,
+    wnacgTitles: () -> List<String> = { emptyList() },
 ) : BackupMerger<PandaChaikaApi.Gallery>(
     accept = accept,
     sources = sources.map { fetch -> { page: Int -> fetch(page).toBackupPage() } },
     onFound = onFound,
     maxPages = MAX_PAGES,
+    // Fork: a work 紳士漫畫 has, in any language, merged before or fetched for a later page ([wnacgTitles]): not again
+    // (its galleries are mostly in Chinese, those of PandaChika hardly ever)
+    moreEhKeys = { info -> if (info.isWnacg) listOfNotNull(info.title, info.titleJpn).mapNotNull(::workKey) else emptyList() },
+    moreKeys = { title -> listOfNotNull(workKey(title)) },
+    hiddenKeys = { wnacgTitles().mapNotNullTo(HashSet(), ::workKey) },
 ) {
-    constructor(query: PandaChaikaQuery, accept: suspend (BaseGalleryInfo) -> Boolean) :
-        this(accept, query.searches().map { search -> { page: Int -> search.search(page) } })
+    constructor(query: PandaChaikaQuery, accept: suspend (BaseGalleryInfo) -> Boolean, wnacgTitles: () -> List<String>) :
+        this(accept, query.searches().map { search -> { page: Int -> search.search(page) } }, wnacgTitles = wnacgTitles)
 
     companion object {
         /** Pages of 100 galleries fetched at most for a search. */
         const val MAX_PAGES = 10
 
         /** For the search of [lub] when on in the settings, with its categories, rating, pages and the filters. */
-        fun of(lub: ListUrlBuilder, hideFavorited: () -> Boolean): PandaChaikaMerger? {
+        fun of(lub: ListUrlBuilder, hideFavorited: () -> Boolean, wnacgTitles: () -> List<String> = { emptyList() }): PandaChaikaMerger? {
             if (!Settings.pandaChaikaInSearch.value) return null
             val query = PandaChaikaQuery.of(lub) ?: return null
-            return PandaChaikaMerger(query, searchAccept(lub, hideFavorited))
+            return PandaChaikaMerger(query, searchAccept(lub, hideFavorited), wnacgTitles)
         }
     }
 }
+
+/** The work of [title], whatever its language and translators: its title without what is in brackets. */
+private fun workKey(title: String) = ChapterTitles.core(title).ifEmpty { null }?.let { "work|$it" }
 
 /** The categories a search of [lub] shows: those picked, or Non-H only without an account (as E-Hentai does). */
 fun searchCategories(lub: ListUrlBuilder): Int {
