@@ -27,12 +27,18 @@ import com.hippo.ehviewer.ktbuilder.execute
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.wnacg.isWnacg
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,18 +75,20 @@ data class ChapterCompareResult(
 /** Fork: how far a compare is. The fraction counts the thumbnails, of the book and of each favorite. */
 data class ChapterCompareProgress(
     val stage: Stage,
-    val done: Int = 0,
-    val total: Int = 0,
-    /** The favorite compared now, from 1, of [count]; its title. */
-    val index: Int = 0,
+    /** The favorites compared already, of [count]. */
+    val finished: Int = 0,
     val count: Int = 0,
-    val title: String? = null,
+    /** The galleries whose thumbnails are read now (the book first, while it is), a few at once. */
+    val active: List<Active> = emptyList(),
     val overallDone: Int = 0,
     val overallTotal: Int = 0,
     /** The blocks found so far. */
     val blocks: List<ChapterBlock> = emptyList(),
 ) {
-    enum class Stage { Finding, Book, Chapter }
+    enum class Stage { Finding, Comparing }
+
+    /** A gallery read now: [book] for the tankoubon itself, [done] of its [total] thumbnails. */
+    data class Active(val title: String, val done: Int, val total: Int, val book: Boolean = false)
 
     val fraction: Float? get() = if (overallTotal > 0) (overallDone.toFloat() / overallTotal).coerceIn(0f, 1f) else null
 }
@@ -104,7 +112,13 @@ object ChapterCompare {
     private const val MAX_FAVORITE_PAGES = 10
     private const val MAX_CANDIDATES = 60
     private const val MAX_OTHER_UPLOADS = 3
-    private const val PREVIEW_PAGE_GAP = 400L
+    private const val PREVIEW_PAGE_GAP = 300L
+
+    /** The favorites read at once. */
+    private const val PARALLEL_GALLERIES = 3
+
+    /** The preview pages fetched at once, of all the galleries: E-H bans an address loading pages too fast. */
+    private val previewGate = Semaphore(3)
     private const val MAX_WNACG_PAGES = 400
     private const val WNACG_REFERER = "https://www.wnacg.com/"
 
@@ -161,54 +175,92 @@ object ChapterCompare {
         val source get() = ChapterSource(info.gid, info.token, info.title ?: info.titleJpn ?: info.gid.toString())
     }
 
-    private suspend fun compare(detail: GalleryDetail): ChapterCompareResult {
+    private suspend fun compare(detail: GalleryDetail): ChapterCompareResult = coroutineScope {
         val gid = detail.gid
         val pages = detail.pages
         val candidates = findCandidates(detail)
         // Each favorite counts its pages; one of an unknown size counts as one preview page
-        val chapterPages = candidates.sumOf { it.info.pages.takeIf { p -> p > 0 } ?: 20 }
-        val overallTotal = pages + chapterPages
-        var overallDone = 0
+        fun sizeOf(info: GalleryInfo) = info.pages.takeIf { it > 0 } ?: 20
+        val overallTotal = pages + candidates.sumOf { sizeOf(it.info) }
+        val lock = Any()
         val found = ArrayList<Pair<IntRange, ChapterSource>>()
         val uncompared = ArrayList<UncomparedChapter>()
         val wnacg = WnacgRun()
-        fun report(progress: ChapterCompareProgress) = set(
-            gid,
-            ChapterCompareState.Running(progress.copy(overallDone = overallDone, overallTotal = overallTotal, blocks = if (found.isEmpty()) emptyList() else ChapterBlocks.build(pages, found))),
-        )
+        // By gallery: how many of its thumbnails are read (the book under its own gid too)
+        val doneBy = LinkedHashMap<Long, Int>()
+        val active = LinkedHashMap<Long, ChapterCompareProgress.Active>()
+        var finished = 0
+        fun report() = synchronized(lock) {
+            val progress = ChapterCompareProgress(
+                stage = ChapterCompareProgress.Stage.Comparing,
+                finished = finished,
+                count = candidates.size,
+                active = active.values.toList(),
+                overallDone = doneBy.values.sum(),
+                overallTotal = overallTotal,
+                blocks = if (found.isEmpty()) emptyList() else ChapterBlocks.build(pages, found),
+            )
+            set(gid, ChapterCompareState.Running(progress))
+        }
+        fun step(key: Long, title: String, done: Int, total: Int, book: Boolean = false) {
+            synchronized(lock) {
+                doneBy[key] = done.coerceAtMost(total)
+                active[key] = ChapterCompareProgress.Active(title, done.coerceAtMost(total), total, book)
+            }
+            report()
+        }
 
-        report(ChapterCompareProgress(ChapterCompareProgress.Stage.Book, 0, pages))
-        val book = galleryHashes(detail.gid, detail.token, pages) { done ->
-            overallDone = done
-            report(ChapterCompareProgress(ChapterCompareProgress.Stage.Book, done, pages))
-        }
-        overallDone = pages
-        candidates.forEachIndexed { i, candidate ->
-            val info = candidate.info
-            val size = info.pages.takeIf { it > 0 } ?: 20
-            val base = overallDone
-            fun step(done: Int, total: Int = size) {
-                overallDone = base + done.coerceAtMost(size)
-                report(ChapterCompareProgress(ChapterCompareProgress.Stage.Chapter, done, total, i + 1, candidates.size, candidate.source.title))
+        // The book and the favorites are read at once, a few galleries at a time; each is placed once the book is read
+        val bookTitle = detail.title ?: detail.titleJpn ?: gid.toString()
+        val book = async {
+            galleryHashes(gid, detail.token, pages) { step(gid, bookTitle, it, pages, book = true) }.also {
+                synchronized(lock) {
+                    doneBy[gid] = pages
+                    active.remove(gid)
+                }
+                report()
             }
-            step(0)
-            val source = candidate.source
-            try {
-                val chapter = galleryHashes(info.gid, info.token, info.pages) { step(it) }
-                ChapterMatcher.locate(book, chapter).forEach { found += it to source }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: GalleryUnavailableException) {
-                compareGone(book, info, source, found, wnacg) { step(it) }?.let { uncompared += it }
-            } catch (e: Throwable) {
-                logcat(TAG, e)
-                uncompared += UncomparedChapter(source, gone = false)
-            }
-            overallDone = base + size
         }
-        val blocks = ChapterBlocks.build(pages, found)
+        val galleries = Semaphore(PARALLEL_GALLERIES)
+        candidates.map { candidate ->
+            launch {
+                galleries.withPermit {
+                    val info = candidate.info
+                    val size = sizeOf(info)
+                    val source = candidate.source
+                    // Keyed apart from the book, should the book be among the favorites
+                    val key = -info.gid
+                    step(key, source.title, 0, size)
+                    try {
+                        val chapter = galleryHashes(info.gid, info.token, info.pages) { step(key, source.title, it, size) }
+                        val ranges = ChapterMatcher.locate(book.await(), chapter)
+                        synchronized(lock) { ranges.forEach { found += it to source } }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: GalleryUnavailableException) {
+                        val gone = ArrayList<Pair<IntRange, ChapterSource>>()
+                        val left = compareGone(book.await(), info, source, gone, wnacg) { step(key, source.title, it, size) }
+                        synchronized(lock) {
+                            found += gone
+                            left?.let { uncompared += it }
+                        }
+                    } catch (e: Throwable) {
+                        logcat(TAG, e)
+                        synchronized(lock) { uncompared += UncomparedChapter(source, gone = false) }
+                    }
+                    synchronized(lock) {
+                        doneBy[key] = size
+                        active.remove(key)
+                        finished++
+                    }
+                    report()
+                }
+            }
+        }.joinAll()
+        book.await()
+        val blocks = synchronized(lock) { ChapterBlocks.build(pages, found) }
         // A favorite that is the book itself in another edition is found too: as it should, the pages are seen
-        return ChapterCompareResult(gid, pages, blocks, uncompared, wnacgBlocked = wnacg.blocked)
+        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked)
     }
 
     /**
@@ -263,7 +315,7 @@ object ChapterCompare {
 
     /** Whether 紳士漫畫 asked for its check during a compare. */
     private class WnacgRun {
-        var blocked = false
+        @Volatile var blocked = false
     }
 
     /** Other galleries on E-H of the title of [info], the language and the translators left out; a few at most. */
@@ -406,25 +458,31 @@ object ChapterCompare {
             onPages(it.size)
             return it
         }
-        val first = EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token))
+        val first = previewGate.withPermit { EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token)) }
         val total = first.total.takeIf { it > 0 } ?: pages
         // No preview on the first page: none to read on the next ones either
         if (first.previews.isEmpty()) return List(total.coerceAtLeast(0)) { null }
         val perPage = first.previews.size
         val hashes = arrayOfNulls<LongArray>(total)
-        var done = 0
-        val previewPages = (total + perPage - 1) / perPage
-        for (index in 0 until previewPages) {
-            val previews = if (index == 0) {
-                first.previews
-            } else {
-                // Spaced as a reader turning the preview pages, not to be taken for a crawler
-                delay(PREVIEW_PAGE_GAP)
-                EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token, index)).previews
-            }
+        val done = AtomicInteger(0)
+        suspend fun read(previews: List<GalleryPreview>) {
             hashPreviews(previews).forEach { (position, hash) -> if (position in hashes.indices) hashes[position] = hash }
-            done += previews.size
-            onPages(done.coerceAtMost(total))
+            onPages(done.addAndGet(previews.size).coerceAtMost(total))
+        }
+        read(first.previews)
+        val previewPages = (total + perPage - 1) / perPage
+        coroutineScope {
+            (1 until previewPages).map { index ->
+                launch {
+                    val previews = previewGate.withPermit {
+                        EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token, index)).previews.also {
+                            // A few pages at once, each spaced as a reader turning them, not to be taken for a crawler
+                            delay(PREVIEW_PAGE_GAP)
+                        }
+                    }
+                    read(previews)
+                }
+            }.joinAll()
         }
         val list = hashes.toList()
         // Kept only whole: a preview that failed to load is fetched again by the next compare

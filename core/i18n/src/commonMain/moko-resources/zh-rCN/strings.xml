@@ -899,8 +899,8 @@
     <string name="download_partial_download">下载 %d 页</string>
     <string name="download_partial_remove_range">删掉 %s 页</string>
     <string name="chapter_compare_finding">查找同作者的收藏</string>
-    <string name="chapter_compare_book">读取单行本缩略图</string>
-    <string name="chapter_compare_chapter">对照收藏 · 第 %1$d/%2$d 本 · %3$s</string>
+    <string name="chapter_compare_book">单行本：%s</string>
+    <string name="chapter_compare_chapter">对照收藏 · 已比完 %1$d/%2$d 本</string>
     <string name="chapter_compare_summary">收藏过 %1$d 篇（%2$d 页）· 没收藏 %3$d 页</string>
     <string name="chapter_compare_none">这本里没找到同作者的收藏</string>
     <string name="chapter_compare_failed">对照出错：%s</string>
