@@ -39,14 +39,16 @@ fun <T : HttpClientEngineConfig> HttpClientConfig<T>.configureCommon(redirect: B
     followRedirects = redirect
 }
 
+// Fork: also the one of the page where a site's check is passed, so its cookie is good for the requests after
+fun currentUserAgent() = if (Settings.desktopSite.value) {
+    CHROME_USER_AGENT
+} else {
+    CHROME_MOBILE_USER_AGENT
+}
+
 private val UserAgent = createClientPlugin("UserAgent") {
     onRequest { request, _ ->
-        val userAgent = if (Settings.desktopSite.value) {
-            CHROME_USER_AGENT
-        } else {
-            CHROME_MOBILE_USER_AGENT
-        }
-        request.userAgent(userAgent)
+        request.userAgent(currentUserAgent())
     }
 }
 

@@ -903,4 +903,8 @@
     <string name="chapter_pick_favorited">全选蓝色</string>
     <string name="chapter_pick_clear">清空</string>
     <string name="chapter_compare_again">重新对照</string>
+    <string name="chapter_wnacg_blocked">绅士漫画要先过一遍验证，失效的收藏才能去那边比对。</string>
+    <string name="chapter_wnacg_open">打开绅士漫画验证</string>
+    <string name="chapter_wnacg_check_hint">过了验证、能看到网页后点「好了」</string>
+    <string name="chapter_wnacg_check_done">好了</string>
 </resources>

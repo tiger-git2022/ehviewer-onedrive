@@ -2,9 +2,11 @@ package com.hippo.ehviewer.chapters
 
 import android.graphics.Bitmap
 import coil3.BitmapImage
+import coil3.network.HttpException
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.CachePolicy
+import coil3.request.ErrorResult
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import com.ehviewer.core.model.BaseGalleryInfo
@@ -55,6 +57,8 @@ data class ChapterCompareResult(
     val pages: Int,
     val blocks: List<ChapterBlock>,
     val uncompared: List<UncomparedChapter> = emptyList(),
+    /** 紳士漫畫 asked for its check, so the favorites gone from E-H were not compared there. */
+    val wnacgBlocked: Boolean = false,
     val time: Long = System.currentTimeMillis(),
 ) {
     val favoritedPages get() = blocks.filter { it.source != null }.sumOf { it.size }
@@ -166,6 +170,7 @@ object ChapterCompare {
         var overallDone = 0
         val found = ArrayList<Pair<IntRange, ChapterSource>>()
         val uncompared = ArrayList<UncomparedChapter>()
+        val wnacg = WnacgRun()
         fun report(progress: ChapterCompareProgress) = set(
             gid,
             ChapterCompareState.Running(progress.copy(overallDone = overallDone, overallTotal = overallTotal, blocks = if (found.isEmpty()) emptyList() else ChapterBlocks.build(pages, found))),
@@ -193,7 +198,7 @@ object ChapterCompare {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: GalleryUnavailableException) {
-                compareGone(book, info, source, found) { step(it) }?.let { uncompared += it }
+                compareGone(book, info, source, found, wnacg) { step(it) }?.let { uncompared += it }
             } catch (e: Throwable) {
                 logcat(TAG, e)
                 uncompared += UncomparedChapter(source, gone = false)
@@ -202,7 +207,7 @@ object ChapterCompare {
         }
         val blocks = ChapterBlocks.build(pages, found)
         // A favorite that is the book itself in another edition is found too: as it should, the pages are seen
-        return ChapterCompareResult(gid, pages, blocks, uncompared)
+        return ChapterCompareResult(gid, pages, blocks, uncompared, wnacgBlocked = wnacg.blocked)
     }
 
     /**
@@ -214,6 +219,7 @@ object ChapterCompare {
         info: GalleryInfo,
         source: ChapterSource,
         found: MutableList<Pair<IntRange, ChapterSource>>,
+        wnacg: WnacgRun,
         onPages: (Int) -> Unit,
     ): UncomparedChapter? {
         for (other in otherUploads(info)) {
@@ -225,17 +231,38 @@ object ChapterCompare {
             }
         }
         // Its album on 紳士漫畫, where many Chinese translations gone from E-H still are
-        for (album in wnacgAlbums(info)) {
-            val ranges = runCatching { ChapterMatcher.locate(book, wnacgHashes(album, onPages)) }.onFailure { logcat(TAG, it) }.getOrNull()
-            if (!ranges.isNullOrEmpty()) {
-                ranges.forEach { found += it to source }
-                return null
+        if (!wnacg.blocked) {
+            try {
+                for (album in wnacgAlbums(info)) {
+                    val ranges = try {
+                        ChapterMatcher.locate(book, wnacgHashes(album, onPages))
+                    } catch (e: Wnacg.BlockedException) {
+                        throw e
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        logcat(TAG, e)
+                        null
+                    }
+                    if (!ranges.isNullOrEmpty()) {
+                        ranges.forEach { found += it to source }
+                        return null
+                    }
+                }
+            } catch (_: Wnacg.BlockedException) {
+                // Not asked again for the other favorites of this compare
+                wnacg.blocked = true
             }
         }
         // Its cover, which E-H still has: where it looks like a page of the book, told but not taken
         val cover = runCatching { coverHash(info) }.onFailure { logcat(TAG, it) }.getOrNull()
         val page = cover?.let { ChapterMatcher.locateCover(book, it) }
         return UncomparedChapter(source, gone = true, coverPage = page?.plus(1))
+    }
+
+    /** Whether 紳士漫畫 asked for its check during a compare. */
+    private class WnacgRun {
+        var blocked = false
     }
 
     /** Other galleries on E-H of the title of [info], the language and the translators left out; a few at most. */
@@ -258,9 +285,15 @@ object ChapterCompare {
         val titles = listOfNotNull(info.titleJpn, info.title).map(ChapterTitles::core).filter { it.isNotBlank() }.distinct()
         val found = LinkedHashMap<Long, Wnacg.Album>()
         titles.forEach { title ->
-            runCatching {
+            try {
                 Wnacg.search(title).filter { ChapterTitles.core(it.title) in titles }.forEach { found.putIfAbsent(it.aid, it) }
-            }.onFailure { logcat(TAG, it) }
+            } catch (e: Wnacg.BlockedException) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                logcat(TAG, e)
+            }
         }
         return found.values.take(MAX_OTHER_UPLOADS)
     }
@@ -276,7 +309,16 @@ object ChapterCompare {
             if (thumbnails.isEmpty()) break
             thumbnails.forEach { (page, url) ->
                 while (hashes.size < page) hashes += null
-                hashes[page - 1] = runCatching { urlHash(url, WNACG_REFERER) }.onFailure { logcat(TAG, it) }.getOrNull()
+                hashes[page - 1] = try {
+                    urlHash(url, WNACG_REFERER)
+                } catch (e: Wnacg.BlockedException) {
+                    throw e
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    logcat(TAG, e)
+                    null
+                }
             }
             onPages(hashes.size)
             index++
@@ -294,7 +336,10 @@ object ChapterCompare {
                 memoryCachePolicy(CachePolicy.DISABLED)
             }
         }
-        val bitmap = ((request.execute() as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
+        val result = request.execute()
+        val error = (result as? ErrorResult)?.throwable
+        if (error is HttpException && Wnacg.isBlocked(error.response.code)) throw Wnacg.BlockedException()
+        val bitmap = ((result as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
         return withContext(Dispatchers.Default) { hashOf(bitmap, 0, 0, bitmap.width, bitmap.height) }
     }
 
@@ -417,7 +462,10 @@ object ChapterCompare {
                 memoryCachePolicy(CachePolicy.DISABLED)
             }
         }
-        val bitmap = ((request.execute() as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
+        val result = request.execute()
+        val error = (result as? ErrorResult)?.throwable
+        if (error is HttpException && Wnacg.isBlocked(error.response.code)) throw Wnacg.BlockedException()
+        val bitmap = ((result as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
         return withContext(Dispatchers.Default) { hashOf(bitmap, 0, 0, bitmap.width, bitmap.height) }
     }
 

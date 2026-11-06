@@ -6,13 +6,24 @@ import com.hippo.ehviewer.util.bodyAsUtf8Text
 import com.hippo.ehviewer.util.ensureSuccess
 import io.ktor.client.request.parameter
 import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.HttpStatusCode
 
 /**
  * Fork: 紳士漫畫 (wnacg), where many Chinese translations gone from E-H still are, with a thumbnail of each page: a
  * favorite gone from E-H is compared through its album there, see [ChapterCompare].
  */
 object Wnacg {
-    private const val BASE = "https://www.wnacg.com"
+    const val BASE = "https://www.wnacg.com"
+
+    /** The site (or its thumbnails) asks for its check: passed once in a page of the app, see [WnacgCheck]. */
+    class BlockedException : Exception("wnacg asks for a check")
+
+    fun isBlocked(code: Int) = code == HttpStatusCode.Forbidden.value || code == HttpStatusCode.ServiceUnavailable.value
+
+    private fun HttpResponse.ensureNotBlocked() {
+        if (isBlocked(status.value)) throw BlockedException()
+    }
 
     /** An album of a search: its id, its title and its page count (0 when not told). */
     data class Album(val aid: Long, val title: String, val pages: Int)
@@ -24,6 +35,7 @@ object Wnacg {
         parameter("f", "_all")
         parameter("s", "create_time_DESC")
     }.executeSafely {
+        it.ensureNotBlocked()
         it.status.ensureSuccess()
         parseSearch(it.bodyAsUtf8Text())
     }
@@ -32,6 +44,7 @@ object Wnacg {
     suspend fun thumbnails(aid: Long, index: Int): List<Pair<Int, String>> {
         val url = if (index <= 1) "$BASE/photos-index-aid-$aid.html" else "$BASE/photos-index-page-$index-aid-$aid.html"
         return ktorClient.prepareGet(url).executeSafely {
+            it.ensureNotBlocked()
             it.status.ensureSuccess()
             parseThumbnails(it.bodyAsUtf8Text())
         }

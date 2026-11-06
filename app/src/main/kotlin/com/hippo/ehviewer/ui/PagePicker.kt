@@ -59,6 +59,7 @@ import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterCompare
 import com.hippo.ehviewer.chapters.ChapterCompareProgress
 import com.hippo.ehviewer.chapters.ChapterCompareState
+import com.hippo.ehviewer.chapters.ChapterTitles
 import com.hippo.ehviewer.chapters.UncomparedChapter
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PageRanges
@@ -221,6 +222,27 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                 result.blocks.forEach { BlockRow(it, picked, onPick) }
             }
             result.uncompared.forEach { UncomparedRow(it) }
+            if (result.wnacgBlocked) {
+                var checking by remember { mutableStateOf(false) }
+                Text(
+                    text = stringResource(R.string.chapter_wnacg_blocked),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+                AssistChip(onClick = { checking = true }, label = { Text(stringResource(R.string.chapter_wnacg_open)) })
+                if (checking) {
+                    val title = result.uncompared.firstOrNull { it.gone }?.source?.title?.let(ChapterTitles::core)
+                    WnacgCheck(
+                        url = wnacgCheckUrl(title),
+                        onCancel = { checking = false },
+                        onDone = {
+                            checking = false
+                            ChapterCompare.start(detail, force = true)
+                        },
+                    )
+                }
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                 if (result.favoritedCount > 0) {
                     AssistChip(

@@ -921,4 +921,8 @@
     <string name="chapter_pick_favorited">All blue</string>
     <string name="chapter_pick_clear">Clear</string>
     <string name="chapter_compare_again">Compare again</string>
+    <string name="chapter_wnacg_blocked">wnacg asked for its check, so favorites gone from E-H were not compared there.</string>
+    <string name="chapter_wnacg_open">Pass the check on wnacg</string>
+    <string name="chapter_wnacg_check_hint">Pass the check, and when the page shows, tap Done</string>
+    <string name="chapter_wnacg_check_done">Done</string>
 </resources>
