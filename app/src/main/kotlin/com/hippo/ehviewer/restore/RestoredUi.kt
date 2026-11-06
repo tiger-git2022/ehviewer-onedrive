@@ -92,9 +92,10 @@ fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = tru
 private const val WNACG_MARK = "绅"
 private val CORNER = 34.dp
 
-// The panda or the word, centered on the center of the triangle: a third of its sides from the corner
+// The panda or the word, nearer the right angle than the center of the triangle (a third of its sides from the corner),
+// away from the long side, a little off the edges
 private val MARK = 16.dp
-private val MARK_INSET = CORNER / 3 - MARK / 2
+private val MARK_INSET = 2.dp
 
 private val LightCorner = Color(0xB3FFFFFF)
 private val DarkCorner = Color(0xB3262626)

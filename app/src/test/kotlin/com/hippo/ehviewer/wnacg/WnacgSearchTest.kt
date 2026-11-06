@@ -9,7 +9,9 @@ import com.hippo.ehviewer.restore.BackupMerger.Load
 import com.hippo.ehviewer.restore.BackupPage
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class WnacgSearchTest {
@@ -17,7 +19,7 @@ class WnacgSearchTest {
     fun searchesWordsAndNames() {
         assertEquals(WnacgQuery("ほとりの小屋", null), WnacgQuery.fromKeyword("ほとりの小屋"))
         assertEquals(WnacgQuery("mind control", null), WnacgQuery.fromKeyword("mind control"))
-        assertEquals(WnacgQuery("Some Artist Circle", null), WnacgQuery.fromKeyword("""a:"Some Artist$" g:"Circle$""""))
+        assertEquals(WnacgQuery("Some Artist Circle", null, null, listOf("Some Artist", "Circle")), WnacgQuery.fromKeyword("""a:"Some Artist$" g:"Circle$""""))
         assertEquals(WnacgQuery("blue archive", "ZH"), WnacgQuery.fromKeyword("""parody:"blue archive$" l:chinese$"""))
         // Left out: the site cannot leave out
         assertEquals(WnacgQuery("word", null), WnacgQuery.fromKeyword("""word -f:"big breasts$""""))
@@ -27,16 +29,37 @@ class WnacgSearchTest {
     fun namesAsTheTitlesWriteThem() {
         val names = mapOf("yamashita kurowo" to "山下クロヲ")
         val nameOf = { _: String, value: String -> names[value] ?: value }
-        assertEquals(WnacgQuery("山下クロヲ", null), WnacgQuery.fromKeyword("""a:"yamashita kurowo$"""", nameOf))
-        assertEquals(WnacgQuery("山下クロヲ other", null, WnacgName("a", "other", 6)), WnacgQuery.fromKeyword("""artist:"yamashita kurowo$" a:other$""", nameOf))
+        assertEquals(WnacgQuery("山下クロヲ", null, null, listOf("山下クロヲ")), WnacgQuery.fromKeyword("""a:"yamashita kurowo$"""", nameOf))
+        assertEquals(WnacgQuery("山下クロヲ other", null, WnacgName("a", "other", 6), listOf("山下クロヲ", "other")), WnacgQuery.fromKeyword("""artist:"yamashita kurowo$" a:other$""", nameOf))
         // Without the tag database: as the tag, to be guessed from the titles
         val unwritten = WnacgName("a", "yamashita kurowo")
-        assertEquals(WnacgQuery("yamashita kurowo", null, unwritten), WnacgQuery.fromKeyword("""a:"yamashita kurowo$""""))
-        assertEquals(WnacgQuery("山下クロヲ word", null), WnacgQuery("yamashita kurowo word", null, unwritten).withName("山下クロヲ"))
+        assertEquals(WnacgQuery("yamashita kurowo", null, unwritten, listOf("yamashita kurowo")), WnacgQuery.fromKeyword("""a:"yamashita kurowo$""""))
+        assertEquals(
+            WnacgQuery("山下クロヲ word", null, null, listOf("山下クロヲ")),
+            WnacgQuery("yamashita kurowo word", null, unwritten, listOf("yamashita kurowo")).withName("山下クロヲ"),
+        )
         // The name of the tag, not the same letters in a word before it
         val fox = WnacgQuery.fromKeyword("""fox a:x$""")!!
-        assertEquals(WnacgQuery("fox x", null, WnacgName("a", "x", 4)), fox)
-        assertEquals(WnacgQuery("fox 名前", null), fox.withName("名前"))
+        assertEquals(WnacgQuery("fox x", null, WnacgName("a", "x", 4), listOf("x")), fox)
+        assertEquals(WnacgQuery("fox 名前", null, null, listOf("名前")), fox.withName("名前"))
+    }
+
+    @Test
+    fun onlyAlbumsWithTheNameInTheirBrackets() {
+        val mo = WnacgQuery("も", null, null, listOf("も"))
+        assertTrue(mo.accepts("[も] fanbox 2026年10月分 [中国翻訳]"))
+        assertTrue(mo.accepts("(C108) [サークル (も)] タイトル"))
+        assertTrue(mo.accepts("[汉化组] [サークル (他人、も)] タイトル"))
+        assertTrue(mo.accepts("【も】タイトル"))
+        // The name in the title, not in its brackets: an album of another
+        assertFalse(mo.accepts("(C108) [あんぷらりあ (ki-51)] アイオワさんはもっとヤりたい! (艦隊これくしょん -艦これ-)"))
+        assertFalse(mo.accepts("[江成] [全26P]おうちデートのつもりだったのに"))
+        val kurowo = WnacgQuery("山下クロヲ word", null, null, listOf("山下クロヲ"))
+        assertTrue(kurowo.accepts("[くろほんやさん (山下 クロヲ)] メスガキ×無知×鞭 [DL版]"))
+        assertTrue(WnacgQuery("Some Artist Circle", null, null, listOf("Some Artist", "Circle")).accepts("[circle (some artist)] title"))
+        // Words, parodies: anywhere
+        assertTrue(WnacgQuery("blue archive", null).accepts("title (ブルーアーカイブ)"))
+        assertEquals(setOf("サークル(作者)", "サークル", "作者", "中国翻訳"), bracketNames("[サークル (作者)] title [中国翻訳]"))
     }
 
     @Test
