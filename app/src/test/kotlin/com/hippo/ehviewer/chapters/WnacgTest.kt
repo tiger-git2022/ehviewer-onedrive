@@ -56,6 +56,23 @@ class WnacgTest {
     }
 
     @Test
+    fun numbersThumbnailsInTheirOrder() {
+        // Names of files not numbered, not one after the other
+        val html = """
+            <li class="li tb gallary_item"><div class="pic_box tb"><a href="/photos-view-id-1.html">
+            <img src="//t4.qy0.ru/data/t/1/a.webp" alt="cover"></a></div></li>
+            <li class="li tb gallary_item"><div class="pic_box tb"><a href="/photos-view-id-2.html">
+            <img src="//t4.qy0.ru/data/t/1/b.webp" alt="IMG_20240101_7"></a></div></li>
+            <li class="li tb gallary_item"><div class="pic_box tb"><a href="/photos-view-id-3.html">
+            <img src="//t4.qy0.ru/data/t/1/c.webp" alt="Title_0003"></a></div></li>
+        """.trimIndent()
+        assertEquals(
+            listOf(13 to "https://t4.qy0.ru/data/t/1/a.webp", 14 to "https://t4.qy0.ru/data/t/1/b.webp", 15 to "https://t4.qy0.ru/data/t/1/c.webp"),
+            Wnacg.parseThumbnails(html, first = 13),
+        )
+    }
+
+    @Test
     fun tellsTheNextPageOfASearch() {
         val html = """<span class="thispage">1</span><a href="https://www.wnacg.com/search/index.php?q=x&amp;m=&amp;syn=yes&amp;f=_all&amp;s=create_time_DESC&amp;p=2&amp;c=a~0">2</a>"""
         assertTrue(Wnacg.hasPage(html, 2))

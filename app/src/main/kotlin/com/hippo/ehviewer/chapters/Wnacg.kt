@@ -86,13 +86,16 @@ object Wnacg {
     /** The page of an album that shows on [url], for its Referer. */
     fun albumUrl(aid: Long) = "$BASE/photos-index-aid-$aid.html"
 
-    /** Page [index] (from 1) of the thumbnails of album [aid]: (page from 1, thumbnail URL). */
-    suspend fun thumbnails(aid: Long, index: Int): List<Pair<Int, String>> {
+    /**
+     * Page [index] (from 1) of the thumbnails of album [aid]: (page from 1, thumbnail URL). [perPage] is how many the
+     * first page has, as all but the last.
+     */
+    suspend fun thumbnails(aid: Long, index: Int, perPage: Int): List<Pair<Int, String>> {
         val url = if (index <= 1) "$BASE/photos-index-aid-$aid.html" else "$BASE/photos-index-page-$index-aid-$aid.html"
         return ktorClient.prepareGet(url).executeSafely {
             it.ensureNotBlocked()
             it.status.ensureSuccess()
-            parseThumbnails(it.bodyAsUtf8Text())
+            parseThumbnails(it.bodyAsUtf8Text(), (index - 1) * perPage + 1)
         }
     }
 
@@ -120,7 +123,9 @@ object Wnacg {
 
     private val ITEM = Regex("""photos-index-aid-(\d+)\.html"\s+title="([^"]*)"""")
     private val PAGES = Regex("""(\d+)\s*張圖片""")
-    private val THUMB = Regex("""<img\s+src="([^"]+)"\s+alt="[^"]*_(\d+)"""")
+    // The first image of an item of the thumbnails, the comments of the page left out
+    private val THUMB = Regex("""gallary_item[\s\S]*?<img\s[^>]*?src="([^"]+)"""")
+    private val HTML_COMMENT = Regex("""<!--[\s\S]*?-->""")
     private val COVER = Regex("""<img[^>]*\ssrc="([^"]+)"""")
     private val CREATED = Regex("""創建於\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?""")
     private val UPLOADED = Regex("""上傳於\s*(\d{4}-\d{2}-\d{2})""")
@@ -259,11 +264,15 @@ object Wnacg {
 
     private fun text(html: String) = unescape(html.replace(BR, "\n").replace(HTML_TAG, "")).trim()
 
-    /** The thumbnails of a page of an album; one also in a comment of the page is taken once. */
-    fun parseThumbnails(html: String): List<Pair<Int, String>> = THUMB.findAll(html).map { match ->
-        val url = match.groupValues[1].let { if (it.startsWith("//")) "https:$it" else it }
-        match.groupValues[2].toInt() to url
-    }.filter { it.second.startsWith("http") }.distinctBy { it.first }.toList()
+    /**
+     * The thumbnails of a page of an album, in their order from page [first]: the names of the files ("…_0001") are
+     * those the uploader gave, not always numbers nor one after the other.
+     */
+    fun parseThumbnails(html: String, first: Int = 1): List<Pair<Int, String>> = THUMB.findAll(html.replace(HTML_COMMENT, ""))
+        .map { match -> match.groupValues[1].let { if (it.startsWith("//")) "https:$it" else it } }
+        .filter { it.startsWith("http") }
+        .mapIndexed { i, url -> first + i to url }
+        .toList()
 
     private fun unescape(text: String) = text.replace("&#39;", "'").replace("&quot;", "\"").replace("&lt;", "<")
         .replace("&gt;", ">").replace("&amp;", "&")
