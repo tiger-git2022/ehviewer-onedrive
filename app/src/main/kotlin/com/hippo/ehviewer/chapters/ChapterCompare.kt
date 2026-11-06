@@ -111,6 +111,9 @@ object ChapterCompare {
     private const val TAG = "ChapterCompare"
     private const val MAX_FAVORITE_PAGES = 20
     private const val MAX_CANDIDATES = 200
+
+    /** The share of the book a favorite reaches at most to be taken as one of its chapters. */
+    private const val CHAPTER_MAX_SHARE = 0.8f
     private const val MAX_OTHER_UPLOADS = 3
     private const val PREVIEW_PAGE_GAP = 300L
 
@@ -432,8 +435,11 @@ object ChapterCompare {
         // The page counts, and the covers of those gone, from the API
         val unknown = list.filter { it.pages <= 0 || it.thumbKey == null }
         if (unknown.isNotEmpty()) runCatching { EhEngine.fillGalleryListByApi(unknown, EhUrl.referer) }.onFailure { logcat(TAG, it) }
+        // Not a chapter: as long as most of the book or longer, the book itself in another edition or another book
+        val longest = detail.pages * CHAPTER_MAX_SHARE
         // The short ones first, as chapters are: kept when there are too many
-        return list.sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate)
+        return list.filter { detail.pages <= 0 || it.pages <= 0 || it.pages < longest }
+            .sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate)
     }
 
     private fun names(detail: GalleryDetail): List<String> {
