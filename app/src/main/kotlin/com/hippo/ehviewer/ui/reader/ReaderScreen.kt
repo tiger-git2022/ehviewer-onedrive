@@ -86,6 +86,8 @@ import com.hippo.ehviewer.ui.tools.awaitInputText
 import com.hippo.ehviewer.ui.tools.dialog
 import com.hippo.ehviewer.util.displayString
 import com.hippo.ehviewer.util.hasAds
+import com.hippo.ehviewer.wnacg.isWnacg
+import com.hippo.ehviewer.wnacg.useWnacgPageLoader
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -389,6 +391,9 @@ suspend inline fun <T> usePageLoader(args: ReaderScreenArgs, crossinline block: 
         val archive = DownloadManager.getDownloadInfo(info.gid)?.archiveFile
         if (archive != null) {
             useArchivePageLoader(archive, info, page, info.hasAds, { error("Managed Archive have password???") }, block)
+        } else if (info.isWnacg) {
+            // Fork: an album of 紳士漫畫 reads from its site, see wnacg/
+            useWnacgPageLoader(info, page, block)
         } else {
             useEhPageLoader(info, page, block)
         }

@@ -178,6 +178,12 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                 summary = stringResource(id = R.string.pandachaika_in_search_summary),
                 state = Settings.pandaChaikaInSearch.asMutableState(),
             )
+            // Fork
+            SwitchPreference(
+                title = stringResource(id = R.string.wnacg_in_search),
+                summary = stringResource(id = R.string.wnacg_in_search_summary),
+                state = Settings.wnacgInSearch.asMutableState(),
+            )
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.dark_theme),
                 entry = com.hippo.ehviewer.R.array.night_mode_entries,

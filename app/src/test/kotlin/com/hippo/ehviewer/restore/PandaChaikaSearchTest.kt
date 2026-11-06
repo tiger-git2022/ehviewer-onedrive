@@ -2,7 +2,7 @@ package com.hippo.ehviewer.restore
 
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.hippo.ehviewer.client.parser.ParserUtils
-import com.hippo.ehviewer.restore.PandaChaikaMerger.Load
+import com.hippo.ehviewer.restore.BackupMerger.Load
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

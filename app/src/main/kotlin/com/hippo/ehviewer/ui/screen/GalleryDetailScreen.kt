@@ -65,6 +65,7 @@ import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.chapters.Wnacg
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.EhUtils
@@ -85,6 +86,7 @@ import com.hippo.ehviewer.ui.AutoLocalFavorite
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.Screen
+import com.hippo.ehviewer.ui.WnacgCheck
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
@@ -108,6 +110,8 @@ import com.hippo.ehviewer.util.AppHelper
 import com.hippo.ehviewer.util.awaitActivityResult
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.displayString
+import com.hippo.ehviewer.wnacg.isWnacg
+import com.hippo.ehviewer.wnacg.wnacgDetail
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -147,7 +151,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
             is TokenArgs -> args.gid to args.token
         }
     }
-    val galleryDetailUrl = remember(gid, token) { EhUrl.getGalleryDetailUrl(gid, token) }
+    // Fork: an album of 紳士漫畫 is on its site, see wnacg/
+    val galleryDetailUrl = remember(gid, token) { if (isWnacg(gid)) Wnacg.albumUrl(-gid) else EhUrl.getGalleryDetailUrl(gid, token) }
     contextOf<MainActivity>().ProvideAssistContent(galleryDetailUrl)
 
     var galleryInfo by rememberInVM {
@@ -156,6 +161,18 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     }
 
     var getDetailError by rememberSaveable { mutableStateOf("") }
+    // Fork: 紳士漫畫 asked for its check, passed in a page of the app, see ui/WnacgCheck.kt
+    var wnacgCheck by remember { mutableStateOf(false) }
+    if (wnacgCheck) {
+        WnacgCheck(
+            url = Wnacg.albumUrl(-gid),
+            onCancel = { wnacgCheck = false },
+            onDone = {
+                wnacgCheck = false
+                getDetailError = ""
+            },
+        )
+    }
     val noBackup = stringResource(R.string.pandachaika_no_backup)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
@@ -175,12 +192,17 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
             val galleryDetail = detailCache[gid]
                 ?: runSuspendCatching {
                     withIOContext {
-                        // Fork: a gallery E-Hentai removed opens from its backup on PandaChika, see restore/
-                        try {
-                            EhEngine.getGalleryDetail(galleryDetailUrl).also { RestoredGalleries.dismiss(it.gid) }
-                        } catch (e: GalleryUnavailableException) {
-                            restoredDetail(gid, token, galleryInfo)
-                                ?: throw GalleryUnavailableException(e.message.orEmpty() + "\n" + noBackup)
+                        // Fork: a gallery E-Hentai removed opens from its backup on PandaChika, see restore/; an album
+                        // of 紳士漫畫 from its page, see wnacg/
+                        if (isWnacg(gid)) {
+                            wnacgDetail(gid, galleryInfo)
+                        } else {
+                            try {
+                                EhEngine.getGalleryDetail(galleryDetailUrl).also { RestoredGalleries.dismiss(it.gid) }
+                            } catch (e: GalleryUnavailableException) {
+                                restoredDetail(gid, token, galleryInfo)
+                                    ?: throw GalleryUnavailableException(e.message.orEmpty() + "\n" + noBackup)
+                            }
                         }
                     }
                 }.onSuccess { galleryDetail ->
@@ -188,6 +210,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 }.onFailure { e ->
                     galleryInfo?.let { EhDB.putHistoryInfo(it) }
                     getDetailError = e.displayString()
+                    if (e is Wnacg.BlockedException) wnacgCheck = true
                 }.getOrNull()
             galleryDetail?.let {
                 EhDB.putHistoryInfo(it)
@@ -235,7 +258,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val glass = rememberLiquidGlass(backdrop).takeIf { scrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     // Fork: fresh links for previews that fail to load and "Refresh previews", see PreviewRefetcher
-    val previewRefetcher = (galleryInfo as? GalleryDetail)?.takeIf { it.previewList.isNotEmpty() }?.let { detail ->
+    val previewRefetcher = (galleryInfo as? GalleryDetail)?.takeIf { it.previewList.isNotEmpty() && !it.isWnacg }?.let { detail ->
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
     }
     val refreshPreviews = stringResource(id = R.string.refresh_previews)
@@ -323,13 +346,16 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         // Fork: fetches the links and the images of the previews that failed again, the progress on the
                         // floating bar at the bottom, see PreviewProgressBar
                         if (previewRefetcher != null) add(BarAction(refreshPreviews) { previewRefetcher.refreshFailed(contextOf<MainActivity>()) })
-                        // Fork: only the pages picked, see PartialDownload.kt; a tankoubon is compared with the favorites
-                        add(
-                            BarAction(downloadPartial) {
-                                val detail = galleryInfo as? GalleryDetail ?: return@BarAction
-                                launchIO { startPartialDownload(detail.galleryInfo, detail) }
-                            },
-                        )
+                        // Fork: only the pages picked, see PartialDownload.kt; a tankoubon is compared with the favorites.
+                        // An album of 紳士漫畫 downloads whole
+                        if (!isWnacg(gid)) {
+                            add(
+                                BarAction(downloadPartial) {
+                                    val detail = galleryInfo as? GalleryDetail ?: return@BarAction
+                                    launchIO { startPartialDownload(detail.galleryInfo, detail) }
+                                },
+                            )
+                        }
                         if (syncIconShown) add(shareAction)
                         add(
                             BarAction(clearCache) {

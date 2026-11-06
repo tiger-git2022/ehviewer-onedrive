@@ -29,38 +29,75 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.CrystalCard
+import com.hippo.ehviewer.wnacg.isWnacg
 
 // Fork: how a gallery restored from PandaChika shows, see RestoredGalleries
 
 /**
  * The badge on the cover of [gid] when restored, or found by a search on PandaChika: a panda in a triangle on the
  * corner, the top end one, or the top start one when not [atEnd]. A white triangle and a black panda in the light
- * theme, the other way round in the dark one.
+ * theme, the other way round in the dark one. An album of 紳士漫畫 has the same with "绅" in place of the panda, see
+ * wnacg/. The panda or the word sits on the center of the triangle, a third of its sides from the corner.
  */
 @Composable
 fun RestoredBadge(gid: Long, modifier: Modifier = Modifier, atEnd: Boolean = true) {
     val badged by RestoredGalleries.badged.collectAsState()
-    if (gid in badged) {
+    val wnacg = isWnacg(gid)
+    if (wnacg || gid in badged) {
         val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-        Box(modifier.size(30.dp).background(if (dark) DarkCorner else LightCorner, if (atEnd) EndCorner else StartCorner)) {
-            val description = stringResource(R.string.pandachaika_badge)
-            Canvas(
-                modifier = Modifier.align(if (atEnd) Alignment.TopEnd else Alignment.TopStart).padding(1.dp).size(14.dp)
-                    .semantics { contentDescription = description },
-            ) { drawPanda(if (dark) Color.White else PandaBlack) }
+        val color = if (dark) Color.White else PandaBlack
+        Box(modifier.size(CORNER).background(if (dark) DarkCorner else LightCorner, if (atEnd) EndCorner else StartCorner)) {
+            val description = stringResource(if (wnacg) R.string.wnacg_badge else R.string.pandachaika_badge)
+            val mark = Modifier.align(if (atEnd) Alignment.TopEnd else Alignment.TopStart)
+                .padding(top = MARK_INSET, start = if (atEnd) 0.dp else MARK_INSET, end = if (atEnd) MARK_INSET else 0.dp)
+                .size(MARK)
+                .semantics { contentDescription = description }
+            if (wnacg) {
+                Box(mark, contentAlignment = Alignment.Center) {
+                    // In dp, not sp: the badge keeps its size whatever the size of the text
+                    val size = with(LocalDensity.current) { 13.dp.toSp() }
+                    Text(
+                        text = WNACG_MARK,
+                        color = color,
+                        style = TextStyle(
+                            fontSize = size,
+                            lineHeight = size,
+                            fontWeight = FontWeight.Black,
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+                        ),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            } else {
+                Canvas(modifier = mark) { drawPanda(color) }
+            }
         }
     }
 }
 
-private val LightCorner = Color(0x80FFFFFF)
-private val DarkCorner = Color(0x80262626)
+private const val WNACG_MARK = "绅"
+private val CORNER = 34.dp
+
+// The panda or the word, centered on the center of the triangle: a third of its sides from the corner
+private val MARK = 16.dp
+private val MARK_INSET = CORNER / 3 - MARK / 2
+
+private val LightCorner = Color(0xB3FFFFFF)
+private val DarkCorner = Color(0xB3262626)
 private val PandaBlack = Color(0xFF1E1E1E)
 
 // Triangles with their right angle on the top end corner, or the top start one

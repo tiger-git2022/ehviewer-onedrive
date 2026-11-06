@@ -163,6 +163,8 @@ import com.hippo.ehviewer.util.FavouriteStatusRouter
 import com.hippo.ehviewer.util.addTextToClipboard
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.displayString
+import com.hippo.ehviewer.wnacg.isWnacg
+import com.hippo.ehviewer.wnacg.wnacgPreviewPage
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import io.ktor.http.encodeURLParameter
 import kotlin.coroutines.resume
@@ -880,6 +882,8 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                 runSuspendCatching {
                     (up..end).filterNot { it in previewPagesMap }.map { it / pageSize }.toSet()
                         .parMap(concurrency = Settings.multiThreadDownload.value) { page ->
+                            // Fork: those of an album of 紳士漫畫 from its pages, see wnacg/
+                            if (isWnacg(gid)) return@parMap wnacgPreviewPage(gid, page)
                             val url = EhUrl.getGalleryDetailUrl(gid, token, page)
                             EhEngine.getPreviewList(url).previews
                         }.flattenForEach {

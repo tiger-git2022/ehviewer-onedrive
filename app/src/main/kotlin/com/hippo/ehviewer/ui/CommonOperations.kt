@@ -79,6 +79,7 @@ import com.hippo.ehviewer.util.FavouriteStatusRouter
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.requestPermission
 import com.hippo.ehviewer.util.restartApplication
+import com.hippo.ehviewer.wnacg.isWnacg
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.time.Clock
 import kotlinx.coroutines.Dispatchers
@@ -194,7 +195,8 @@ suspend fun startDownload(forceDefault: Boolean, vararg galleryInfos: BaseGaller
 context(_: DialogState)
 suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): Boolean {
     val localFavorited = EhDB.containLocalFavorites(galleryInfo.gid)
-    if (Settings.hasSignedIn.value) {
+    // Fork: an album of 紳士漫畫 is in the local favorites only, see wnacg/
+    if (Settings.hasSignedIn.value && !galleryInfo.isWnacg) {
         val isFavorited = galleryInfo.favoriteSlot != NOT_FAVORITED
         val defaultFavSlot = Settings.defaultFavSlot.value
         if (defaultFavSlot == -2 || choose) {
@@ -232,7 +234,7 @@ suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): 
  */
 context(_: DialogState)
 suspend fun cycleFavorite(galleryInfo: GalleryInfo): Boolean {
-    if (!Settings.hasSignedIn.value) return modifyFavorites(galleryInfo)
+    if (!Settings.hasSignedIn.value || galleryInfo.isWnacg) return modifyFavorites(galleryInfo)
     val localFavorited = EhDB.containLocalFavorites(galleryInfo.gid)
     return when {
         galleryInfo.favoriteSlot >= 0 -> {

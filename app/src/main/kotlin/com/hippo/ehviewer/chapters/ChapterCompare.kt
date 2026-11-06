@@ -25,13 +25,14 @@ import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.client.exception.GalleryUnavailableException
 import com.hippo.ehviewer.ktbuilder.execute
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.wnacg.isWnacg
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -371,6 +372,8 @@ object ChapterCompare {
             }
         }.onFailure { logcat(TAG, it) }
         found.remove(detail.gid)
+        // Not an album of 紳士漫畫 in the local favorites: it has no previews on E-Hentai
+        found.keys.removeAll { isWnacg(it) }
         val list = found.values.take(MAX_CANDIDATES).map { BaseGalleryInfo(gid = it.gid, token = it.token, title = it.title, titleJpn = it.titleJpn, thumbKey = it.thumbKey, pages = it.pages) }
         // The page counts, and the covers of those gone, from the API
         val unknown = list.filter { it.pages <= 0 || it.thumbKey == null }
