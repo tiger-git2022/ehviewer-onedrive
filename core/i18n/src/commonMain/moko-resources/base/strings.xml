@@ -933,6 +933,8 @@
     <string name="chapter_compare_pending">Still comparing… You can close this, the result is kept</string>
     <string name="chapter_block_pages">Pages %1$d–%2$d</string>
     <string name="chapter_block_page">Page %d</string>
+    <string name="chapter_block_size">%d pages</string>
+    <string name="chapter_bar_hint">Tap a block of the bar or a card below to pick it; the picked blocks are outlined</string>
     <string name="chapter_block_unfavorited">Not favorited</string>
     <string name="chapter_block_favorited">Favorited</string>
     <string name="chapter_uncompared_cover">Its cover looks like page %d (shown only, not counted)</string>

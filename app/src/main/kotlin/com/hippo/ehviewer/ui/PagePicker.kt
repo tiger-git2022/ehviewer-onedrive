@@ -1,5 +1,7 @@
 package com.hippo.ehviewer.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +34,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
@@ -45,21 +48,31 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import coil3.BitmapImage
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryDetail
+import com.ehviewer.core.model.GalleryPreview
+import com.ehviewer.core.model.V2GalleryPreview
 import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterCompare
 import com.hippo.ehviewer.chapters.ChapterCompareProgress
@@ -137,15 +150,25 @@ fun ColumnScope.PagePicker(
             modifier = Modifier.padding(top = 8.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            OutlinedButton(onClick = onCancel, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = onCancel, border = edgeBorder(), shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
                 Text(text = stringResource(android.R.string.cancel))
             }
-            Button(onClick = { onDownload(runs) }, enabled = count > 0, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
+            Button(
+                onClick = { onDownload(runs) },
+                enabled = count > 0,
+                shapes = ButtonDefaults.shapes(),
+                colors = ButtonDefaults.buttonColors(containerColor = FavoritedBlue, contentColor = Color.White),
+                modifier = Modifier.weight(1f),
+            ) {
                 Text(text = stringResource(R.string.download_partial_download, count))
             }
         }
     }
 }
+
+/** The border of the buttons and the chips: that of the floating buttons, light in dark themes and dark in light ones. */
+@Composable
+private fun edgeBorder() = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
 
 /** "From [ ] to [ ]" and a button adding those pages; an empty "to" adds one page. */
 @Composable
@@ -205,8 +228,8 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             val progress = state.progress
             CompareProgressCard(progress)
             if (progress.blocks.isNotEmpty()) {
-                BlocksBar(pages, progress.blocks, picked, pending = true)
-                progress.blocks.filter { it.source != null }.forEach { BlockRow(it, picked, onPick) }
+                BlocksBar(pages, progress.blocks, picked, pending = true, onPick = onPick)
+                progress.blocks.filter { it.source != null }.forEach { BlockCard(detail, it, picked, onPick) }
             }
             Text(
                 text = stringResource(R.string.chapter_compare_pending),
@@ -224,8 +247,8 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             }
             Text(text = summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (result.favoritedCount > 0) {
-                BlocksBar(pages, result.blocks, picked, pending = false)
-                result.blocks.forEach { BlockRow(it, picked, onPick) }
+                BlocksBar(pages, result.blocks, picked, pending = false, onPick = onPick)
+                result.blocks.forEach { BlockCard(detail, it, picked, onPick) }
             }
             result.uncompared.forEach { UncomparedRow(it) }
             if (result.whole.isNotEmpty()) {
@@ -245,7 +268,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
-                AssistChip(onClick = { checking = true }, label = { Text(stringResource(R.string.chapter_wnacg_open)) })
+                AssistChip(border = edgeBorder(), onClick = { checking = true }, label = { Text(stringResource(R.string.chapter_wnacg_open)) })
                 if (checking) {
                     val title = result.uncompared.firstOrNull { it.gone }?.source?.title?.let(ChapterTitles::core)
                     WnacgCheck(
@@ -261,25 +284,27 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                 if (result.favoritedCount > 0) {
                     AssistChip(
+                        border = edgeBorder(),
                         onClick = { result.blocks.filter { it.source == null }.forEach { onPick(it.pages, true) } },
                         label = { Text(stringResource(R.string.chapter_pick_unfavorited)) },
                     )
                     AssistChip(
+                        border = edgeBorder(),
                         onClick = { result.blocks.filter { it.source != null }.forEach { onPick(it.pages, true) } },
                         label = { Text(stringResource(R.string.chapter_pick_favorited)) },
                     )
                 }
-                AssistChip(onClick = { onPick(1..pages, false) }, label = { Text(stringResource(R.string.chapter_pick_clear)) })
-                AssistChip(onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
+                AssistChip(border = edgeBorder(), onClick = { onPick(1..pages, false) }, label = { Text(stringResource(R.string.chapter_pick_clear)) })
+                AssistChip(border = edgeBorder(), onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
             }
         }
         is ChapterCompareState.Failed -> {
             Text(text = stringResource(R.string.chapter_compare_failed, state.message), color = MaterialTheme.colorScheme.error)
-            AssistChip(onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
+            AssistChip(border = edgeBorder(), onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
         }
         null -> Unit
     }
-    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /**
@@ -315,9 +340,12 @@ private fun CompareProgressCard(progress: ChapterCompareProgress) {
     }
 }
 
-/** The book as a bar of its blocks; the picked ones outlined. While [pending], the pages not found yet are lighter. */
+/**
+ * The book as a bar of its blocks, a tap on one picking it or not; the picked ones outlined. While [pending], the pages
+ * not found yet are lighter.
+ */
 @Composable
-private fun BlocksBar(pages: Int, blocks: List<ChapterBlock>, picked: BooleanArray, pending: Boolean) {
+private fun BlocksBar(pages: Int, blocks: List<ChapterBlock>, picked: BooleanArray, pending: Boolean, onPick: (IntRange, Boolean) -> Unit) {
     val grey = MaterialTheme.colorScheme.onSurface.copy(alpha = if (pending) 0.08f else 0.2f)
     val outline = MaterialTheme.colorScheme.onSurface
     Row(
@@ -328,6 +356,8 @@ private fun BlocksBar(pages: Int, blocks: List<ChapterBlock>, picked: BooleanArr
             val on = isPicked(block, picked)
             Box(
                 Modifier.weight(block.size.toFloat() / pages.coerceAtLeast(1)).fillMaxHeight()
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { onPick(block.pages, !on) }
                     .background(if (block.source != null) FavoritedBlue else grey, RoundedCornerShape(4.dp))
                     .then(if (on) Modifier.border(2.dp, outline, RoundedCornerShape(4.dp)) else Modifier),
             )
@@ -338,37 +368,113 @@ private fun BlocksBar(pages: Int, blocks: List<ChapterBlock>, picked: BooleanArr
             Text(text = "$it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+    Text(
+        text = stringResource(R.string.chapter_bar_hint),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 8.dp),
+    )
 }
 
 private fun isPicked(block: ChapterBlock, picked: BooleanArray) = block.pages.all { it - 1 in picked.indices && picked[it - 1] }
 
+/**
+ * A block as a card, a tap picking it or not: the cover of the favorite it is (the page of the book when none is), its
+ * pages and whether it is favorited on the first line, the title of the favorite below on up to three lines.
+ */
 @Composable
-private fun BlockRow(block: ChapterBlock, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit) {
+private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit) {
     val on = isPicked(block, picked)
     val source = block.source
+    val shape = RoundedCornerShape(12.dp)
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable { onPick(block.pages, !on) }.padding(vertical = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(shape)
+            .then(if (on) Modifier.background(FavoritedBlue.copy(alpha = 0.18f)) else Modifier)
+            .border(1.dp, if (on) FavoritedBlue.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outlineVariant, shape)
+            .clickable { onPick(block.pages, !on) }
+            .padding(end = 10.dp, top = 6.dp, bottom = 6.dp),
     ) {
-        Checkbox(checked = on, onCheckedChange = { onPick(block.pages, it) })
-        Box(
-            Modifier.size(width = 4.dp, height = 36.dp)
-                .background(if (source != null) FavoritedBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f), RoundedCornerShape(2.dp)),
+        Checkbox(
+            checked = on,
+            onCheckedChange = { onPick(block.pages, it) },
+            colors = CheckboxDefaults.colors(checkedColor = FavoritedBlue, checkmarkColor = Color.White, uncheckedColor = MaterialTheme.colorScheme.onSurface),
         )
-        Text(
-            text = if (block.size == 1) stringResource(R.string.chapter_block_page, block.first) else stringResource(R.string.chapter_block_pages, block.first, block.last),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(start = 12.dp).width(96.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            if (source != null) {
-                Text(text = source.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(text = stringResource(R.string.chapter_block_favorited), style = MaterialTheme.typography.labelSmall, color = FavoritedBlue)
+        val thumb = Modifier.size(width = 46.dp, height = 65.dp).clip(RoundedCornerShape(6.dp))
+        if (source != null) {
+            val info = remember(source) { BaseGalleryInfo(gid = source.gid, token = source.token, title = source.title, thumbKey = source.thumbKey) }
+            if (source.thumbKey != null) {
+                AsyncImage(model = requestOf(info), contentDescription = null, contentScale = ContentScale.Crop, modifier = thumb)
             } else {
-                Text(text = stringResource(R.string.chapter_block_unfavorited), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(thumb.background(FavoritedBlue.copy(alpha = 0.4f)))
+            }
+        } else {
+            val preview by produceState<GalleryPreview?>(null, detail.gid, block.first) { value = ChapterCompare.previewOf(detail, block.first) }
+            preview?.let { PreviewThumb(it, thumb) } ?: Box(thumb.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)))
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (block.size == 1) stringResource(R.string.chapter_block_page, block.first) else stringResource(R.string.chapter_block_pages, block.first, block.last),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                )
+                if (block.size > 1) {
+                    Text(
+                        text = stringResource(R.string.chapter_block_size, block.size),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+                val tag = Modifier.padding(start = 6.dp)
+                if (source != null) {
+                    Text(
+                        text = stringResource(R.string.chapter_block_favorited),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        modifier = tag.background(FavoritedBlue, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.chapter_block_unfavorited),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = tag.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+            }
+            if (source != null) {
+                Text(
+                    text = source.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
             }
         }
     }
+}
+
+/** The preview of a page, a part of a sheet of previews cut out. */
+@Composable
+private fun PreviewThumb(preview: GalleryPreview, modifier: Modifier) {
+    val painter = rememberAsyncImagePainter(
+        model = requestOf(preview),
+        transform = {
+            val bitmap = ((it as? AsyncImagePainter.State.Success)?.result?.image as? BitmapImage)?.bitmap
+            if (bitmap != null && preview is V2GalleryPreview) {
+                it.copy(painter = BitmapPainter(bitmap.asImageBitmap(), IntOffset(preview.offsetX, 0), IntSize(preview.clipWidth - 1, preview.clipHeight - 1)))
+            } else {
+                it
+            }
+        },
+    )
+    Image(painter = painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
 }
 
 /** A favorite as long as most of the book, not compared: its cover, its title on up to three lines; a tap opens it. */
