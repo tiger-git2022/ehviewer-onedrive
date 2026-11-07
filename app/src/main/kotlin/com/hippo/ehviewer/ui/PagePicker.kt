@@ -42,11 +42,13 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -432,14 +434,18 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
             .then(if (on) Modifier.background(FavoritedBlue.copy(alpha = 0.18f)) else Modifier)
             .border(1.dp, if (on) FavoritedBlue.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outlineVariant, shape)
             .clickable { onPick(block.pages, !on) }
-            .padding(end = 10.dp, top = 6.dp, bottom = 6.dp),
+            .padding(end = 4.dp, top = 6.dp, bottom = 6.dp),
     ) {
-        Checkbox(
-            checked = on,
-            onCheckedChange = { onPick(block.pages, it) },
-            colors = CheckboxDefaults.colors(checkedColor = FavoritedBlue, checkmarkColor = Color.White, uncheckedColor = MaterialTheme.colorScheme.onSurface),
-        )
-        val thumb = Modifier.size(width = 46.dp, height = 65.dp).clip(RoundedCornerShape(6.dp))
+        // The whole card picks it: the checkbox needs no touch area of its own, the room goes to the text
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+            Checkbox(
+                checked = on,
+                onCheckedChange = { onPick(block.pages, it) },
+                colors = CheckboxDefaults.colors(checkedColor = FavoritedBlue, checkmarkColor = Color.White, uncheckedColor = MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier.padding(start = 10.dp, end = 10.dp),
+            )
+        }
+        val thumb = Modifier.size(width = 56.dp, height = 79.dp).clip(RoundedCornerShape(6.dp))
         if (source != null) {
             val info = remember(source) { BaseGalleryInfo(gid = source.gid, token = source.token, title = source.title, thumbKey = source.thumbKey) }
             if (source.thumbKey != null) {
@@ -452,27 +458,27 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
             preview?.let { PreviewThumb(it, thumb) } ?: Box(thumb.background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)))
         }
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // The pages give way when the line is short, never the tag: it was cut to 「没收」
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+            // Each piece whole: smaller type to fit on a line, the tag on the next one when they still do not
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (block.size == 1) stringResource(R.string.chapter_block_page, block.first) else stringResource(R.string.chapter_block_pages, block.first, block.last),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                if (block.size > 1) {
                     Text(
-                        text = if (block.size == 1) stringResource(R.string.chapter_block_page, block.first) else stringResource(R.string.chapter_block_pages, block.first, block.last),
-                        style = MaterialTheme.typography.titleSmall,
+                        text = stringResource(R.string.chapter_block_size, block.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         softWrap = false,
                     )
-                    if (block.size > 1) {
-                        Text(
-                            text = stringResource(R.string.chapter_block_size, block.size),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = 6.dp),
-                        )
-                    }
                 }
-                val tag = Modifier.padding(start = 6.dp)
                 if (source != null) {
                     Text(
                         text = stringResource(R.string.chapter_block_favorited),
@@ -480,7 +486,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         color = Color.White,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = tag.background(FavoritedBlue, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                        modifier = Modifier.background(FavoritedBlue, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 } else {
                     Text(
@@ -489,7 +495,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = tag.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 }
             }
@@ -516,7 +522,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
         }
         // Opens the favorite to check it; the sheet comes back as it was
         if (source != null) {
-            IconButton(onClick = { onOpen(source) }, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = { onOpen(source) }, modifier = Modifier.size(32.dp)) {
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = stringResource(R.string.chapter_open_favorite),
