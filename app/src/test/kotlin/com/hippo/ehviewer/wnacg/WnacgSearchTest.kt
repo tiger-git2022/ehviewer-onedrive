@@ -132,6 +132,8 @@ class WnacgSearchTest {
                 album(4, 950, "[A] Title (後編) [中国翻訳]", 40),
                 // The same words but for "~-" and "～", of other pages
                 album(5, 920, "[むちむちおうめ (むちおう)] 坊ちゃん、お乳の時間です。~クールな吸血鬼メイドを孕ませた夜~- [中国翻訳]", 40),
+                // The magazine not in its title, 7 pages more (the ads of its translators)
+                album(7, 902, "[B] Work [中国翻訳]", 27),
             ),
         )
         val page = listOf(
@@ -139,9 +141,10 @@ class WnacgSearchTest {
             eh(11, 980, "[なごやか次郎]甘えたっていいんですよ (COMIC 快楽天ビースト 2025年9月号) [中国翻訳] [DL版]", "ZH", 32),
             eh(12, 955, "[A] Title (前編) [中国翻訳]", "ZH", 20),
             eh(14, 930, "[むちむちおうめ (むちおう)] 坊ちゃん、お乳の時間です。～クールな吸血鬼メイドを孕ませた夜～ [中国翻訳]", "ZH", 47),
+            eh(15, 910, "[B] Work (COMIC X 2025年1月号) [中国翻訳]", "ZH", 20),
             eh(13, 900, "x"),
         )
-        assertEquals(listOf(10L, 11, -3, 12, -4, 14, 13), merger.merge(Load.Refresh, null, page, null, null).map { it.gid })
+        assertEquals(listOf(10L, 11, -3, 12, -4, 14, 15, 13), merger.merge(Load.Refresh, null, page, null, null).map { it.gid })
     }
 
     @Test

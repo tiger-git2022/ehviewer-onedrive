@@ -264,11 +264,14 @@ private fun languageKeys(title: String, language: String) =
 
 /**
  * Whether an album and a gallery of E-Hentai of the same [key], of [a] and [b] pages, are the same. Of the same core
- * only (see [wnacgTitleCores]): a few pages more or less (a page of the translators), a tenth for a long
- * one. Not told (0): the same. Else a part of a work of several, its part in (...) like the magazine it was in.
+ * only (see [wnacgTitleCores]): up to [PAGES_APART] pages more or less (pages of the translators, of their ads), a
+ * tenth for a long one. Not told (0): the same. Else a part of a work of several, its part in (...) like the magazine
+ * it was in.
  */
 fun wnacgSamePages(key: String, a: Int, b: Int): Boolean =
-    !key.startsWith(CORE) || a <= 0 || b <= 0 || abs(a - b) <= maxOf(2, maxOf(a, b) / 10)
+    !key.startsWith(CORE) || a <= 0 || b <= 0 || abs(a - b) <= maxOf(PAGES_APART, maxOf(a, b) / 10)
+
+private const val PAGES_APART = 7
 
 /**
  * More keys of an album of [title]: in Chinese, the language of most albums of the site, whose language it does not
