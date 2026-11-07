@@ -209,7 +209,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
         is ChapterCompareState.Done -> {
             val result = state.result
             val summary = if (result.favoritedCount == 0) {
-                stringResource(R.string.chapter_compare_none)
+                if (result.compared > 0) stringResource(R.string.chapter_compare_none_matched, result.compared) else stringResource(R.string.chapter_compare_none)
             } else {
                 stringResource(R.string.chapter_compare_summary, result.favoritedCount, result.favoritedPages, result.pages - result.favoritedPages)
             }

@@ -921,6 +921,7 @@
     <string name="chapter_compare_chapter">Comparing favorites · %1$d/%2$d done</string>
     <string name="chapter_compare_summary">Favorited %1$d (%2$d pages) · not favorited %3$d pages</string>
     <string name="chapter_compare_none">No favorite of the artist found in this book</string>
+    <string name="chapter_compare_none_matched">Compared %d favorites of the artist, none is in this book</string>
     <string name="chapter_compare_failed">Compare failed: %s</string>
     <string name="chapter_compare_pending">Still comparing… You can close this, the result is kept</string>
     <string name="chapter_block_pages">Pages %1$d–%2$d</string>

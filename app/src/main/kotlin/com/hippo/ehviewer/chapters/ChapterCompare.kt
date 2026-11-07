@@ -66,6 +66,8 @@ data class ChapterCompareResult(
     val uncompared: List<UncomparedChapter> = emptyList(),
     /** 紳士漫畫 asked for its check, so the favorites gone from E-H were not compared there. */
     val wnacgBlocked: Boolean = false,
+    /** The favorites of the artist compared. */
+    val compared: Int = 0,
     val time: Long = System.currentTimeMillis(),
 ) {
     val favoritedPages get() = blocks.filter { it.source != null }.sumOf { it.size }
@@ -263,7 +265,7 @@ object ChapterCompare {
         book.await()
         val blocks = synchronized(lock) { ChapterBlocks.build(pages, found) }
         // A favorite that is the book itself in another edition is found too: as it should, the pages are seen
-        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked)
+        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked, compared = candidates.size)
     }
 
     /**
@@ -442,14 +444,19 @@ object ChapterCompare {
             .sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate)
     }
 
+    /**
+     * The names to find the favorites by: the artist tags (or the group ones) and the name in the first brackets of
+     * each title, "[Circle (Artist)]" taking the artist. Both: a tag is often romanized ("igumox") while the titles of
+     * the favorites, searched on the site, have the name as written ("井雲くす").
+     */
     private fun names(detail: GalleryDetail): List<String> {
         fun tags(namespace: TagNamespace) = detail.tagGroups.filter { it.namespace == namespace }.flatMap { group -> group.tags.map { it.text } }
-        return tags(TagNamespace.Artist).ifEmpty { tags(TagNamespace.Group) }.ifEmpty {
-            // No tag: the name in the first brackets of the title, "[Circle (Artist)]" taking the artist
-            val bracket = Regex("""\[([^\]]+)\]""").find(detail.title.orEmpty())?.groupValues?.get(1)?.trim()
+        val brackets = listOfNotNull(detail.title, detail.titleJpn).mapNotNull { title ->
+            val bracket = Regex("""\[([^\]]+)\]""").find(title)?.groupValues?.get(1)?.trim()
             val inner = bracket?.let { Regex("\\(([^)]+)\\)").find(it)?.groupValues?.get(1)?.trim() } ?: bracket
-            listOfNotNull(inner?.takeIf { it.isNotEmpty() })
-        }.distinct()
+            inner?.takeIf { it.isNotEmpty() }
+        }
+        return (tags(TagNamespace.Artist).ifEmpty { tags(TagNamespace.Group) } + brackets).distinctBy { it.lowercase() }
     }
 
     private fun GalleryInfo.matches(name: String): Boolean {

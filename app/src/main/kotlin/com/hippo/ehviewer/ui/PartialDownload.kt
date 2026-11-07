@@ -66,13 +66,12 @@ suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? =
  */
 context(_: DialogState)
 private suspend fun awaitPageRanges(pages: Int, initial: String, detail: GalleryDetail?) = dialog<List<PageRange>> { cont ->
-    // As the glass menu of the top bars, its text white in dark themes: the gray text of the sheets was hard to read
-    // over the busy page behind
+    // As the glass menu of the top bars, its text white in dark themes and black in light ones: the gray text of the
+    // sheets was hard to read over the busy page behind. The glass shows at the edge only, the inside nearly solid
     val colors = MaterialTheme.colorScheme
-    val dark = colors.surface.luminance() < 0.5f
-    val text = if (dark) colors.copy(onSurface = Color.White, onSurfaceVariant = Color.White.copy(alpha = 0.85f)) else colors
-    MaterialTheme(colorScheme = text) {
-        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer) {
+    val ink = if (colors.surface.luminance() < 0.5f) Color.White else Color.Black
+    MaterialTheme(colorScheme = colors.copy(onSurface = ink, onSurfaceVariant = ink.copy(alpha = 0.8f))) {
+        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, solidInside = true) {
             PagePicker(
                 pages = pages,
                 initial = initial,

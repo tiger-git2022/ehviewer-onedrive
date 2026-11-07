@@ -903,6 +903,7 @@
     <string name="chapter_compare_chapter">对照收藏 · 已比完 %1$d/%2$d 本</string>
     <string name="chapter_compare_summary">收藏过 %1$d 篇（%2$d 页）· 没收藏 %3$d 页</string>
     <string name="chapter_compare_none">这本里没找到同作者的收藏</string>
+    <string name="chapter_compare_none_matched">比对了 %d 本同作者的收藏，都不在这本里</string>
     <string name="chapter_compare_failed">对照出错：%s</string>
     <string name="chapter_compare_pending">还在对照…可以先关掉，结果会保存</string>
     <string name="chapter_block_pages">%1$d–%2$d 页</string>
