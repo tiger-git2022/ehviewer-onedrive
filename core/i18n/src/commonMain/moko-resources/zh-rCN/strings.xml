@@ -923,8 +923,8 @@
     <string name="chapter_uncompared_cover">封面像第 %d 页（只供参考，没算进去）</string>
     <string name="chapter_uncompared_gone">失效收藏，没法比对：%s</string>
     <string name="chapter_uncompared_error">没能比对（网络出错或缩略图没读到）：%s</string>
-    <string name="chapter_pick_unfavorited">全选灰色</string>
-    <string name="chapter_pick_favorited">全选蓝色</string>
+    <string name="chapter_uncompared_title">没法比对的收藏 %d 本（失效或没读到）</string>
+    <string name="chapter_open_favorite">打开这本收藏</string>
     <string name="chapter_pick_clear">清空</string>
     <string name="chapter_compare_again">重新对照</string>
     <string name="chapter_wnacg_blocked">绅士漫画要先过一遍验证，失效的收藏才能去那边比对。</string>

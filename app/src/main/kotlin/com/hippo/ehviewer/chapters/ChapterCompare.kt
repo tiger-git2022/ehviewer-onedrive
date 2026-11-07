@@ -140,7 +140,7 @@ object ChapterCompare {
     private const val MAX_CANDIDATES = 200
 
     /** The share of the book a favorite reaches at most to be taken as one of its chapters. */
-    private const val CHAPTER_MAX_SHARE = 0.8f
+    private const val CHAPTER_MAX_SHARE = 0.75f
     private const val MAX_OTHER_UPLOADS = 3
     private const val PREVIEW_PAGE_GAP = 500L
 

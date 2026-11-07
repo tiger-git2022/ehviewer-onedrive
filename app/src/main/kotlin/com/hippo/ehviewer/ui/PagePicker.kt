@@ -32,12 +32,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -249,7 +252,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             CompareProgressCard(progress)
             if (progress.blocks.isNotEmpty()) {
                 BlocksBar(pages, progress.blocks, picked, pending = true, onPick = onPick)
-                progress.blocks.filter { it.source != null }.forEach { BlockCard(detail, it, picked, onPick) }
+                progress.blocks.filter { it.source != null }.forEach { BlockCard(detail, it, picked, onPick, onOpen) }
             }
             Text(
                 text = stringResource(R.string.chapter_compare_pending),
@@ -270,9 +273,8 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             Text(text = summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (result.favoritedCount > 0) {
                 BlocksBar(pages, result.blocks, picked, pending = false, onPick = onPick)
-                result.blocks.forEach { BlockCard(detail, it, picked, onPick) }
+                result.blocks.forEach { BlockCard(detail, it, picked, onPick, onOpen) }
             }
-            result.uncompared.forEach { UncomparedRow(it) }
             if (result.whole.isNotEmpty()) {
                 Text(
                     text = stringResource(R.string.chapter_whole_title),
@@ -283,6 +285,29 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                     modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
                 )
                 result.whole.forEach { WholeRow(it, onOpen) }
+            }
+            // Often many (favorites gone from E-H): folded, last
+            if (result.uncompared.isNotEmpty()) {
+                var open by remember { mutableStateOf(false) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clip(MaterialTheme.shapes.small).clickable { open = !open }.padding(vertical = 6.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.chapter_uncompared_title, result.uncompared.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (open) result.uncompared.forEach { UncomparedRow(it) }
             }
             if (result.wnacgBlocked) {
                 var checking by remember { mutableStateOf(false) }
@@ -305,19 +330,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                     )
                 }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                if (result.favoritedCount > 0) {
-                    AssistChip(
-                        border = edgeBorder(),
-                        onClick = { result.blocks.filter { it.source == null }.forEach { onPick(it.pages, true) } },
-                        label = { Text(stringResource(R.string.chapter_pick_unfavorited)) },
-                    )
-                    AssistChip(
-                        border = edgeBorder(),
-                        onClick = { result.blocks.filter { it.source != null }.forEach { onPick(it.pages, true) } },
-                        label = { Text(stringResource(R.string.chapter_pick_favorited)) },
-                    )
-                }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)) {
                 AssistChip(border = edgeBorder(), onClick = { onPick(1..pages, false) }, label = { Text(stringResource(R.string.chapter_pick_clear)) })
                 AssistChip(border = edgeBorder(), onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
             }
@@ -409,7 +422,7 @@ private fun isPicked(block: ChapterBlock, picked: BooleanArray) = block.pages.al
  * pages and whether it is favorited on the first line, the title of the favorite below on up to three lines.
  */
 @Composable
-private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit) {
+private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit, onOpen: (ChapterSource) -> Unit) {
     val on = isPicked(block, picked)
     val source = block.source
     val shape = RoundedCornerShape(12.dp)
@@ -482,15 +495,25 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
-            // The same chapter favorited again (in another language)
-            block.sources.drop(1).forEach {
+            // The same chapter favorited again (in another language), a tap opening it
+            block.sources.drop(1).forEach { other ->
                 Text(
-                    text = "· " + it.title,
+                    text = "· " + other.title,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = 2.dp).clip(MaterialTheme.shapes.extraSmall).clickable { onOpen(other) },
+                )
+            }
+        }
+        // Opens the favorite to check it; the sheet comes back as it was
+        if (source != null) {
+            IconButton(onClick = { onOpen(source) }, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.chapter_open_favorite),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
