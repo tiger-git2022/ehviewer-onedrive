@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,7 +37,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
@@ -74,6 +75,7 @@ import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryPreview
 import com.ehviewer.core.model.V2GalleryPreview
 import com.hippo.ehviewer.chapters.ChapterBlock
+import com.hippo.ehviewer.chapters.ChapterBlocks
 import com.hippo.ehviewer.chapters.ChapterCompare
 import com.hippo.ehviewer.chapters.ChapterCompareProgress
 import com.hippo.ehviewer.chapters.ChapterCompareState
@@ -123,20 +125,32 @@ fun ColumnScope.PagePicker(
         if (detail != null) {
             ChapterSection(detail, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
         }
+        Spacer(Modifier.height(8.dp))
     }
-    Column(modifier = Modifier.navigationBarsPadding().imePadding().padding(horizontal = 24.dp).padding(bottom = 16.dp)) {
+    // Kept apart from the list above it, and of the same height whatever is picked: the sheet does not jump
+    Column(modifier = Modifier.navigationBarsPadding().imePadding().padding(horizontal = 24.dp).padding(top = 16.dp, bottom = 16.dp)) {
         RangeInput(pages = pages, onAdd = { set(it, true) })
-        if (runs.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                runs.forEach { run ->
-                    val text = run.toString().replace("-", "–")
-                    InputChip(
-                        selected = true,
-                        onClick = { set(run.first..run.last!!, false) },
-                        label = { Text(text = text) },
-                        trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.download_partial_remove_range, text)) },
-                    )
-                }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(36.dp).horizontalScroll(rememberScrollState()),
+        ) {
+            if (runs.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.download_partial_no_ranges),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1,
+                )
+            }
+            runs.forEach { run ->
+                val text = run.toString().replace("-", "–")
+                InputChip(
+                    selected = true,
+                    onClick = { set(run.first..run.last!!, false) },
+                    label = { Text(text = text, maxLines = 1) },
+                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.download_partial_remove_range, text)) },
+                )
             }
         }
         Text(
@@ -147,7 +161,9 @@ fun ColumnScope.PagePicker(
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
             OutlinedButton(onClick = onCancel, border = edgeBorder(), shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
@@ -180,6 +196,8 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
     val last = if (lastText.isBlank()) first else lastText.toIntOrNull()?.takeIf { it in 1..pages }
     val valid = first != null && last != null
     val numbers = KeyboardOptions(keyboardType = KeyboardType.Number)
+    // Lower than the 56dp of a text field
+    val fieldPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text = stringResource(R.string.download_partial_from))
         OutlinedTextField(
@@ -187,7 +205,8 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
             keyboardOptions = numbers,
             lineLimits = TextFieldLineLimits.SingleLine,
             isError = from.text.isNotEmpty() && first == null,
-            modifier = Modifier.weight(1f),
+            contentPadding = fieldPadding,
+            modifier = Modifier.weight(1f).height(44.dp),
         )
         Text(text = stringResource(R.string.download_partial_to))
         OutlinedTextField(
@@ -195,7 +214,8 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
             keyboardOptions = numbers,
             lineLimits = TextFieldLineLimits.SingleLine,
             isError = lastText.isNotEmpty() && last == null,
-            modifier = Modifier.weight(1f),
+            contentPadding = fieldPadding,
+            modifier = Modifier.weight(1f).height(44.dp),
         )
         val suffix = stringResource(R.string.download_partial_suffix)
         if (suffix.isNotBlank()) Text(text = suffix)
@@ -235,6 +255,8 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                 text = stringResource(R.string.chapter_compare_pending),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
         }
@@ -245,7 +267,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             } else {
                 stringResource(R.string.chapter_compare_summary, result.favoritedCount, result.favoritedPages, result.pages - result.favoritedPages)
             }
-            Text(text = summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (result.favoritedCount > 0) {
                 BlocksBar(pages, result.blocks, picked, pending = false, onPick = onPick)
                 result.blocks.forEach { BlockCard(detail, it, picked, onPick) }
@@ -256,6 +278,8 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                     text = stringResource(R.string.chapter_whole_title),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
                 )
                 result.whole.forEach { WholeRow(it, onOpen) }
@@ -304,7 +328,6 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
         }
         null -> Unit
     }
-    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /**
@@ -348,11 +371,12 @@ private fun CompareProgressCard(progress: ChapterCompareProgress) {
 private fun BlocksBar(pages: Int, blocks: List<ChapterBlock>, picked: BooleanArray, pending: Boolean, onPick: (IntRange, Boolean) -> Unit) {
     val grey = MaterialTheme.colorScheme.onSurface.copy(alpha = if (pending) 0.08f else 0.2f)
     val outline = MaterialTheme.colorScheme.onSurface
+    val segments = remember(pages, blocks) { ChapterBlocks.segments(pages, blocks) }
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier.fillMaxWidth().height(28.dp).padding(vertical = 2.dp),
     ) {
-        blocks.forEach { block ->
+        segments.forEach { block ->
             val on = isPicked(block, picked)
             Box(
                 Modifier.weight(block.size.toFloat() / pages.coerceAtLeast(1)).fillMaxHeight()
@@ -372,6 +396,8 @@ private fun BlocksBar(pages: Int, blocks: List<ChapterBlock>, picked: BooleanArr
         text = stringResource(R.string.chapter_bar_hint),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(bottom = 8.dp),
     )
 }
@@ -454,6 +480,17 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+            // The same chapter favorited again (in another language)
+            block.sources.drop(1).forEach {
+                Text(
+                    text = "· " + it.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }

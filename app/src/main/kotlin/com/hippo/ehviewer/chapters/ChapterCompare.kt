@@ -90,12 +90,13 @@ data class ChapterCompareResult(
 ) {
     companion object {
         /** Raised when the results kept are wrong: those of a lower one are compared again. */
-        // 1: the thumbnails read at last (v1.15.0-t123); 2: the covers of the favorites kept (v1.15.0-t124)
-        const val VERSION = 2
+        // 1: the thumbnails read at last (v1.15.0-t123); 2: the covers of the favorites kept (v1.15.0-t124);
+        // 3: the favorites over the same pages all kept (v1.15.0-t125)
+        const val VERSION = 3
     }
 
-    val favoritedPages get() = blocks.filter { it.source != null }.sumOf { it.size }
-    val favoritedCount get() = blocks.mapNotNull { it.source?.gid }.distinct().size
+    val favoritedPages get() = ChapterBlocks.favoritedPages(pages, blocks)
+    val favoritedCount get() = blocks.flatMap { it.sources }.map { it.gid }.distinct().size
 }
 
 /** Fork: how far a compare is. The fraction counts the thumbnails, of the book and of each favorite. */
@@ -141,13 +142,13 @@ object ChapterCompare {
     /** The share of the book a favorite reaches at most to be taken as one of its chapters. */
     private const val CHAPTER_MAX_SHARE = 0.8f
     private const val MAX_OTHER_UPLOADS = 3
-    private const val PREVIEW_PAGE_GAP = 300L
+    private const val PREVIEW_PAGE_GAP = 500L
 
     /** The favorites read at once. */
-    private const val PARALLEL_GALLERIES = 3
+    private const val PARALLEL_GALLERIES = 5
 
     /** The preview pages fetched at once, of all the galleries: E-H bans an address loading pages too fast. */
-    private val previewGate = Semaphore(3)
+    private val previewGate = Semaphore(5)
     private const val MAX_WNACG_PAGES = 400
     private const val WNACG_REFERER = "https://www.wnacg.com/"
 
@@ -522,7 +523,8 @@ object ChapterCompare {
             onPages(it.size)
             return it
         }
-        val first = previewGate.withPermit { EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token)) }
+        // Each fetch spaced as a reader turning pages, not to be taken for a crawler
+        val first = previewGate.withPermit { EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token)).also { delay(PREVIEW_PAGE_GAP) } }
         val total = first.total.takeIf { it > 0 } ?: pages
         // No preview on the first page: none to read on the next ones either
         if (first.previews.isEmpty()) return List(total.coerceAtLeast(0)) { null }
@@ -539,10 +541,7 @@ object ChapterCompare {
             (1 until previewPages).map { index ->
                 launch {
                     val previews = previewGate.withPermit {
-                        EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token, index)).previews.also {
-                            // A few pages at once, each spaced as a reader turning them, not to be taken for a crawler
-                            delay(PREVIEW_PAGE_GAP)
-                        }
+                        EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token, index)).previews.also { delay(PREVIEW_PAGE_GAP) }
                     }
                     read(previews)
                 }

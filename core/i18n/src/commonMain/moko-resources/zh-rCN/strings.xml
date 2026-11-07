@@ -894,6 +894,7 @@
     <string name="download_partial_count">已选 %1$d 页，共 %2$d 页</string>
     <string name="download_partial_all">已选全部 %d 页</string>
     <string name="download_partial_none">1-%d 页内没有选中的页</string>
+    <string name="download_partial_no_ranges">选中的段会列在这里</string>
     <string name="download_partial_invalid">格式不对，例：1-30, 60-80</string>
     <string name="download_partial_replace_archive">这个本子已经打包成 CBZ。重新选页会删掉它，再重新下载所选的页。</string>
     <string name="download_partial_from">从</string>
@@ -907,8 +908,8 @@
     <string name="chapter_compare_chapter">对照收藏 · 已比完 %1$d/%2$d 本</string>
     <string name="chapter_compare_summary">收藏过 %1$d 篇（%2$d 页）· 没收藏 %3$d 页</string>
     <string name="chapter_compare_none">这本里没找到同作者的收藏</string>
-    <string name="chapter_compare_none_matched">比对了 %d 本同作者的收藏，都不在这本里</string>
-    <string name="chapter_whole_title">页数接近整本、没参与比对的收藏（点一下打开）</string>
+    <string name="chapter_compare_none_matched">比对了 %d 本同作者的收藏，都没有</string>
+    <string name="chapter_whole_title">页数接近整本、没参与比对的收藏</string>
     <string name="chapter_whole_pages">%d 页</string>
     <string name="chapter_compare_failed">对照出错：%s</string>
     <string name="chapter_compare_no_thumbnails">这本的缩略图一张都没读到</string>
@@ -916,7 +917,7 @@
     <string name="chapter_block_pages">%1$d–%2$d 页</string>
     <string name="chapter_block_page">第 %d 页</string>
     <string name="chapter_block_size">%d 页</string>
-    <string name="chapter_bar_hint">点色块或下面的卡片都能选中这一段，选中的块带外框</string>
+    <string name="chapter_bar_hint">点色块或卡片可以选中这一段</string>
     <string name="chapter_block_unfavorited">没收藏</string>
     <string name="chapter_block_favorited">已收藏</string>
     <string name="chapter_uncompared_cover">封面像第 %d 页（只供参考，没算进去）</string>

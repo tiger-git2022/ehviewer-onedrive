@@ -19,11 +19,27 @@ class ChapterBlocksTest {
     }
 
     @Test
-    fun aPageGoesToTheFirstChapterThere() {
-        val blocks = ChapterBlocks.build(20, listOf(8..12 to two, 2..9 to one))
+    fun keepsChaptersOverTheSamePages() {
+        // One of pages 1-40, another of 1-180 found after it: both kept, the longer first
+        val blocks = ChapterBlocks.build(296, listOf(0..39 to one, 0..179 to two))
+        assertEquals(listOf(ChapterBlock(1, 180, two), ChapterBlock(1, 40, one), ChapterBlock(181, 296)), blocks)
         assertEquals(
-            listOf(ChapterBlock(1, 2), ChapterBlock(3, 10, one), ChapterBlock(11, 13, two), ChapterBlock(14, 20)),
+            listOf(ChapterBlock(1, 40, listOf(two, one)), ChapterBlock(41, 180, two), ChapterBlock(181, 296)),
+            ChapterBlocks.segments(296, blocks),
+        )
+        assertEquals(180, ChapterBlocks.favoritedPages(296, blocks))
+    }
+
+    @Test
+    fun groupsTheFavoritesOfTheSameChapter() {
+        val blocks = ChapterBlocks.build(20, listOf(8..12 to two, 2..9 to one, 8..12 to one))
+        assertEquals(
+            listOf(ChapterBlock(1, 2), ChapterBlock(3, 10, one), ChapterBlock(9, 13, listOf(two, one)), ChapterBlock(14, 20)),
             blocks,
+        )
+        assertEquals(
+            listOf(ChapterBlock(1, 2), ChapterBlock(3, 8, one), ChapterBlock(9, 10, listOf(one, two)), ChapterBlock(11, 13, listOf(two, one)), ChapterBlock(14, 20)),
+            ChapterBlocks.segments(20, blocks),
         )
     }
 
