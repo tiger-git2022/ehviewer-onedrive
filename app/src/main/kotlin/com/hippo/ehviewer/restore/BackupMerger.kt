@@ -44,7 +44,7 @@ open class BackupMerger<T>(
     private val moreEhKeys: (BaseGalleryInfo) -> List<String> = { emptyList() },
     private val moreKeys: (title: String) -> List<String> = { emptyList() },
     private val hiddenKeys: () -> Set<String> = { emptySet() },
-    private val samePages: (Int, Int) -> Boolean = { _, _ -> true },
+    private val samePages: (key: String, Int, Int) -> Boolean = { _, _, _ -> true },
 ) {
     enum class Load { Refresh, Append, Prepend }
 
@@ -134,7 +134,7 @@ open class BackupMerger<T>(
     }
 
     private fun Item<T>.sameTitleAsEh(hidden: Set<String>) = listOfNotNull(info.title, info.titleJpn).any { title ->
-        val listed = { key: String -> ehTitles[key]?.any { samePages(it, info.pages) } == true }
+        val listed = { key: String -> ehTitles[key]?.any { samePages(key, it, info.pages) } == true }
         titleKeys(title, info.simpleLanguage).any(listed) || moreKeys(title).any { listed(it) || it in hidden }
     }
 

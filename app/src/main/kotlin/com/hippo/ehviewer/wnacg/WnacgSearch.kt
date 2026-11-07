@@ -225,31 +225,56 @@ fun guessWrittenName(name: WnacgName, titles: List<String>): String? {
 // Between the names of a title in two languages: "日本語｜中文"
 private val TITLE_NAMES = Regex("""\s*\|\s*""")
 
-/** The cores of [title] (see [ChapterTitles.core]): one for each of its names, full width letters as half, no spaces. */
-fun wnacgTitleCores(title: String): List<String> = ChapterTitles.core(Normalizer.normalize(title, Normalizer.Form.NFKC))
+// [...] and 【...】: the artist, the group, the translators, the language, "DL版"…
+private val SQUARE_BRACKETS = Regex("""\[[^\]]*\]|【[^】]*】""")
+
+// Not a letter nor a digit: spaces, "、", "。", "~", "-"…
+private val NOT_WORD = Regex("""[^\p{L}\p{N}]+""")
+
+/** The names of [title] ("日本語｜中文") as [part] tells them, full width letters as half, only letters and digits. */
+private fun titleNames(title: String, part: (String) -> String): List<String> = Normalizer.normalize(title, Normalizer.Form.NFKC)
     .split(TITLE_NAMES)
-    .map { it.replace(SPACES, "") }
+    .map { part(it).replace(NOT_WORD, "").lowercase() }
     .filter { it.isNotEmpty() }
     .distinct()
 
 /**
- * The titles that are the same for a search: the title as is, and its cores in its language, so that a Chinese
- * translation shows when E-Hentai listed only the Japanese one.
+ * The words of [title] with what is in (...) but not in [...]: "夜~-" and "夜～" the same, "(前編)" and "(後編)" not.
+ * The same are the same work, of any pages.
  */
-fun wnacgTitleKeys(title: String, language: String?): List<String> = listOf(title.normalized()) + wnacgTitleCores(title).map { "$it|${language.orEmpty()}" }
+fun wnacgTitleWords(title: String): List<String> = titleNames(title) { it.replace(SQUARE_BRACKETS, " ") }
 
 /**
- * Whether an album and a gallery of E-Hentai of the same title, of [a] and [b] pages, are the same: a page or two
- * more or less (a page of the translators), a tenth for a long one. Not told (0): the same. Else a part of a work of
- * several ("前編", "後編") whose title is the same once without what is in brackets.
+ * The cores of [title] (see [ChapterTitles.core]), without what is in any brackets, the magazine or the part too: the
+ * same are the same work only of close pages, see [wnacgSamePages].
  */
-fun wnacgSamePages(a: Int, b: Int): Boolean = a <= 0 || b <= 0 || abs(a - b) <= maxOf(2, maxOf(a, b) / 10)
+fun wnacgTitleCores(title: String): List<String> = titleNames(title, ChapterTitles::core)
+
+private const val WORDS = "w|"
+private const val CORE = "c|"
 
 /**
- * More keys of an album of [title]: its cores in Chinese, the language of most albums of the site, whose language it
- * does not always tell: one E-Hentai listed in Chinese is the same.
+ * The titles that are the same for a search: the title as is, and its words and cores in its language, so that a
+ * Chinese translation shows when E-Hentai listed only the Japanese one.
  */
-fun wnacgChineseKeys(title: String): List<String> = wnacgTitleCores(title).map { "$it|ZH" }
+fun wnacgTitleKeys(title: String, language: String?): List<String> = listOf(title.normalized()) + languageKeys(title, language.orEmpty())
+
+private fun languageKeys(title: String, language: String) =
+    wnacgTitleWords(title).map { "$WORDS$it|$language" } + wnacgTitleCores(title).map { "$CORE$it|$language" }
+
+/**
+ * Whether an album and a gallery of E-Hentai of the same [key], of [a] and [b] pages, are the same. Of the same core
+ * only (see [wnacgTitleCores]): a few pages more or less (a page of the translators), a tenth for a long
+ * one. Not told (0): the same. Else a part of a work of several, its part in (...) like the magazine it was in.
+ */
+fun wnacgSamePages(key: String, a: Int, b: Int): Boolean =
+    !key.startsWith(CORE) || a <= 0 || b <= 0 || abs(a - b) <= maxOf(2, maxOf(a, b) / 10)
+
+/**
+ * More keys of an album of [title]: in Chinese, the language of most albums of the site, whose language it does not
+ * always tell: one E-Hentai listed in Chinese is the same.
+ */
+fun wnacgChineseKeys(title: String): List<String> = languageKeys(title, "ZH")
 
 /** The searches on 紳士漫畫 a page of it fetches at most. */
 private const val WNACG_MAX_PAGES = 5

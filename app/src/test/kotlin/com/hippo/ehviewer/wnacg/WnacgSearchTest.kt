@@ -130,15 +130,18 @@ class WnacgSearchTest {
                 album(3, 960, "[なごやか次郎] スーパーラブパワー [中国翻訳]", 167),
                 // A part of the same name in brackets, not of the same pages
                 album(4, 950, "[A] Title (後編) [中国翻訳]", 40),
+                // The same words but for "~-" and "～", of other pages
+                album(5, 920, "[むちむちおうめ (むちおう)] 坊ちゃん、お乳の時間です。~クールな吸血鬼メイドを孕ませた夜~- [中国翻訳]", 40),
             ),
         )
         val page = listOf(
             eh(10, 1000, "[なごやか次郎] 君は可愛い王子様 (COMIC 快楽天ビースト 2026年5月号) [中国翻訳] [DL版]", "ZH", 30),
             eh(11, 980, "[なごやか次郎]甘えたっていいんですよ (COMIC 快楽天ビースト 2025年9月号) [中国翻訳] [DL版]", "ZH", 32),
             eh(12, 955, "[A] Title (前編) [中国翻訳]", "ZH", 20),
+            eh(14, 930, "[むちむちおうめ (むちおう)] 坊ちゃん、お乳の時間です。～クールな吸血鬼メイドを孕ませた夜～ [中国翻訳]", "ZH", 47),
             eh(13, 900, "x"),
         )
-        assertEquals(listOf(10L, 11, -3, 12, -4, 13), merger.merge(Load.Refresh, null, page, null, null).map { it.gid })
+        assertEquals(listOf(10L, 11, -3, 12, -4, 14, 13), merger.merge(Load.Refresh, null, page, null, null).map { it.gid })
     }
 
     @Test
