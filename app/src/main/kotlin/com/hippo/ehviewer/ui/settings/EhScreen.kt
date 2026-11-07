@@ -243,6 +243,20 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                         summary = stringResource(id = R.string.sheet_glass_aberration_summary),
                         pref = Settings.sheetGlassFringe,
                     )
+                    IntSliderPreference(
+                        maxValue = 100,
+                        step = 19,
+                        title = stringResource(id = R.string.partial_sheet_blur),
+                        summary = stringResource(id = R.string.partial_sheet_blur_summary),
+                        pref = Settings.partialSheetBlur,
+                    )
+                    IntSliderPreference(
+                        maxValue = 100,
+                        step = 19,
+                        title = stringResource(id = R.string.partial_sheet_opacity),
+                        summary = stringResource(id = R.string.partial_sheet_opacity_summary),
+                        pref = Settings.partialSheetOpacity,
+                    )
                 }
             }
             SimpleMenuPreferenceInt(

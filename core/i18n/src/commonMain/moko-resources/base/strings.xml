@@ -486,6 +486,10 @@
     <string name="sheet_glass_aberration">Drawer and dialog edge fringes</string>
     <string name="sheet_glass_aberration_summary">How far red, green and blue split at the edge of the glass, like a real glass edge: 0 is none, 50 the default. Needs Android 13</string>
     <string name="sheet_glass_tint_summary">The percent of color over the glass: higher is less see-through, 40 the default</string>
+    <string name="partial_sheet_blur">Download pages sheet blur</string>
+    <string name="partial_sheet_blur_summary">Its own blur, the value over 10 in dp: 25 the default. Blur needs Android 12</string>
+    <string name="partial_sheet_opacity">Download pages sheet opacity</string>
+    <string name="partial_sheet_opacity_summary">The percent of color inside its glassy edge: 0 is all glass, 85 the default</string>
     <string name="harmonize_category_color">Harmonize category color for Dynamic Color</string>
     <string name="sort_by">Sort by</string>
     <string name="added_time_desc">Added time (descending)</string>
@@ -921,6 +925,9 @@
     <string name="chapter_compare_chapter">Comparing favorites · %1$d/%2$d done</string>
     <string name="chapter_compare_summary">Favorited %1$d (%2$d pages) · not favorited %3$d pages</string>
     <string name="chapter_compare_none">No favorite of the artist found in this book</string>
+    <string name="chapter_compare_none_matched">Compared %d favorites of the artist, none is in this book</string>
+    <string name="chapter_whole_title">As long as most of this book, not compared (tap to open)</string>
+    <string name="chapter_whole_pages">%d pages</string>
     <string name="chapter_compare_failed">Compare failed: %s</string>
     <string name="chapter_compare_pending">Still comparing… You can close this, the result is kept</string>
     <string name="chapter_block_pages">Pages %1$d–%2$d</string>

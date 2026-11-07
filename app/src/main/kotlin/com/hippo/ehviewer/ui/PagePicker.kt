@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -48,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,8 +61,10 @@ import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterCompare
 import com.hippo.ehviewer.chapters.ChapterCompareProgress
 import com.hippo.ehviewer.chapters.ChapterCompareState
+import com.hippo.ehviewer.chapters.ChapterSource
 import com.hippo.ehviewer.chapters.ChapterTitles
 import com.hippo.ehviewer.chapters.UncomparedChapter
+import com.hippo.ehviewer.chapters.WholeFavorite
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PageRanges
 import com.hippo.ehviewer.ui.settings.SyncLinearProgress
@@ -79,6 +83,7 @@ fun ColumnScope.PagePicker(
     detail: GalleryDetail?,
     onCancel: () -> Unit,
     onDownload: (List<PageRange>) -> Unit,
+    onOpen: (ChapterSource) -> Unit,
 ) {
     var picked by remember {
         val array = BooleanArray(pages)
@@ -99,7 +104,7 @@ fun ColumnScope.PagePicker(
         Text(text = stringResource(R.string.download_partial), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
         if (detail != null) {
-            ChapterSection(detail, picked = picked, onPick = ::set)
+            ChapterSection(detail, picked = picked, onPick = ::set, onOpen = onOpen)
         }
     }
     Column(modifier = Modifier.navigationBarsPadding().imePadding().padding(horizontal = 24.dp).padding(bottom = 16.dp)) {
@@ -183,7 +188,7 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
 
 /** The compare of the tankoubon [detail] with the favorites: its progress, then its blocks to tick. */
 @Composable
-private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit) {
+private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit, onOpen: (ChapterSource) -> Unit) {
     val gid = detail.gid
     val pages = detail.pages
     LaunchedEffect(gid) {
@@ -209,7 +214,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
         is ChapterCompareState.Done -> {
             val result = state.result
             val summary = if (result.favoritedCount == 0) {
-                stringResource(R.string.chapter_compare_none)
+                if (result.compared > 0) stringResource(R.string.chapter_compare_none_matched, result.compared) else stringResource(R.string.chapter_compare_none)
             } else {
                 stringResource(R.string.chapter_compare_summary, result.favoritedCount, result.favoritedPages, result.pages - result.favoritedPages)
             }
@@ -219,6 +224,15 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                 result.blocks.forEach { BlockRow(it, picked, onPick) }
             }
             result.uncompared.forEach { UncomparedRow(it) }
+            if (result.whole.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.chapter_whole_title),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                )
+                result.whole.forEach { WholeRow(it, onOpen) }
+            }
             if (result.wnacgBlocked) {
                 var checking by remember { mutableStateOf(false) }
                 Text(
@@ -350,6 +364,25 @@ private fun BlockRow(block: ChapterBlock, picked: BooleanArray, onPick: (IntRang
                 Text(text = stringResource(R.string.chapter_block_unfavorited), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+/** A favorite as long as most of the book, not compared: a tap opens it. */
+@Composable
+private fun WholeRow(item: WholeFavorite, onOpen: (ChapterSource) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onOpen(item.source) }.padding(vertical = 6.dp),
+    ) {
+        Text(text = item.source.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(
+            text = stringResource(R.string.chapter_whole_pages, item.pages),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 8.dp),
+        )
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

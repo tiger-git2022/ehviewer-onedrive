@@ -108,8 +108,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -670,9 +674,13 @@ fun BoxScope.EhModalBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(),
     // Fork: the color of the glass, that of the drawers when null
     glassColor: Color? = null,
+    // Fork: the blur of this sheet, in tenths of a dp, that of the drawers when null
+    glassBlur: Int? = null,
+    // Fork: the opacity of a color inside the glassy edge, 0 to 1, so that the content reads well over busy pages
+    insideOpacity: Float = 0f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current, glassBlur)
     if (glass == null) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
@@ -740,7 +748,22 @@ fun BoxScope.EhModalBottomSheet(
                     color = Color.Transparent,
                     contentColor = colors.onSurface,
                 ) {
-                    Column {
+                    val inside = if (colors.surface.luminance() < 0.5f) (glassColor ?: colors.surfaceContainerLow) else Color.White
+                    val inset = with(LocalDensity.current) { SolidInsideInset.toPx() }
+                    Column(
+                        modifier = if (insideOpacity > 0f) {
+                            Modifier.drawBehind {
+                                drawRoundRect(
+                                    color = inside.copy(alpha = insideOpacity.coerceAtMost(1f)),
+                                    topLeft = Offset(inset, inset),
+                                    size = Size(size.width - 2 * inset, size.height - inset),
+                                    cornerRadius = CornerRadius(GLASS_SHEET_CORNER.toPx() - inset),
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ) {
                         BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
                         content()
                     }
@@ -1042,3 +1065,6 @@ private val GlassBottomSheetShape = RoundedCornerShape(topStart = GLASS_SHEET_CO
 private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, top = 16.dp)
 
 val LocalGlobalDialogState = compositionLocalOf<DialogState> { error("CompositionLocal LocalDialogState not present!") }
+
+// Fork: the color inside a sheet ([EhModalBottomSheet]), the glass showing in a band along its edge
+private val SolidInsideInset = 10.dp
