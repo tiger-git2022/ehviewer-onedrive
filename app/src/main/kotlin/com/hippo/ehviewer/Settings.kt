@@ -110,6 +110,11 @@ object Settings : DataStorePreferences(null) {
     val sheetGlassBlur = intPref("sheet_glass_blur", 25)
     val sheetGlassTint = intPref("sheet_glass_tint", 40)
 
+    // Fork: the sheet to download some pages, read over busy pages: its own blur (in tenths of a dp) and the opacity (in
+    // percent) of the color inside its glassy edge
+    val partialSheetBlur = intPref("partial_sheet_glass_blur", 25)
+    val partialSheetOpacity = intPref("partial_sheet_opacity", 85)
+
     // Fork: the color fringes at the edge of the drawers and the dialogs over liquid glass, 0 (none) to 100, see GlassFringe.kt
     val sheetGlassFringe = intPref("sheet_glass_fringe", 50)
 

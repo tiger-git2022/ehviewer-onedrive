@@ -674,11 +674,13 @@ fun BoxScope.EhModalBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(),
     // Fork: the color of the glass, that of the drawers when null
     glassColor: Color? = null,
-    // Fork: the glass at the edge only, the inside nearly solid so that the content reads well
-    solidInside: Boolean = false,
+    // Fork: the blur of this sheet, in tenths of a dp, that of the drawers when null
+    glassBlur: Int? = null,
+    // Fork: the opacity of a color inside the glassy edge, 0 to 1, so that the content reads well over busy pages
+    insideOpacity: Float = 0f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val glass = rememberLiquidGlass(LocalPageBackdrop.current)
+    val glass = rememberLiquidGlass(LocalPageBackdrop.current, glassBlur)
     if (glass == null) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
@@ -749,10 +751,10 @@ fun BoxScope.EhModalBottomSheet(
                     val inside = if (colors.surface.luminance() < 0.5f) (glassColor ?: colors.surfaceContainerLow) else Color.White
                     val inset = with(LocalDensity.current) { SolidInsideInset.toPx() }
                     Column(
-                        modifier = if (solidInside) {
+                        modifier = if (insideOpacity > 0f) {
                             Modifier.drawBehind {
                                 drawRoundRect(
-                                    color = inside.copy(alpha = SOLID_INSIDE_ALPHA),
+                                    color = inside.copy(alpha = insideOpacity.coerceAtMost(1f)),
                                     topLeft = Offset(inset, inset),
                                     size = Size(size.width - 2 * inset, size.height - inset),
                                     cornerRadius = CornerRadius(GLASS_SHEET_CORNER.toPx() - inset),
@@ -1064,6 +1066,5 @@ private val DatePickerTitlePadding = PaddingValues(start = 24.dp, end = 12.dp, t
 
 val LocalGlobalDialogState = compositionLocalOf<DialogState> { error("CompositionLocal LocalDialogState not present!") }
 
-// Fork: the solid inside of a sheet ([EhModalBottomSheet]), the glass showing in a band along its edge
+// Fork: the color inside a sheet ([EhModalBottomSheet]), the glass showing in a band along its edge
 private val SolidInsideInset = 10.dp
-private const val SOLID_INSIDE_ALPHA = 0.85f

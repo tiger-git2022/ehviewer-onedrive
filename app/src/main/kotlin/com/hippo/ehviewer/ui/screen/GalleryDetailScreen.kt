@@ -63,6 +63,7 @@ import com.ehviewer.core.ui.util.rememberInVM
 import com.ehviewer.core.util.launchIO
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
+import com.ehviewer.core.util.withUIContext
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.chapters.Wnacg
@@ -352,7 +353,9 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                             add(
                                 BarAction(downloadPartial) {
                                     val detail = galleryInfo as? GalleryDetail ?: return@BarAction
-                                    launchIO { startPartialDownload(detail.galleryInfo, detail) }
+                                    launchIO {
+                                        startPartialDownload(detail.galleryInfo, detail) { withUIContext { navigator.navigate(it.gid asDstWith it.token) } }
+                                    }
                                 },
                             )
                         }

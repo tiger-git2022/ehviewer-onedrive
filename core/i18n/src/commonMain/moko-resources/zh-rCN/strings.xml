@@ -464,6 +464,10 @@
     <string name="sheet_glass_aberration">侧边栏和弹窗边缘色差</string>
     <string name="sheet_glass_aberration_summary">玻璃边缘红绿蓝分开的程度，像真实的玻璃边：0 关闭，默认 50。需要 Android 13 以上</string>
     <string name="sheet_glass_tint_summary">玻璃上底色的百分比：越大越不透明、越容易看清文字，默认 40</string>
+    <string name="partial_sheet_blur">下载部分页面板的模糊度</string>
+    <string name="partial_sheet_blur_summary">这个面板单独的模糊度，数值除以 10 是模糊半径（dp），默认 25。模糊需要 Android 12 以上</string>
+    <string name="partial_sheet_opacity">下载部分页面板的不透明度</string>
+    <string name="partial_sheet_opacity_summary">面板边缘玻璃以内底色的百分比：0 全是玻璃，越大越不透明，默认 85</string>
     <string name="harmonize_category_color">类别颜色适配动态配色</string>
     <string name="backup_before_update">更新前备份数据</string>
     <string name="use_ci_update_channel">使用持续集成(CI)构建频道更新</string>
@@ -904,6 +908,8 @@
     <string name="chapter_compare_summary">收藏过 %1$d 篇（%2$d 页）· 没收藏 %3$d 页</string>
     <string name="chapter_compare_none">这本里没找到同作者的收藏</string>
     <string name="chapter_compare_none_matched">比对了 %d 本同作者的收藏，都不在这本里</string>
+    <string name="chapter_whole_title">页数接近整本、没参与比对的收藏（点一下打开）</string>
+    <string name="chapter_whole_pages">%d 页</string>
     <string name="chapter_compare_failed">对照出错：%s</string>
     <string name="chapter_compare_pending">还在对照…可以先关掉，结果会保存</string>
     <string name="chapter_block_pages">%1$d–%2$d 页</string>

@@ -57,6 +57,13 @@ import splitties.init.appCtx
 @Serializable
 data class UncomparedChapter(val source: ChapterSource, val gone: Boolean, val coverPage: Int? = null)
 
+/**
+ * Fork: a favorite of the artist as long as most of the book or longer: not compared, likely the book itself in another
+ * edition or another book, only listed so that it can be opened.
+ */
+@Serializable
+data class WholeFavorite(val source: ChapterSource, val pages: Int)
+
 /** Fork: the favorites found in a tankoubon of [pages] pages, see [ChapterCompare]. */
 @Serializable
 data class ChapterCompareResult(
@@ -68,6 +75,8 @@ data class ChapterCompareResult(
     val wnacgBlocked: Boolean = false,
     /** The favorites of the artist compared. */
     val compared: Int = 0,
+    /** Those not compared as they are as long as most of the book, the longest first. */
+    val whole: List<WholeFavorite> = emptyList(),
     val time: Long = System.currentTimeMillis(),
 ) {
     val favoritedPages get() = blocks.filter { it.source != null }.sumOf { it.size }
@@ -183,7 +192,7 @@ object ChapterCompare {
     private suspend fun compare(detail: GalleryDetail): ChapterCompareResult = coroutineScope {
         val gid = detail.gid
         val pages = detail.pages
-        val candidates = findCandidates(detail)
+        val (candidates, whole) = findCandidates(detail)
         // Each favorite counts its pages; one of an unknown size counts as one preview page
         fun sizeOf(info: GalleryInfo) = info.pages.takeIf { it > 0 } ?: 20
         val overallTotal = pages + candidates.sumOf { sizeOf(it.info) }
@@ -265,7 +274,7 @@ object ChapterCompare {
         book.await()
         val blocks = synchronized(lock) { ChapterBlocks.build(pages, found) }
         // A favorite that is the book itself in another edition is found too: as it should, the pages are seen
-        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked, compared = candidates.size)
+        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked, compared = candidates.size, whole = whole)
     }
 
     /**
@@ -403,10 +412,10 @@ object ChapterCompare {
         return withContext(Dispatchers.Default) { hashOf(bitmap, 0, 0, bitmap.width, bitmap.height) }
     }
 
-    /** The favorites of the artists (or groups) of [detail]: on the site and local. */
-    private suspend fun findCandidates(detail: GalleryDetail): List<Candidate> {
+    /** The favorites of the artists (or groups) of [detail], on the site and local: to compare, and those as long as most of it. */
+    private suspend fun findCandidates(detail: GalleryDetail): Pair<List<Candidate>, List<WholeFavorite>> {
         val names = names(detail)
-        if (names.isEmpty()) return emptyList()
+        if (names.isEmpty()) return emptyList<Candidate>() to emptyList()
         val found = LinkedHashMap<Long, GalleryInfo>()
         if (Settings.hasSignedIn.value) {
             // One more than taken, the book itself may be among them
@@ -440,8 +449,9 @@ object ChapterCompare {
         // Not a chapter: as long as most of the book or longer, the book itself in another edition or another book
         val longest = detail.pages * CHAPTER_MAX_SHARE
         // The short ones first, as chapters are: kept when there are too many
-        return list.filter { detail.pages <= 0 || it.pages <= 0 || it.pages < longest }
-            .sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate)
+        val (chapters, whole) = list.partition { detail.pages <= 0 || it.pages <= 0 || it.pages < longest }
+        return chapters.sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate) to
+            whole.sortedByDescending { it.pages }.map { WholeFavorite(Candidate(it).source, it.pages) }
     }
 
     /**

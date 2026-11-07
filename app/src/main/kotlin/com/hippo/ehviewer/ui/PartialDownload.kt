@@ -2,6 +2,7 @@ package com.hippo.ehviewer.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
@@ -10,7 +11,10 @@ import com.ehviewer.core.files.delete
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryDetail
+import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.chapters.ChapterCompare
+import com.hippo.ehviewer.chapters.ChapterSource
+import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.download.ArchivePages
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.PageRange
@@ -28,11 +32,15 @@ import kotlinx.coroutines.CancellationException
  * takes the new pages: one kept as a folder gets those it lacks; one kept as a CBZ, after asking, is downloaded again.
  */
 context(_: DialogState, _: MainActivity)
-suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? = null) {
+suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? = null, onOpen: suspend (ChapterSource) -> Unit = {}) {
     val pages = info.pages
     if (pages <= 0) return
     val gid = info.gid
-    val ranges = awaitPageRanges(pages, PartialDownloads.text(gid).orEmpty(), detail)
+    val ranges = when (val choice = awaitPageRanges(pages, PartialDownloads.text(gid).orEmpty(), detail)) {
+        is PageChoice.Ranges -> choice.ranges
+        // A favorite listed in the compare, opened instead
+        is PageChoice.Open -> return onOpen(choice.source)
+    }
     val existing = DownloadManager.getDownloadInfo(gid)
     val archive = existing?.archiveFile
     if (existing != null && archive != null) {
@@ -64,20 +72,28 @@ suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? =
  * chip. A tankoubon is also compared with the favorites of its artist, see [ChapterCompare]: its blocks, favorited in
  * blue and not in grey, are picked with a tick.
  */
+private sealed interface PageChoice {
+    data class Ranges(val ranges: List<PageRange>) : PageChoice
+    data class Open(val source: ChapterSource) : PageChoice
+}
+
 context(_: DialogState)
-private suspend fun awaitPageRanges(pages: Int, initial: String, detail: GalleryDetail?) = dialog<List<PageRange>> { cont ->
+private suspend fun awaitPageRanges(pages: Int, initial: String, detail: GalleryDetail?) = dialog<PageChoice> { cont ->
     // As the glass menu of the top bars, its text white in dark themes and black in light ones: the gray text of the
-    // sheets was hard to read over the busy page behind. The glass shows at the edge only, the inside nearly solid
+    // sheets was hard to read over the busy page behind. Its blur and the color inside its glassy edge are set in Settings → EH
     val colors = MaterialTheme.colorScheme
+    val blur by Settings.partialSheetBlur.collectAsState()
+    val opacity by Settings.partialSheetOpacity.collectAsState()
     val ink = if (colors.surface.luminance() < 0.5f) Color.White else Color.Black
     MaterialTheme(colorScheme = colors.copy(onSurface = ink, onSurfaceVariant = ink.copy(alpha = 0.8f))) {
-        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, solidInside = true) {
+        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, glassBlur = blur, insideOpacity = opacity / 100f) {
             PagePicker(
                 pages = pages,
                 initial = initial,
                 detail = detail?.takeIf(ChapterCompare::isTankoubon),
                 onCancel = { cont.cancel() },
-                onDownload = { cont.resume(it) },
+                onDownload = { cont.resume(PageChoice.Ranges(it)) },
+                onOpen = { cont.resume(PageChoice.Open(it)) },
             )
         }
     }
