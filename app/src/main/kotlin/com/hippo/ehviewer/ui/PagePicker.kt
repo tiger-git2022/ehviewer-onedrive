@@ -453,19 +453,24 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
         }
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (block.size == 1) stringResource(R.string.chapter_block_page, block.first) else stringResource(R.string.chapter_block_pages, block.first, block.last),
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                )
-                if (block.size > 1) {
+                // The pages give way when the line is short, never the tag: it was cut to 「没收」
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
                     Text(
-                        text = stringResource(R.string.chapter_block_size, block.size),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = if (block.size == 1) stringResource(R.string.chapter_block_page, block.first) else stringResource(R.string.chapter_block_pages, block.first, block.last),
+                        style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
-                        modifier = Modifier.padding(start = 6.dp),
+                        softWrap = false,
                     )
+                    if (block.size > 1) {
+                        Text(
+                            text = stringResource(R.string.chapter_block_size, block.size),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
                 }
                 val tag = Modifier.padding(start = 6.dp)
                 if (source != null) {
@@ -474,6 +479,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         maxLines = 1,
+                        softWrap = false,
                         modifier = tag.background(FavoritedBlue, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 } else {
@@ -482,6 +488,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
+                        softWrap = false,
                         modifier = tag.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 }
