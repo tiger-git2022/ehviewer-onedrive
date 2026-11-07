@@ -65,14 +65,18 @@ fun rememberGlassBackdrop(): LayerBackdrop? {
 /** Records this content for the glass in front of it. */
 fun Modifier.glassContent(backdrop: LayerBackdrop?): Modifier = if (backdrop == null) this else layerBackdrop(backdrop)
 
-/** Liquid glass refracting [backdrop], null without one; [sheetBlurOverride] is a sheet's own blur, in tenths of a dp. */
+/**
+ * Liquid glass refracting [backdrop], null without one; a sheet's own blur ([sheetBlurOverride], in tenths of a dp) and
+ * opacity ([sheetTintOverride], in percent) instead of those of the settings.
+ */
 @Composable
-fun rememberLiquidGlass(backdrop: Backdrop?, sheetBlurOverride: Int? = null): FloatingGlass? {
+fun rememberLiquidGlass(backdrop: Backdrop?, sheetBlurOverride: Int? = null, sheetTintOverride: Int? = null): FloatingGlass? {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     // Fork: the drawers, the dialogs and the expanded search as set in Settings → EH
     val sheetBlurSetting by Settings.sheetGlassBlur.collectAsState()
     val sheetBlur = sheetBlurOverride ?: sheetBlurSetting
-    val sheetTint by Settings.sheetGlassTint.collectAsState()
+    val sheetTintSetting by Settings.sheetGlassTint.collectAsState()
+    val sheetTint = sheetTintOverride ?: sheetTintSetting
     val sheetFringe by Settings.sheetGlassFringe.collectAsState()
     return remember(backdrop, dark, sheetBlur, sheetTint, sheetFringe) {
         backdrop?.let { liquidGlass(it, dark, sheetBlur / 10f, sheetTint / 100f, sheetFringe / 100f) }

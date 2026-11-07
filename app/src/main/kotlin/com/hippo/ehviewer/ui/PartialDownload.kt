@@ -32,14 +32,22 @@ import kotlinx.coroutines.CancellationException
  * takes the new pages: one kept as a folder gets those it lacks; one kept as a CBZ, after asking, is downloaded again.
  */
 context(_: DialogState, _: MainActivity)
-suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? = null, onOpen: suspend (ChapterSource) -> Unit = {}) {
+suspend fun startPartialDownload(
+    info: BaseGalleryInfo,
+    detail: GalleryDetail? = null,
+    initial: String? = null,
+    onOpen: suspend (ChapterSource) -> Unit = {},
+) {
     val pages = info.pages
     if (pages <= 0) return
     val gid = info.gid
-    val ranges = when (val choice = awaitPageRanges(pages, PartialDownloads.text(gid).orEmpty(), detail)) {
+    val ranges = when (val choice = awaitPageRanges(pages, initial ?: PartialDownloads.text(gid).orEmpty(), detail)) {
         is PageChoice.Ranges -> choice.ranges
-        // A favorite listed in the compare, opened instead
-        is PageChoice.Open -> return onOpen(choice.source)
+        // A favorite listed in the compare, opened instead: the sheet opens again, as it was, back on this gallery
+        is PageChoice.Open -> {
+            PartialSheetReturn.leave(gid, choice.picked)
+            return onOpen(choice.source)
+        }
     }
     val existing = DownloadManager.getDownloadInfo(gid)
     val archive = existing?.archiveFile
@@ -74,7 +82,21 @@ suspend fun startPartialDownload(info: BaseGalleryInfo, detail: GalleryDetail? =
  */
 private sealed interface PageChoice {
     data class Ranges(val ranges: List<PageRange>) : PageChoice
-    data class Open(val source: ChapterSource) : PageChoice
+
+    /** [picked] the pages picked so far, as "1-30,60-80". */
+    data class Open(val source: ChapterSource, val picked: String) : PageChoice
+}
+
+/** Fork: the sheet left to open a favorite it lists, to open again when its gallery shows again. */
+object PartialSheetReturn {
+    private var left: Pair<Long, String>? = null
+
+    fun leave(gid: Long, picked: String) {
+        left = gid to picked
+    }
+
+    /** The pages picked in the sheet of [gid] left, once; null when it was not left. */
+    fun take(gid: Long): String? = left?.takeIf { it.first == gid }?.second?.also { left = null }
 }
 
 context(_: DialogState)
@@ -86,14 +108,14 @@ private suspend fun awaitPageRanges(pages: Int, initial: String, detail: Gallery
     val opacity by Settings.partialSheetOpacity.collectAsState()
     val ink = if (colors.surface.luminance() < 0.5f) Color.White else Color.Black
     MaterialTheme(colorScheme = colors.copy(onSurface = ink, onSurfaceVariant = ink.copy(alpha = 0.8f))) {
-        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, glassBlur = blur, insideOpacity = opacity / 100f) {
+        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, glassBlur = blur, glassOpacity = opacity) {
             PagePicker(
                 pages = pages,
                 initial = initial,
                 detail = detail?.takeIf(ChapterCompare::isTankoubon),
                 onCancel = { cont.cancel() },
                 onDownload = { cont.resume(PageChoice.Ranges(it)) },
-                onOpen = { cont.resume(PageChoice.Open(it)) },
+                onOpen = { source, picked -> cont.resume(PageChoice.Open(source, picked)) },
             )
         }
     }

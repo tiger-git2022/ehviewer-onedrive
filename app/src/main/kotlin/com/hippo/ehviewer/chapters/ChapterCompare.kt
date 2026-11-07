@@ -2,6 +2,7 @@ package com.hippo.ehviewer.chapters
 
 import android.graphics.Bitmap
 import coil3.BitmapImage
+import coil3.Image
 import coil3.network.HttpException
 import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
@@ -9,6 +10,7 @@ import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
+import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryInfo
@@ -23,6 +25,7 @@ import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.client.exception.GalleryUnavailableException
+import com.hippo.ehviewer.coil.BitmapImageWithExtraInfo
 import com.hippo.ehviewer.ktbuilder.execute
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.wnacg.isWnacg
@@ -36,14 +39,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -62,7 +65,7 @@ data class UncomparedChapter(val source: ChapterSource, val gone: Boolean, val c
  * edition or another book, only listed so that it can be opened.
  */
 @Serializable
-data class WholeFavorite(val source: ChapterSource, val pages: Int)
+data class WholeFavorite(val source: ChapterSource, val pages: Int, val thumbKey: String? = null)
 
 /** Fork: the favorites found in a tankoubon of [pages] pages, see [ChapterCompare]. */
 @Serializable
@@ -78,7 +81,14 @@ data class ChapterCompareResult(
     /** Those not compared as they are as long as most of the book, the longest first. */
     val whole: List<WholeFavorite> = emptyList(),
     val time: Long = System.currentTimeMillis(),
+    /** 0 for the results kept before there was one. */
+    val version: Int = 0,
 ) {
+    companion object {
+        /** Raised when the results kept are wrong: those of a lower one are compared again. */
+        const val VERSION = 1
+    }
+
     val favoritedPages get() = blocks.filter { it.source != null }.sumOf { it.size }
     val favoritedCount get() = blocks.mapNotNull { it.source?.gid }.distinct().size
 }
@@ -155,6 +165,8 @@ object ChapterCompare {
         if (gid in mutableStates.value) return
         val file = File(resultDir, "$gid.json")
         val result = runCatching { json.decodeFromString(ChapterCompareResult.serializer(), file.readText()) }.getOrNull() ?: return
+        // Compared before v1.15.0-t123, when no thumbnail was read: compared again
+        if (result.version < ChapterCompareResult.VERSION) return
         mutableStates.update { if (gid in it) it else it + (gid to ChapterCompareState.Done(result)) }
     }
 
@@ -247,6 +259,8 @@ object ChapterCompare {
                     step(key, source.title, 0, size)
                     try {
                         val chapter = galleryHashes(info.gid, info.token, info.pages) { step(key, source.title, it, size) }
+                        // None of its thumbnails read: not compared, rather than not in the book
+                        if (chapter.none { it != null }) throw IllegalStateException("No thumbnail of ${info.gid} read")
                         val ranges = ChapterMatcher.locate(book.await(), chapter)
                         synchronized(lock) { ranges.forEach { found += it to source } }
                     } catch (e: CancellationException) {
@@ -271,10 +285,10 @@ object ChapterCompare {
                 }
             }
         }.joinAll()
-        book.await()
+        if (book.await().none { it != null }) throw IllegalStateException(appCtx.getString(R.string.chapter_compare_no_thumbnails))
         val blocks = synchronized(lock) { ChapterBlocks.build(pages, found) }
         // A favorite that is the book itself in another edition is found too: as it should, the pages are seen
-        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked, compared = candidates.size, whole = whole)
+        ChapterCompareResult(gid, pages, blocks, synchronized(lock) { uncompared.sortedBy { it.source.title } }, wnacgBlocked = wnacg.blocked, compared = candidates.size, whole = whole, version = ChapterCompareResult.VERSION)
     }
 
     /**
@@ -408,7 +422,7 @@ object ChapterCompare {
         val result = request.execute()
         val error = (result as? ErrorResult)?.throwable
         if (error is HttpException && Wnacg.isBlocked(error.response.code)) throw Wnacg.BlockedException()
-        val bitmap = ((result as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
+        val bitmap = softBitmap((result as? SuccessResult)?.image) ?: return null
         return withContext(Dispatchers.Default) { hashOf(bitmap, 0, 0, bitmap.width, bitmap.height) }
     }
 
@@ -451,7 +465,7 @@ object ChapterCompare {
         // The short ones first, as chapters are: kept when there are too many
         val (chapters, whole) = list.partition { detail.pages <= 0 || it.pages <= 0 || it.pages < longest }
         return chapters.sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate) to
-            whole.sortedByDescending { it.pages }.map { WholeFavorite(Candidate(it).source, it.pages) }
+            whole.sortedByDescending { it.pages }.map { WholeFavorite(Candidate(it).source, it.pages, it.thumbKey) }
     }
 
     /**
@@ -544,7 +558,7 @@ object ChapterCompare {
                 memoryCachePolicy(CachePolicy.DISABLED)
             }
         }
-        return ((request.execute() as? SuccessResult)?.image as? BitmapImage)?.bitmap
+        return softBitmap((request.execute() as? SuccessResult)?.image)
     }
 
     private suspend fun coverHash(info: GalleryInfo): LongArray? {
@@ -558,8 +572,22 @@ object ChapterCompare {
         val result = request.execute()
         val error = (result as? ErrorResult)?.throwable
         if (error is HttpException && Wnacg.isBlocked(error.response.code)) throw Wnacg.BlockedException()
-        val bitmap = ((result as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: return null
+        val bitmap = softBitmap((result as? SuccessResult)?.image) ?: return null
         return withContext(Dispatchers.Default) { hashOf(bitmap, 0, 0, bitmap.width, bitmap.height) }
+    }
+
+    /**
+     * The pixels of a loaded image. Asked without hardware bitmaps, the loader of the app still wraps the bitmap
+     * ([BitmapImageWithExtraInfo]) and copies it to the GPU (HardwareBitmapInterceptor), where its pixels cannot be read:
+     * taken as a [BitmapImage] it was null, so every thumbnail had no hash and no favorite was ever found.
+     */
+    private fun softBitmap(image: Image?): Bitmap? {
+        val bitmap = when (image) {
+            is BitmapImageWithExtraInfo -> image.image.bitmap
+            is BitmapImage -> image.bitmap
+            else -> null
+        } ?: return null
+        return if (bitmap.config == Bitmap.Config.HARDWARE) bitmap.copy(Bitmap.Config.ARGB_8888, false) else bitmap
     }
 
     private fun hashOf(bitmap: Bitmap, x: Int, y: Int, width: Int, height: Int): LongArray? {
