@@ -912,6 +912,7 @@
     <string name="download_partial_count">%1$d of %2$d pages picked</string>
     <string name="download_partial_all">All %d pages picked</string>
     <string name="download_partial_none">No page picked within 1-%d</string>
+    <string name="download_partial_no_ranges">The picked ranges show here</string>
     <string name="download_partial_invalid">Type pages like 1-30, 60-80</string>
     <string name="download_partial_replace_archive">This gallery is kept as a CBZ. Picking pages again deletes it and downloads the picked pages again.</string>
     <string name="download_partial_from">Pages</string>
@@ -925,8 +926,8 @@
     <string name="chapter_compare_chapter">Comparing favorites · %1$d/%2$d done</string>
     <string name="chapter_compare_summary">Favorited %1$d (%2$d pages) · not favorited %3$d pages</string>
     <string name="chapter_compare_none">No favorite of the artist found in this book</string>
-    <string name="chapter_compare_none_matched">Compared %d favorites of the artist, none is in this book</string>
-    <string name="chapter_whole_title">As long as most of this book, not compared (tap to open)</string>
+    <string name="chapter_compare_none_matched">Compared %d favorites of the artist, none found</string>
+    <string name="chapter_whole_title">As long as most of this book, not compared</string>
     <string name="chapter_whole_pages">%d pages</string>
     <string name="chapter_compare_failed">Compare failed: %s</string>
     <string name="chapter_compare_no_thumbnails">None of the thumbnails of this book could be read</string>
@@ -934,14 +935,14 @@
     <string name="chapter_block_pages">Pages %1$d–%2$d</string>
     <string name="chapter_block_page">Page %d</string>
     <string name="chapter_block_size">%d pages</string>
-    <string name="chapter_bar_hint">Tap a block of the bar or a card below to pick it; the picked blocks are outlined</string>
+    <string name="chapter_bar_hint">Tap a block or a card to pick it</string>
     <string name="chapter_block_unfavorited">Not favorited</string>
     <string name="chapter_block_favorited">Favorited</string>
     <string name="chapter_uncompared_cover">Its cover looks like page %d (shown only, not counted)</string>
     <string name="chapter_uncompared_gone">Gone, nothing to compare: %s</string>
     <string name="chapter_uncompared_error">Not compared (network error or no thumbnail read): %s</string>
-    <string name="chapter_pick_unfavorited">All grey</string>
-    <string name="chapter_pick_favorited">All blue</string>
+    <string name="chapter_uncompared_title">%d favorites not compared (gone or not read)</string>
+    <string name="chapter_open_favorite">Open this favorite</string>
     <string name="chapter_pick_clear">Clear</string>
     <string name="chapter_compare_again">Compare again</string>
     <string name="chapter_wnacg_blocked">wnacg asked for its check, so favorites gone from E-H were not compared there.</string>
