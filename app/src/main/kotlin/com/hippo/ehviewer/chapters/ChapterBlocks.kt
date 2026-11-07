@@ -8,6 +8,8 @@ data class ChapterSource(
     val gid: Long,
     val token: String,
     val title: String,
+    /** Its cover, to show it; null when not known. */
+    val thumbKey: String? = null,
 )
 
 /** Fork: pages [first] to [last] of a tankoubon, from 1; [source] the favorite they are, null when none is. */

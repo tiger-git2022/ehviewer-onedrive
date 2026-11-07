@@ -30,6 +30,7 @@ import com.hippo.ehviewer.ktbuilder.execute
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.wnacg.isWnacg
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -45,11 +46,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import moe.tarsin.coroutines.runSuspendCatching
 import splitties.init.appCtx
 
 /**
@@ -86,7 +90,8 @@ data class ChapterCompareResult(
 ) {
     companion object {
         /** Raised when the results kept are wrong: those of a lower one are compared again. */
-        const val VERSION = 1
+        // 1: the thumbnails read at last (v1.15.0-t123); 2: the covers of the favorites kept (v1.15.0-t124)
+        const val VERSION = 2
     }
 
     val favoritedPages get() = blocks.filter { it.source != null }.sumOf { it.size }
@@ -156,6 +161,27 @@ object ChapterCompare {
     val states: StateFlow<Map<Long, ChapterCompareState>> = mutableStates.asStateFlow()
 
     /** A tankoubon: those are compared. */
+    // The previews of the books by page of previews ("gid/index"), to show the blocks no favorite is
+    private val previewPages = ConcurrentHashMap<String, List<GalleryPreview>>()
+    private val previewMutex = Mutex()
+
+    /** The preview of [page] (from 1) of the book [detail]; null when it cannot be fetched. */
+    suspend fun previewOf(detail: GalleryDetail, page: Int): GalleryPreview? {
+        val perPage = detail.previewList.size.takeIf { it > 0 } ?: return null
+        val index = (page - 1) / perPage
+        val previews = if (index == 0) {
+            detail.previewList
+        } else {
+            val key = "${detail.gid}/$index"
+            previewPages[key] ?: previewMutex.withLock {
+                previewPages[key] ?: runSuspendCatching {
+                    EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(detail.gid, detail.token, index)).previews
+                }.onFailure { logcat(TAG, it) }.getOrNull()?.also { previewPages[key] = it }
+            } ?: return null
+        }
+        return previews.firstOrNull { it.position == page - 1 }
+    }
+
     fun isTankoubon(detail: GalleryDetail) = detail.tagGroups.any { group ->
         group.namespace == TagNamespace.Other && group.tags.any { it.text.equals("tankoubon", ignoreCase = true) }
     }
@@ -165,7 +191,7 @@ object ChapterCompare {
         if (gid in mutableStates.value) return
         val file = File(resultDir, "$gid.json")
         val result = runCatching { json.decodeFromString(ChapterCompareResult.serializer(), file.readText()) }.getOrNull() ?: return
-        // Compared before v1.15.0-t123, when no thumbnail was read: compared again
+        // Kept by an older version (before v1.15.0-t123 no thumbnail was read): compared again
         if (result.version < ChapterCompareResult.VERSION) return
         mutableStates.update { if (gid in it) it else it + (gid to ChapterCompareState.Done(result)) }
     }
@@ -198,7 +224,7 @@ object ChapterCompare {
     private fun set(gid: Long, state: ChapterCompareState) = mutableStates.update { it + (gid to state) }
 
     private class Candidate(val info: GalleryInfo) {
-        val source get() = ChapterSource(info.gid, info.token, info.title ?: info.titleJpn ?: info.gid.toString())
+        val source get() = ChapterSource(info.gid, info.token, info.title ?: info.titleJpn ?: info.gid.toString(), info.thumbKey)
     }
 
     private suspend fun compare(detail: GalleryDetail): ChapterCompareResult = coroutineScope {

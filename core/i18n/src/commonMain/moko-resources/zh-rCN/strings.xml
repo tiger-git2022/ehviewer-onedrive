@@ -915,6 +915,8 @@
     <string name="chapter_compare_pending">还在对照…可以先关掉，结果会保存</string>
     <string name="chapter_block_pages">%1$d–%2$d 页</string>
     <string name="chapter_block_page">第 %d 页</string>
+    <string name="chapter_block_size">%d 页</string>
+    <string name="chapter_bar_hint">点色块或下面的卡片都能选中这一段，选中的块带外框</string>
     <string name="chapter_block_unfavorited">没收藏</string>
     <string name="chapter_block_favorited">已收藏</string>
     <string name="chapter_uncompared_cover">封面像第 %d 页（只供参考，没算进去）</string>

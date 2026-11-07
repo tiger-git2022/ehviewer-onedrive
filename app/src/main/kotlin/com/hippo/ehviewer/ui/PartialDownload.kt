@@ -107,7 +107,15 @@ private suspend fun awaitPageRanges(pages: Int, initial: String, detail: Gallery
     val blur by Settings.partialSheetBlur.collectAsState()
     val opacity by Settings.partialSheetOpacity.collectAsState()
     val ink = if (colors.surface.luminance() < 0.5f) Color.White else Color.Black
-    MaterialTheme(colorScheme = colors.copy(onSurface = ink, onSurfaceVariant = ink.copy(alpha = 0.8f))) {
+    // The borders and the lines as the edge of the floating buttons: a light one in dark themes, a dark one in light ones
+    MaterialTheme(
+        colorScheme = colors.copy(
+            onSurface = ink,
+            onSurfaceVariant = ink.copy(alpha = 0.8f),
+            outline = ink.copy(alpha = 0.6f),
+            outlineVariant = ink.copy(alpha = 0.3f),
+        ),
+    ) {
         EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, glassBlur = blur, glassOpacity = opacity) {
             PagePicker(
                 pages = pages,
