@@ -51,11 +51,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.ehviewer.core.i18n.R
+import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryDetail
 import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterCompare
@@ -67,6 +70,7 @@ import com.hippo.ehviewer.chapters.UncomparedChapter
 import com.hippo.ehviewer.chapters.WholeFavorite
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PageRanges
+import com.hippo.ehviewer.ui.main.requestOf
 import com.hippo.ehviewer.ui.settings.SyncLinearProgress
 
 /** Fork: blue for the pages favorited as chapters, see [ChapterCompare]. */
@@ -83,7 +87,7 @@ fun ColumnScope.PagePicker(
     detail: GalleryDetail?,
     onCancel: () -> Unit,
     onDownload: (List<PageRange>) -> Unit,
-    onOpen: (ChapterSource) -> Unit,
+    onOpen: (ChapterSource, String) -> Unit,
 ) {
     var picked by remember {
         val array = BooleanArray(pages)
@@ -104,7 +108,7 @@ fun ColumnScope.PagePicker(
         Text(text = stringResource(R.string.download_partial), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
         if (detail != null) {
-            ChapterSection(detail, picked = picked, onPick = ::set, onOpen = onOpen)
+            ChapterSection(detail, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
         }
     }
     Column(modifier = Modifier.navigationBarsPadding().imePadding().padding(horizontal = 24.dp).padding(bottom = 16.dp)) {
@@ -367,21 +371,34 @@ private fun BlockRow(block: ChapterBlock, picked: BooleanArray, onPick: (IntRang
     }
 }
 
-/** A favorite as long as most of the book, not compared: a tap opens it. */
+/** A favorite as long as most of the book, not compared: its cover, its title on up to three lines; a tap opens it. */
 @Composable
 private fun WholeRow(item: WholeFavorite, onOpen: (ChapterSource) -> Unit) {
+    val info = remember(item) {
+        BaseGalleryInfo(gid = item.source.gid, token = item.source.token, title = item.source.title, thumbKey = item.thumbKey, pages = item.pages)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onOpen(item.source) }.padding(vertical = 6.dp),
     ) {
-        Text(text = item.source.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text(
-            text = stringResource(R.string.chapter_whole_pages, item.pages),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.padding(start = 8.dp),
-        )
+        if (item.thumbKey != null) {
+            AsyncImage(
+                model = requestOf(info),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(width = 52.dp, height = 74.dp).clip(MaterialTheme.shapes.small),
+            )
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = if (item.thumbKey != null) 12.dp else 0.dp)) {
+            Text(text = item.source.title, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = stringResource(R.string.chapter_whole_pages, item.pages),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

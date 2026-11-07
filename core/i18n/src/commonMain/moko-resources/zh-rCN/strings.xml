@@ -467,7 +467,7 @@
     <string name="partial_sheet_blur">下载部分页面板的模糊度</string>
     <string name="partial_sheet_blur_summary">这个面板单独的模糊度，数值除以 10 是模糊半径（dp），默认 25。模糊需要 Android 12 以上</string>
     <string name="partial_sheet_opacity">下载部分页面板的不透明度</string>
-    <string name="partial_sheet_opacity_summary">面板边缘玻璃以内底色的百分比：0 全是玻璃，越大越不透明，默认 85</string>
+    <string name="partial_sheet_opacity_summary">整个面板（连同边缘）底色的百分比：0 全是玻璃，越大越不透明，默认 85</string>
     <string name="harmonize_category_color">类别颜色适配动态配色</string>
     <string name="backup_before_update">更新前备份数据</string>
     <string name="use_ci_update_channel">使用持续集成(CI)构建频道更新</string>
@@ -911,6 +911,7 @@
     <string name="chapter_whole_title">页数接近整本、没参与比对的收藏（点一下打开）</string>
     <string name="chapter_whole_pages">%d 页</string>
     <string name="chapter_compare_failed">对照出错：%s</string>
+    <string name="chapter_compare_no_thumbnails">这本的缩略图一张都没读到</string>
     <string name="chapter_compare_pending">还在对照…可以先关掉，结果会保存</string>
     <string name="chapter_block_pages">%1$d–%2$d 页</string>
     <string name="chapter_block_page">第 %d 页</string>
@@ -918,7 +919,7 @@
     <string name="chapter_block_favorited">已收藏</string>
     <string name="chapter_uncompared_cover">封面像第 %d 页（只供参考，没算进去）</string>
     <string name="chapter_uncompared_gone">失效收藏，没法比对：%s</string>
-    <string name="chapter_uncompared_error">没比对上（网络出错）：%s</string>
+    <string name="chapter_uncompared_error">没能比对（网络出错或缩略图没读到）：%s</string>
     <string name="chapter_pick_unfavorited">全选灰色</string>
     <string name="chapter_pick_favorited">全选蓝色</string>
     <string name="chapter_pick_clear">清空</string>

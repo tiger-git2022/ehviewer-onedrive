@@ -86,6 +86,7 @@ import com.hippo.ehviewer.sync.OneDriveSyncState
 import com.hippo.ehviewer.ui.AutoLocalFavorite
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.MainActivity
+import com.hippo.ehviewer.ui.PartialSheetReturn
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.WnacgCheck
 import com.hippo.ehviewer.ui.glassContent
@@ -162,6 +163,16 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     }
 
     var getDetailError by rememberSaveable { mutableStateOf("") }
+    // Fork: the sheet to download some pages, see PartialDownload.kt; left to open a favorite it lists, it opens again,
+    // as it was, back on this gallery
+    suspend fun partialDownload(detail: GalleryDetail, picked: String? = null) = startPartialDownload(detail.galleryInfo, detail, picked) {
+        withUIContext { navigator.navigate(it.gid asDstWith it.token) }
+    }
+    (galleryInfo as? GalleryDetail)?.let { detail ->
+        LaunchedEffect(detail.gid) {
+            PartialSheetReturn.take(detail.gid)?.let { picked -> launchIO { partialDownload(detail, picked) } }
+        }
+    }
     // Fork: 紳士漫畫 asked for its check, passed in a page of the app, see ui/WnacgCheck.kt
     var wnacgCheck by remember { mutableStateOf(false) }
     if (wnacgCheck) {
@@ -353,9 +364,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                             add(
                                 BarAction(downloadPartial) {
                                     val detail = galleryInfo as? GalleryDetail ?: return@BarAction
-                                    launchIO {
-                                        startPartialDownload(detail.galleryInfo, detail) { withUIContext { navigator.navigate(it.gid asDstWith it.token) } }
-                                    }
+                                    launchIO { partialDownload(detail) }
                                 },
                             )
                         }
