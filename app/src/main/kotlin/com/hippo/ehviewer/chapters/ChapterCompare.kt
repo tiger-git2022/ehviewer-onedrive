@@ -1,6 +1,7 @@
 package com.hippo.ehviewer.chapters
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import coil3.BitmapImage
 import coil3.Image
 import coil3.network.HttpException
@@ -28,6 +29,8 @@ import com.hippo.ehviewer.client.exception.GalleryUnavailableException
 import com.hippo.ehviewer.coil.BitmapImageWithExtraInfo
 import com.hippo.ehviewer.ktbuilder.execute
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.restore.PandaChaikaApi
+import com.hippo.ehviewer.sync.PandaChaika
 import com.hippo.ehviewer.wnacg.isWnacg
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -142,6 +145,18 @@ object ChapterCompare {
     /** The share of the book a favorite reaches at most to be taken as one of its chapters. */
     private const val CHAPTER_MAX_SHARE = 0.75f
     private const val MAX_OTHER_UPLOADS = 3
+
+    /** The pages of an archive of panda.chaika.moe taken, of several MB each: 3 must fall in the book. */
+    private const val PANDA_SAMPLES = 5
+
+    /** panda.chaika.moe is a small site: one search every 3 seconds, one at a time. */
+    private const val PANDA_GAP = 3000L
+    private val pandaGate = Mutex()
+    private val PANDA_ID = Regex("""/archive/(\d+)/""")
+    private val LANGUAGE = Regex("""\[(English|Chinese|Korean|Spanish|Russian|Portuguese[^\]]*|French|German|Italian|Vietnamese|Thai|Indonesian)\]|[英中韓]訳""", RegexOption.IGNORE_CASE)
+
+    /** The width a full page is read at, at least, to be hashed. */
+    private const val PAGE_WIDTH = 256
     private const val PREVIEW_PAGE_GAP = 500L
 
     /** The favorites read at once. */
@@ -319,8 +334,9 @@ object ChapterCompare {
     }
 
     /**
-     * Places [info], gone from E-H, by another upload of it still there: the same title in this or another language
-     * (the Japanese raw, an English translation…). Null when there is none, with the page its cover looks like.
+     * Places [info], gone from E-H, by another upload of it: the same title in this or another language (the Japanese
+     * raw, an English translation…) on E-H, then on 紳士漫畫 (thumbnails), then on panda.chaika.moe (a few full pages).
+     * Null when there is none, with the page its cover looks like.
      */
     private suspend fun compareGone(
         book: List<LongArray?>,
@@ -362,6 +378,15 @@ object ChapterCompare {
                 wnacg.blocked = true
             }
         }
+        // Its raw (or the gallery itself) on panda.chaika.moe, last: no thumbnails there, a few full pages taken
+        for (url in pandaArchives(info)) {
+            val ranges = runSuspendCatching { ChapterMatcher.locate(book, pandaHashes(url, info.pages, onPages)) }
+                .onFailure { logcat(TAG, it) }.getOrNull()
+            if (!ranges.isNullOrEmpty()) {
+                ranges.forEach { found += it to source }
+                return null
+            }
+        }
         // Its cover, which E-H still has: where it looks like a page of the book, told but not taken
         val cover = runCatching { coverHash(info) }.onFailure { logcat(TAG, it) }.getOrNull()
         val page = cover?.let { ChapterMatcher.locateCover(book, it) }
@@ -386,6 +411,74 @@ object ChapterCompare {
             }.onFailure { logcat(TAG, it) }
         }
         return found.values.take(MAX_OTHER_UPLOADS)
+    }
+
+    /**
+     * The archives on panda.chaika.moe to compare [info] with: its own backup, then those of its title (the raw
+     * first, which it keeps the most), the language and the translators left out; a few at most.
+     */
+    private suspend fun pandaArchives(info: GalleryInfo): List<String> {
+        val urls = LinkedHashSet<String>()
+        pandaGate.withLock {
+            runSuspendCatching { PandaChaikaApi.gallery(info.gid)?.archiveUrl }.onFailure { logcat(TAG, it) }.getOrNull()?.let { urls += it }
+            val titles = listOfNotNull(info.titleJpn, info.title).map(ChapterTitles::core).filter { it.isNotBlank() }.distinct()
+            titles.forEach { title ->
+                if (urls.size >= MAX_OTHER_UPLOADS) return@forEach
+                delay(PANDA_GAP)
+                runSuspendCatching { PandaChaika.search(title).archives }.onFailure { logcat(TAG, it) }.getOrNull().orEmpty()
+                    .filter { archive -> listOfNotNull(archive.title, archive.titleJpn).any { ChapterTitles.core(it) in titles } }
+                    // The raw first: no language tag in its title
+                    .sortedBy { archive -> LANGUAGE.containsMatchIn(archive.title.orEmpty()) }
+                    .forEach { archive -> archive.download?.let { urls += if (it.startsWith("http")) it else PandaChaikaApi.BASE_URL + it } }
+            }
+        }
+        return urls.take(MAX_OTHER_UPLOADS)
+    }
+
+    /**
+     * The hashes of a few pages of the archive at [url], spread over it, by page from 0 (null for the pages not taken),
+     * kept in the cache; [onPages] gets as many of the [pages] of the favorite as the share done.
+     */
+    private suspend fun pandaHashes(url: String, pages: Int, onPages: (Int) -> Unit): List<LongArray?> {
+        val key = PANDA_ID.find(url)?.groupValues?.get(1) ?: url.hashCode().toUInt().toString()
+        val file = File(hashDir, "panda_$key")
+        runCatching {
+            if (file.exists()) {
+                return file.readLines().map { line -> if (line.isBlank()) null else ThumbHash.fromHex(line) }.also { onPages(pages) }
+            }
+        }
+        val (total, taken) = PandaPages.sample(url, pick = { PandaPages.spread(it, PANDA_SAMPLES) }) { done ->
+            onPages(done * pages.coerceAtLeast(1) / PANDA_SAMPLES)
+        } ?: return emptyList()
+        val hashes = arrayOfNulls<LongArray>(total)
+        taken.forEach { (index, bytes) -> hashes[index] = withContext(Dispatchers.Default) { pageHash(bytes) } }
+        val list = hashes.toList()
+        if (taken.size == PandaPages.spread(total, PANDA_SAMPLES).size && taken.all { hashes[it.first] != null }) {
+            runCatching {
+                hashDir.mkdirs()
+                file.writeText(list.joinToString("\n") { it?.let(ThumbHash::toHex).orEmpty() })
+            }.onFailure { logcat(TAG, it) }
+        }
+        return list
+    }
+
+    /** The hash of a full page, read small: the hash is of a 16 x 16 grid. */
+    private fun pageHash(bytes: ByteArray): LongArray? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= PAGE_WIDTH) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+        return try {
+            hashOf(bitmap, 0, 0, bitmap.width, bitmap.height)
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     /** Albums on 紳士漫畫 of the title of [info], the language and the translators left out; a few at most. */

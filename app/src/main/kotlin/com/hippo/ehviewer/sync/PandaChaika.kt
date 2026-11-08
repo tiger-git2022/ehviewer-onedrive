@@ -23,9 +23,15 @@ object PandaChaika {
     @Serializable
     data class SearchResult(val archives: List<Archive> = emptyList(), @SerialName("has_next") val hasNext: Boolean = false)
 
-    /** An archive as the search lists it: its default title and its Japanese one. */
+    /** An archive as the search lists it: its default title and its Japanese one, where it downloads, its pages. */
     @Serializable
-    data class Archive(val title: String? = null, @SerialName("title_jpn") val titleJpn: String? = null)
+    data class Archive(
+        val title: String? = null,
+        @SerialName("title_jpn") val titleJpn: String? = null,
+        val id: Long = 0,
+        val download: String? = null,
+        val filecount: Int = 0,
+    )
 
     /** Page [page] (from 1) of the archives whose title contains [query]. */
     suspend fun search(query: String, page: Int = 1): SearchResult = ktorClient.prepareGet(SEARCH_URL) {
