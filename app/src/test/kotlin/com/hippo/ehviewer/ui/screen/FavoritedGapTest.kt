@@ -30,7 +30,8 @@ class FavoritedGapTest {
             favoriteSlot = if (favorited(gid)) 0 else -2,
         )
 
-        val fetch: suspend (String?) -> GalleryListResult = { cursor -> page(cursor?.toLong() ?: Long.MAX_VALUE) }
+        // The page at next=<cursor>, or at the key of the load (next=<key>) when null
+        fun fetch(key: String?): suspend (String?) -> GalleryListResult = { cursor -> page((cursor ?: key)?.toLong() ?: Long.MAX_VALUE) }
     }
 
     private val day = 24 * 12 * 10L // gids in a day
@@ -40,8 +41,8 @@ class FavoritedGapTest {
         // 2 days of favorites below the first page
         val search = Search { it in (100_000L - 250 - 2 * day)..(100_000L - 250) }
         val gap = FavoritedGap(wait = {})
-        val first = gap.load(null, search.fetch)
-        val second = gap.load(first.next, search.fetch)
+        val first = gap.load(null, search.fetch(null))
+        val second = gap.load(first.next, search.fetch(first.next))
         assertTrue(second.galleryInfoList.first().gid < 100_000L - 250 - 2 * day)
     }
 
@@ -52,17 +53,17 @@ class FavoritedGapTest {
         val end = top - 30 * day
         val search = Search { it in end..top }
         val gap = FavoritedGap(wait = {})
-        val first = gap.load(null, search.fetch)
+        val first = gap.load(null, search.fetch(null))
         assertEquals(25, first.galleryInfoList.size)
-        val pause = assertFailsWith<FavoritedGapPause> { gap.load(first.next, search.fetch) }
+        val pause = assertFailsWith<FavoritedGapPause> { gap.load(first.next, search.fetch(first.next)) }
         assertTrue(pause.days >= FAVORITED_GAP_DAYS)
         // A retry without the button pauses again, asking nothing
         val asked = search.asked
-        assertFailsWith<FavoritedGapPause> { gap.load(first.next, search.fetch) }
+        assertFailsWith<FavoritedGapPause> { gap.load(first.next, search.fetch(first.next)) }
         assertEquals(asked, search.asked)
         // The button: few pages to the first not favorited, nothing skipped
         pause.resume()
-        val found = gap.load(first.next, search.fetch)
+        val found = gap.load(first.next, search.fetch(first.next))
         assertEquals(end - 10, found.galleryInfoList.first().gid)
         val skipping = search.asked - asked
         assertTrue(skipping < 30, "asked $skipping pages to skip a month")
@@ -73,10 +74,10 @@ class FavoritedGapTest {
         // Favorites only from below the first page to the end of the search
         val search = Search { it <= 100_000L - 250 }
         val gap = FavoritedGap(wait = {})
-        val first = gap.load(null, search.fetch)
-        val pause = assertFailsWith<FavoritedGapPause> { gap.load(first.next, search.fetch) }
+        val first = gap.load(null, search.fetch(null))
+        val pause = assertFailsWith<FavoritedGapPause> { gap.load(first.next, search.fetch(first.next)) }
         pause.resume()
-        val last = gap.load(first.next, search.fetch)
+        val last = gap.load(first.next, search.fetch(first.next))
         assertTrue(last.galleryInfoList.isEmpty())
     }
 }
