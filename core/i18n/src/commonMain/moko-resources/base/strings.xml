@@ -808,6 +808,10 @@
     <string name="auto_local_favorite">Add opened galleries to local favorites</string>
     <string name="auto_local_favorite_summary">A gallery opened that is in no favorites (cloud or local) goes to the local favorites</string>
     <string name="hide_favorited">Hide favorited</string>
+    <string name="favorited_gap_paused">Only favorited galleries for %1$d days (%2$d pages, down to %3$s)</string>
+    <string name="favorited_gap_hint">Going on skips ahead by gallery number to the next one not favorited; one alone among the favorited may be skipped</string>
+    <string name="favorited_gap_continue">Keep searching</string>
+    <string name="favorited_gap_skipping">Skipping the favorited, at %1$s (%2$d pages)</string>
     <string name="moved_to_local_favorites">Removed from the cloud favorites, kept in the local favorites</string>
     <string name="drawer_navigation_menu">Navigation menu</string>
     <string name="drawer_close">Close the drawer</string>
