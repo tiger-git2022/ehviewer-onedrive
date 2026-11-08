@@ -54,9 +54,15 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
     // Fork: 紳士漫畫 asked for its check in this search, so its albums are not in the results, see ui/WnacgCheck.kt
     val wnacgBlocked = mutableStateOf(false)
 
+    // Fork: skipping a run of favorites only, shown at the end of the list, see FavoritedGap
+    val favoritedGapProgress = mutableStateOf<FavoritedGapProgress?>(null)
+
     // Use a smaller prefetch distance to avoid prepending an additional page after jumping
     val data = Pager(PagingConfig(25, prefetchDistance = 20)) {
         object : PagingSource<String, BaseGalleryInfo>() {
+            // Fork: the runs of favorites only of this search, see FavoritedGap
+            private val gap = FavoritedGap(onProgress = { favoritedGapProgress.value = it })
+
             override fun getRefreshKey(state: PagingState<String, BaseGalleryInfo>): String? = null
             override suspend fun load(params: LoadParams<String>) = withIOContext {
                 val urlBuilder = urlBuilder.value
@@ -128,7 +134,7 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                     runSuspendCatching {
                         // Fork: without a hit on E-Hentai, PandaChika or 紳士漫畫 may have some
                         var noHits: NoHitsFoundException? = null
-                        var result = try {
+                        suspend fun fetchAsked() = try {
                             EhEngine.getGalleryList(url)
                         } catch (e: NoHitsFoundException) {
                             if (mergers.isEmpty() || params !is LoadParams.Refresh) throw e
@@ -136,18 +142,39 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                             GalleryListResult(null, null, mutableListOf())
                         }
                         // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
-                        // (before it when prepending), as an empty page ended the list
+                        // (before it when prepending), as an empty page ended the list. Forward, days of favorites
+                        // only pause the list, see FavoritedGap
                         val hide = hideFavoritedPref.value
                         hideFavoritedApplied = hide
-                        if (hide) {
-                            val forward = params !is LoadParams.Prepend
+                        var result = if (hide && params !is LoadParams.Prepend) {
+                            gap.load(params.key) { cursor ->
+                                if (cursor == null) {
+                                    fetchAsked()
+                                } else {
+                                    val nextUrl = mutex.withLock {
+                                        with(urlBuilder) {
+                                            setIndex(cursor, isNext = true)
+                                            build()
+                                        }
+                                    }
+                                    try {
+                                        EhEngine.getGalleryList(nextUrl)
+                                    } catch (_: NoHitsFoundException) {
+                                        GalleryListResult(null, null, mutableListOf())
+                                    }
+                                }
+                            }
+                        } else {
+                            fetchAsked()
+                        }
+                        if (hide && params is LoadParams.Prepend) {
                             var skipped = 0
                             var shown = result.withoutFavorited()
                             while (shown.galleryInfoList.isEmpty() && skipped < MAX_SKIPPED_FAVORITED_PAGES) {
-                                val key = (if (forward) result.next else result.prev) ?: break
+                                val key = result.prev ?: break
                                 val nextUrl = mutex.withLock {
                                     with(urlBuilder) {
-                                        setIndex(key, isNext = forward)
+                                        setIndex(key, isNext = false)
                                         build()
                                     }
                                 }

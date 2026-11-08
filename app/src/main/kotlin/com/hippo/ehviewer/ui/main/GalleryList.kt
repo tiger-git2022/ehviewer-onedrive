@@ -68,6 +68,8 @@ import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.coil.PrefetchAround
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ktbuilder.imageRequest
+import com.hippo.ehviewer.ui.screen.FavoritedGapPause
+import com.hippo.ehviewer.ui.screen.FavoritedGapProgress
 import com.hippo.ehviewer.ui.screen.collectDetailSizeAsState
 import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.util.displayString
@@ -89,6 +91,8 @@ fun GalleryList(
     thumbItemContent: @Composable (LazyStaggeredGridItemScope.(BaseGalleryInfo) -> Unit),
     searchBarOffsetY: () -> Int,
     scrollToTopOnRefresh: Boolean = true,
+    // Fork: skipping a run of favorites only, see ui/screen/FavoritedGap.kt
+    favoritedGapProgress: () -> FavoritedGapProgress? = { null },
     onRefresh: () -> Unit,
     onLoading: () -> Unit,
 ) {
@@ -184,9 +188,7 @@ fun GalleryList(
                 }
                 if (showLoadStateIndicator) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        LoadStateIndicator(state = data.loadState.append) {
-                            data.retry()
-                        }
+                        AppendIndicator(data, favoritedGapProgress)
                     }
                 }
             }
@@ -214,9 +216,7 @@ fun GalleryList(
                 }
                 if (showLoadStateIndicator) {
                     item(span = StaggeredGridItemSpan.FullLine) {
-                        LoadStateIndicator(state = data.loadState.append) {
-                            data.retry()
-                        }
+                        AppendIndicator(data, favoritedGapProgress)
                     }
                 }
             }
@@ -240,10 +240,21 @@ fun GalleryList(
                         contentAlignment = Alignment.Center,
                     ) {
                         ShapeLoadingIndicator()
+                        // Fork: skipping a run of favorites only, see ui/screen/FavoritedGap.kt
+                        favoritedGapProgress()?.let {
+                            FavoritedGapSkipping(it, Modifier.padding(top = 96.dp))
+                        }
                     }
                 }
             }
-            is LoadState.Error -> {
+            // Fork: a new search of favorites only for days, see ui/screen/FavoritedGap.kt
+            is LoadState.Error -> if (state.error is FavoritedGapPause) {
+                Surface {
+                    Box(modifier = Modifier.fillMaxSize().padding(contentPadding), contentAlignment = Alignment.Center) {
+                        FavoritedGapPrompt(pause = state.error as FavoritedGapPause, retry = data::retry)
+                    }
+                }
+            } else {
                 Surface {
                     ErrorTip(
                         modifier = Modifier.widthIn(max = 228.dp).clip(ShapeDefaults.Small).clickable { data.retry() },
@@ -304,5 +315,18 @@ fun ErrorTip(modifier: Modifier = Modifier, text: String) {
                 textAlign = TextAlign.Center,
             )
         }
+    }
+}
+
+// Fork: the end of the list, paused by a run of favorites only or skipping one, see ui/screen/FavoritedGap.kt
+@Composable
+private fun AppendIndicator(data: LazyPagingItems<BaseGalleryInfo>, favoritedGapProgress: () -> FavoritedGapProgress?) {
+    val state = data.loadState.append
+    val error = (state as? LoadState.Error)?.error
+    val progress = favoritedGapProgress()
+    when {
+        error is FavoritedGapPause -> FavoritedGapPrompt(pause = error, retry = data::retry)
+        state is LoadState.Loading && progress != null -> FavoritedGapSkipping(progress)
+        else -> LoadStateIndicator(state = state) { data.retry() }
     }
 }
