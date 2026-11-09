@@ -28,7 +28,7 @@ import tachiyomi.data.release.Release
 
 // Fork: updates come from the GitHub releases of this repository instead of the official Codeberg
 // repository, so the official build never replaces the fork (they share the same signing key).
-// The Build APK workflow publishes a numbered release ("v1.15.0-t3") for every push to main, see ForkVersion.
+// The Build APK workflow publishes a release ("v3.18.0", before "v1.15.0-t3") for every push to main, see ForkVersion.
 const val API_URL = "https://api.github.com/repos/${BuildConfig.REPO_NAME}"
 const val LATEST_RELEASE_URL = "$API_URL/releases/latest"
 
