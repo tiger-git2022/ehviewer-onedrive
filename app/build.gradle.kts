@@ -54,10 +54,12 @@ android {
 
     val snapshot = !hasProperty("release")
 
-    // Fork: the Build APK workflow passes -Ptiger.buildNumber=N. The build is then version "<upstream>-tNNN" (upstream
-    // without -SNAPSHOT), versionCode "<upstream versionCode> * 1000 + N", so every release of the fork is newer than
-    // the one before; the in-app updater compares versions the same way (updater/ForkVersion.kt).
-    val tigerBuildNumber = providers.gradleProperty("tiger.buildNumber").orNull?.toInt()
+    // Fork: the Build APK workflow passes -Ptiger.version=X.Y.Z, the fork's own version (.github/fork-version holds X.Y,
+    // the workflow adds Z). The build is then version "X.Y.Z", versionCode 200000000 + X * 10000000 + Y * 10000 + Z,
+    // above every earlier "<upstream>-tNNN" build (180063 * 1000 + N) and the official app, so it installs over both.
+    // The in-app updater compares versions the same way (updater/ForkVersion.kt). The upstream version stays in
+    // UPSTREAM_VERSION_NAME for the About screen.
+    val tigerVersion = providers.gradleProperty("tiger.version").orNull
 
     defaultConfig {
         applicationId = "moe.tarsin.ehviewer"
@@ -67,11 +69,12 @@ android {
         } else {
             "1.14.6"
         }
-        if (tigerBuildNumber != null) {
-            require(tigerBuildNumber in 1..999) { "tiger.buildNumber must be between 1 and 999" }
-            versionCode = versionCode!! * 1000 + tigerBuildNumber
-            // Three digits, so the releases page lists releases of the same day in order
-            versionName = "${versionName!!.removeSuffix("-SNAPSHOT")}-t${"%03d".format(tigerBuildNumber)}"
+        buildConfigField("String", "UPSTREAM_VERSION_NAME", "\"${versionName!!.removeSuffix("-SNAPSHOT")}\"")
+        if (tigerVersion != null) {
+            val parts = Regex("""(\d{1,3})\.(\d{1,3})\.(\d{1,4})""").matchEntire(tigerVersion)?.groupValues?.drop(1)?.map(String::toInt)
+            require(parts != null && parts[0] <= 190) { "tiger.version must be X.Y.Z with X <= 190, Y < 1000, Z < 10000" }
+            versionCode = 200_000_000 + parts[0] * 10_000_000 + parts[1] * 10_000 + parts[2]
+            versionName = tigerVersion
         }
         buildConfigField("boolean", "SNAPSHOT", "$snapshot")
         buildConfigField("String", "RAW_VERSION_NAME", "\"$versionName\"")

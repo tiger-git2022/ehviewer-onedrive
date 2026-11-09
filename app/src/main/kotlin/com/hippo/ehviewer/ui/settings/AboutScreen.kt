@@ -75,7 +75,8 @@ const val RELEASE_URL = "$REPO_URL/releases"
 
 @Composable
 @Stable
-private fun versionCode() = "${BuildConfig.VERSION_NAME} (${BuildConfig.COMMIT_SHA})\n" + stringResource(R.string.settings_about_commit_time, AppConfig.commitTime)
+// Fork: the fork's own version, then the upstream EhViewer version it is based on
+private fun versionCode() = "${BuildConfig.VERSION_NAME} · EhViewer ${BuildConfig.UPSTREAM_VERSION_NAME} (${BuildConfig.COMMIT_SHA})\n" + stringResource(R.string.settings_about_commit_time, AppConfig.commitTime)
 
 @Composable
 @Stable

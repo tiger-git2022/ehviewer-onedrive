@@ -14,7 +14,7 @@
 
 ### 下载与更新
 
-- 每次推送 `main` 都会由 GitHub Actions 编译，并发布一个带编号的新版本（[发布页](https://github.com/tiger-git2022/ehviewer-onedrive/releases)），版本号形如 `v1.15.0-t003`：前半部分是上游版本，`t` 后面的三位数字每次发布加一（补足三位，发布页才会按新旧排序），旧版本都保留，每个版本附上距上一版的更新内容。
+- 每次推送 `main` 都会由 GitHub Actions 编译，并发布一个新版本（[发布页](https://github.com/tiger-git2022/ehviewer-onedrive/releases)）。版本号是这个改版自己的 `vX.Y.Z`：修 bug 和小调整涨 Z，加新功能或合入上游新版本涨 Y，大改涨 X。基于的上游 EhViewer 版本写在每个版本的说明和「关于」页里。旧版本都保留（2026-11 以前的是 `v1.15.0-t003` 这种写法），每个版本附上距上一版的更新内容。
 - 包名仍是 `moe.tarsin.ehviewer`，签名和官方发布版相同，可以直接覆盖安装到官方 EhViewer 上，数据不丢。
 - 应用内的检查更新指向本仓库的最新版本，按上面的版本号比较新旧。
 
@@ -24,6 +24,6 @@ Personal fork of [EhViewer](https://codeberg.org/EhViewer/EhViewer) ([FooIbar/Eh
 
 ### Download and updates
 
-- Every push to `main` is built by GitHub Actions and published as a new numbered [release](https://github.com/tiger-git2022/ehviewer-onedrive/releases) such as `v1.15.0-t003`: the upstream version, then a three-digit build number that grows with each release (padded so the releases page lists them in order). Earlier releases stay, and each one lists the changes since the one before.
+- Every push to `main` is built by GitHub Actions and published as a new [release](https://github.com/tiger-git2022/ehviewer-onedrive/releases). Versions are the fork's own `vX.Y.Z`: fixes and small changes raise Z, new features or an upstream update raise Y, big changes raise X. The upstream EhViewer version each build is based on is in its release notes and on the About screen. Earlier releases stay (before November 2026 they were named like `v1.15.0-t003`), and each one lists the changes since the one before.
 - The package is still `moe.tarsin.ehviewer` with the same signing key as the official release, so it installs over the official EhViewer and keeps your data.
 - The in-app update check follows the latest release of this repository and compares these version numbers.
