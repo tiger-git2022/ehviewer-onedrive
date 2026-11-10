@@ -211,12 +211,14 @@ private suspend fun awaitUpdateDownload(url: String, path: Path) = dialog<Unit> 
         cont.resumeWith(result)
     }
     LaunchedEffect(Unit) {
-        // Bytes of the last second
+        // Bytes of the last second. When a new attempt starts over with fewer bytes, 0 for that second, not a
+        // negative speed.
         var last = done
         while (true) {
             delay(1.seconds)
-            speed = done - last
-            last = done
+            val now = done
+            speed = (now - last).coerceAtLeast(0)
+            last = now
         }
     }
     // Fork: as liquid glass, like the other dialogs
