@@ -118,7 +118,7 @@ private suspend fun awaitPageRanges(pages: Int, initial: String, detail: Gallery
             outlineVariant = ink.copy(alpha = if (dark) 0.3f else 0.12f),
         ),
     ) {
-        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, glassBlur = blur, glassOpacity = opacity) {
+        EhModalBottomSheet(onDismissRequest = { cont.cancel() }, glassColor = colors.surfaceContainer, glassBlur = blur, glassOpacity = opacity, tileGlass = true) {
             PagePicker(
                 pages = pages,
                 initial = initial,

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -35,18 +36,22 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonShapes
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -61,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -80,6 +86,11 @@ import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryPreview
 import com.ehviewer.core.model.V2GalleryPreview
+import com.ehviewer.core.ui.component.FloatingGlass
+import com.ehviewer.core.ui.component.GLASS_TILE_TINT
+import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.LocalTileGlass
+import com.ehviewer.core.ui.component.floatingGlass
 import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterBlocks
 import com.hippo.ehviewer.chapters.ChapterCompare
@@ -151,12 +162,27 @@ fun ColumnScope.PagePicker(
             }
             runs.forEach { run ->
                 val text = run.toString().replace("-", "–")
-                InputChip(
-                    selected = true,
-                    onClick = { set(run.first..run.last!!, false) },
-                    label = { Text(text = text, maxLines = 1) },
-                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.download_partial_remove_range, text)) },
-                )
+                // Over liquid glass a glass chip like the selected ones of the search, a light in the glass
+                val glass = LocalTileGlass.current
+                // As tall as the chip: the glass is the chip, not the touch area around it
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (glass != null) 0.dp else LocalMinimumInteractiveComponentSize.current) {
+                    InputChip(
+                        selected = true,
+                        onClick = { set(run.first..run.last!!, false) },
+                        label = { Text(text = text, maxLines = 1) },
+                        trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.download_partial_remove_range, text)) },
+                        colors = if (glass != null) {
+                            InputChipDefaults.inputChipColors(
+                                selectedContainerColor = glassSelectedColor(),
+                                selectedLabelColor = MaterialTheme.colorScheme.onSurface,
+                                selectedTrailingIconColor = MaterialTheme.colorScheme.onSurface,
+                            )
+                        } else {
+                            InputChipDefaults.inputChipColors()
+                        },
+                        modifier = if (glass != null) Modifier.sheetGlass(glass, InputChipDefaults.shape) else Modifier,
+                    )
+                }
             }
         }
         Text(
@@ -171,26 +197,54 @@ fun ColumnScope.PagePicker(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 4.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            // By day a grey button, without the dark edge
-            val light = isLightSheet()
-            OutlinedButton(
-                onClick = onCancel,
-                border = if (light) null else edgeBorder(),
-                colors = if (light) ButtonDefaults.outlinedButtonColors(containerColor = lightFill()) else ButtonDefaults.outlinedButtonColors(),
-                shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(text = stringResource(android.R.string.cancel))
+        val glass = LocalTileGlass.current
+        if (glass != null) {
+            // Over liquid glass, glass buttons like the floating ones: no edge, the download one blue glass. As tall as
+            // the buttons (no 48dp touch area around them), so the glass is the button
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        border = null,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                        shapes = GlassButtonShapes,
+                        modifier = Modifier.weight(1f).sheetGlass(glass, CircleShape),
+                    ) {
+                        Text(text = stringResource(android.R.string.cancel))
+                    }
+                    Button(
+                        onClick = { onDownload(runs) },
+                        enabled = count > 0,
+                        shapes = GlassButtonShapes,
+                        colors = ButtonDefaults.buttonColors(containerColor = FavoritedBlue.copy(alpha = 0.8f), contentColor = Color.White),
+                        modifier = Modifier.weight(1f).sheetGlass(glass, CircleShape),
+                    ) {
+                        Text(text = stringResource(R.string.download_partial_download, count))
+                    }
+                }
             }
-            Button(
-                onClick = { onDownload(runs) },
-                enabled = count > 0,
-                shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.buttonColors(containerColor = FavoritedBlue, contentColor = Color.White),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(text = stringResource(R.string.download_partial_download, count))
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                // By day a grey button, without the dark edge
+                val light = isLightSheet()
+                OutlinedButton(
+                    onClick = onCancel,
+                    border = if (light) null else edgeBorder(),
+                    colors = if (light) ButtonDefaults.outlinedButtonColors(containerColor = lightFill()) else ButtonDefaults.outlinedButtonColors(),
+                    shapes = ButtonDefaults.shapes(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+                Button(
+                    onClick = { onDownload(runs) },
+                    enabled = count > 0,
+                    shapes = ButtonDefaults.shapes(),
+                    colors = ButtonDefaults.buttonColors(containerColor = FavoritedBlue, contentColor = Color.White),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = stringResource(R.string.download_partial_download, count))
+                }
             }
         }
     }
@@ -199,6 +253,36 @@ fun ColumnScope.PagePicker(
 /** The border of the buttons and the chips: that of the floating buttons, light in dark themes and a pale grey in light ones. */
 @Composable
 private fun edgeBorder() = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+
+/** The buttons as glass keep their pill shape when pressed: the glass under them does not follow a change of shape. */
+private val GlassButtonShapes = ButtonShapes(CircleShape, CircleShape)
+
+/** A button as glass over the glass of the sheet, see EhModalBottomSheet: a clear glass without an edge, like the floating buttons. */
+@Composable
+private fun Modifier.sheetGlass(glass: FloatingGlass, shape: Shape) =
+    floatingGlass(glass, shape, MaterialTheme.colorScheme.surfaceBright.copy(alpha = GLASS_TILE_TINT), GlassStyle.Tile)
+
+/** An assist chip of the sheet: over liquid glass a glass one without an edge, else outlined. */
+@Composable
+private fun SheetChip(onClick: () -> Unit, label: String) {
+    val glass = LocalTileGlass.current
+    if (glass == null) {
+        AssistChip(border = edgeBorder(), onClick = onClick, label = { Text(label) })
+        return
+    }
+    // The glass on the chip, not on the 48dp touch area around it, which still reaches it
+    Box(Modifier.minimumInteractiveComponentSize(), contentAlignment = Alignment.Center) {
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+            AssistChip(
+                onClick = onClick,
+                label = { Text(label) },
+                border = null,
+                colors = AssistChipDefaults.assistChipColors(containerColor = Color.Transparent),
+                modifier = Modifier.sheetGlass(glass, AssistChipDefaults.shape),
+            )
+        }
+    }
+}
 
 /** Whether the sheet is light: by day the cards, the tags and the cancel button are grey fills instead of outlined. */
 @Composable
@@ -241,16 +325,21 @@ private fun RangeInput(pages: Int, onAdd: (IntRange) -> Unit) {
         )
         val suffix = stringResource(R.string.download_partial_suffix)
         if (suffix.isNotBlank()) Text(text = suffix)
-        TextButton(
-            onClick = {
-                onAdd(minOf(first!!, last!!)..maxOf(first, last))
-                from.setTextAndPlaceCursorAtEnd("")
-                to.setTextAndPlaceCursorAtEnd("")
-            },
-            enabled = valid,
-            shapes = ButtonDefaults.shapes(),
-        ) {
-            Text(text = "+ " + stringResource(R.string.download_partial_add), maxLines = 1, softWrap = false)
+        // Over liquid glass a glass button like the others of the sheet, as tall as the button
+        val glass = LocalTileGlass.current
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (glass != null) 0.dp else LocalMinimumInteractiveComponentSize.current) {
+            TextButton(
+                onClick = {
+                    onAdd(minOf(first!!, last!!)..maxOf(first, last))
+                    from.setTextAndPlaceCursorAtEnd("")
+                    to.setTextAndPlaceCursorAtEnd("")
+                },
+                enabled = valid,
+                shapes = if (glass != null) GlassButtonShapes else ButtonDefaults.shapes(),
+                modifier = if (glass != null) Modifier.sheetGlass(glass, CircleShape) else Modifier,
+            ) {
+                Text(text = "+ " + stringResource(R.string.download_partial_add), maxLines = 1, softWrap = false)
+            }
         }
     }
 }
@@ -336,7 +425,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
-                AssistChip(border = edgeBorder(), onClick = { checking = true }, label = { Text(stringResource(R.string.chapter_wnacg_open)) })
+                SheetChip(onClick = { checking = true }, label = stringResource(R.string.chapter_wnacg_open))
                 if (checking) {
                     val title = result.uncompared.firstOrNull { it.gone }?.source?.title?.let(ChapterTitles::core)
                     WnacgCheck(
@@ -350,13 +439,13 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)) {
-                AssistChip(border = edgeBorder(), onClick = { onPick(1..pages, false) }, label = { Text(stringResource(R.string.chapter_pick_clear)) })
-                AssistChip(border = edgeBorder(), onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
+                SheetChip(onClick = { onPick(1..pages, false) }, label = stringResource(R.string.chapter_pick_clear))
+                SheetChip(onClick = { ChapterCompare.start(detail, force = true) }, label = stringResource(R.string.chapter_compare_again))
             }
         }
         is ChapterCompareState.Failed -> {
             Text(text = stringResource(R.string.chapter_compare_failed, state.message), color = MaterialTheme.colorScheme.error)
-            AssistChip(border = edgeBorder(), onClick = { ChapterCompare.start(detail, force = true) }, label = { Text(stringResource(R.string.chapter_compare_again)) })
+            SheetChip(onClick = { ChapterCompare.start(detail, force = true) }, label = stringResource(R.string.chapter_compare_again))
         }
         null -> Unit
     }

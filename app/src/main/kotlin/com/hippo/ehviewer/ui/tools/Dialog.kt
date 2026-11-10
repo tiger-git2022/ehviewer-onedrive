@@ -93,6 +93,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
@@ -138,6 +139,7 @@ import com.ehviewer.core.ui.component.GLASS_SHEET_TINT
 import com.ehviewer.core.ui.component.GlassEdge
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LabeledCheckbox
+import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.edgeGlass
 import com.ehviewer.core.ui.component.floatingGlass
 import com.ehviewer.core.ui.util.ifNotNullThen
@@ -147,6 +149,8 @@ import com.hippo.ehviewer.client.EhTagDatabase.suggestion
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
@@ -675,9 +679,14 @@ fun BoxScope.EhModalBottomSheet(
     glassBlur: Int? = null,
     // Fork: the opacity of this sheet, in percent, that of the drawers when null
     glassOpacity: Int? = null,
+    // Fork: buttons in the sheet may be glass refracting the sheet's glass, as the chips of the expanded search do
+    // (LocalTileGlass)
+    tileGlass: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val glass = rememberLiquidGlass(LocalPageBackdrop.current, glassBlur, glassOpacity)
+    val sheetBackdrop = rememberLayerBackdrop()
+    val tiles = rememberLiquidGlass(sheetBackdrop.takeIf { tileGlass && glass != null })
     if (glass == null) {
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
@@ -734,21 +743,35 @@ fun BoxScope.EhModalBottomSheet(
     ) {
         AnimatedVisibility(visibleState = shown, enter = slideInVertically { it }) {
             val colors = MaterialTheme.colorScheme
+            val sheet = Modifier.offset { IntOffset(0, dragOffset.roundToInt()) }
+                .onSizeChanged { sheetHeight = it.height }
+                .nestedScroll(scrollConnection)
+                .draggable(dragState, Orientation.Vertical, onDragStopped = { settle(it) })
+                .widthIn(max = BottomSheetDefaults.SheetMaxWidth).fillMaxWidth()
+            val sheetGlass = Modifier.edgeGlass(glass, GlassEdge.Top, (glassColor ?: colors.surfaceContainerLow).copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER)
             MaterialTheme(colorScheme = colors.copy(surface = Color.Transparent)) {
-                Surface(
-                    modifier = Modifier.offset { IntOffset(0, dragOffset.roundToInt()) }
-                        .onSizeChanged { sheetHeight = it.height }
-                        .nestedScroll(scrollConnection)
-                        .draggable(dragState, Orientation.Vertical, onDragStopped = { settle(it) })
-                        .widthIn(max = BottomSheetDefaults.SheetMaxWidth).fillMaxWidth().edgeGlass(glass, GlassEdge.Top, (glassColor ?: colors.surfaceContainerLow).copy(alpha = GLASS_SHEET_TINT), GlassStyle.Sheet, GLASS_SHEET_CORNER),
-                    shape = GlassBottomSheetShape,
-                    color = Color.Transparent,
-                    contentColor = colors.onSurface,
-                ) {
-                    Column {
-                        BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
-                        content()
+                val surface = @Composable { modifier: Modifier ->
+                    Surface(
+                        modifier = modifier,
+                        shape = GlassBottomSheetShape,
+                        color = Color.Transparent,
+                        contentColor = colors.onSurface,
+                    ) {
+                        Column {
+                            BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
+                            CompositionLocalProvider(LocalTileGlass provides tiles) { content() }
+                        }
                     }
+                }
+                if (tiles != null) {
+                    // The glass on its own layer behind the content, recorded for the buttons to refract: recording the
+                    // whole sheet would record the buttons drawn from it too
+                    Box(sheet) {
+                        Box(Modifier.matchParentSize().layerBackdrop(sheetBackdrop).then(sheetGlass))
+                        surface(Modifier)
+                    }
+                } else {
+                    surface(sheet.then(sheetGlass))
                 }
             }
         }
