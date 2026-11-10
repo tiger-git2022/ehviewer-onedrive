@@ -62,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -171,7 +172,15 @@ fun ColumnScope.PagePicker(
             modifier = Modifier.padding(top = 4.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            OutlinedButton(onClick = onCancel, border = edgeBorder(), shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
+            // By day a grey button, without the dark edge
+            val light = isLightSheet()
+            OutlinedButton(
+                onClick = onCancel,
+                border = if (light) null else edgeBorder(),
+                colors = if (light) ButtonDefaults.outlinedButtonColors(containerColor = lightFill()) else ButtonDefaults.outlinedButtonColors(),
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.weight(1f),
+            ) {
                 Text(text = stringResource(android.R.string.cancel))
             }
             Button(
@@ -187,9 +196,17 @@ fun ColumnScope.PagePicker(
     }
 }
 
-/** The border of the buttons and the chips: that of the floating buttons, light in dark themes and dark in light ones. */
+/** The border of the buttons and the chips: that of the floating buttons, light in dark themes and a pale grey in light ones. */
 @Composable
 private fun edgeBorder() = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+
+/** Whether the sheet is light: by day the cards, the tags and the cancel button are grey fills instead of outlined. */
+@Composable
+private fun isLightSheet() = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
+
+/** The grey fill of the cards, the tags and the cancel button by day. */
+@Composable
+private fun lightFill() = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
 
 /** "From [ ] to [ ]" and a button adding those pages; an empty "to" adds one page. */
 @Composable
@@ -428,11 +445,18 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
     val on = isPicked(block, picked)
     val source = block.source
     val shape = RoundedCornerShape(12.dp)
+    // By day a card not picked is a grey fill without an edge
+    val light = isLightSheet()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(shape)
-            .then(if (on) Modifier.background(FavoritedBlue.copy(alpha = 0.18f)) else Modifier)
-            .border(1.dp, if (on) FavoritedBlue.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outlineVariant, shape)
+            .then(
+                when {
+                    on -> Modifier.background(FavoritedBlue.copy(alpha = 0.18f)).border(1.dp, FavoritedBlue.copy(alpha = 0.7f), shape)
+                    light -> Modifier.background(lightFill())
+                    else -> Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                },
+            )
             .clickable { onPick(block.pages, !on) }
             .padding(end = 4.dp, top = 6.dp, bottom = 6.dp),
     ) {
@@ -441,7 +465,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
             Checkbox(
                 checked = on,
                 onCheckedChange = { onPick(block.pages, it) },
-                colors = CheckboxDefaults.colors(checkedColor = FavoritedBlue, checkmarkColor = Color.White, uncheckedColor = MaterialTheme.colorScheme.onSurface),
+                colors = CheckboxDefaults.colors(checkedColor = FavoritedBlue, checkmarkColor = Color.White, uncheckedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (light) 0.45f else 1f)),
                 modifier = Modifier.padding(start = 10.dp, end = 10.dp),
             )
         }
@@ -495,7 +519,11 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                        modifier = if (light) {
+                            Modifier.background(lightFill(), RoundedCornerShape(8.dp))
+                        } else {
+                            Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                        }.padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 }
             }

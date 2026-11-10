@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -37,6 +38,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -269,6 +272,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val scrolled by remember { derivedStateOf { scrollBehavior.state.collapsedFraction > 0f || gridState.canScrollBackward } }
     val glass = rememberLiquidGlass(backdrop).takeIf { scrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
+    // Fork: the bottom of the top bar in the window, for the glass overflow menu to open below it, see BarActions
+    var barBottom by remember { mutableFloatStateOf(0f) }
     // Fork: fresh links for previews that fail to load and "Refresh previews", see PreviewRefetcher
     val previewRefetcher = (galleryInfo as? GalleryDetail)?.takeIf { it.previewList.isNotEmpty() && !it.isWnacg }?.let { detail ->
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
@@ -278,7 +283,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         topBar = {
             MediumFlexibleTopAppBar(
                 // Fork: only its bottom edge shows, the top and the sides melt into the screen
-                modifier = Modifier.edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
+                modifier = Modifier.onGloballyPositioned { barBottom = it.boundsInWindow().bottom }
+                    .edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 // Fork: over the glass, the buttons in the color of the title, white at night and black by day: the paler
                 // color of the Material buttons got lost over the pages showing through
                 colors = if (backdrop != null) {
@@ -450,6 +456,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         maxItemCount = if (windowSizeClass.isExpanded) 4 else 2,
                         glass = backdrop != null,
                         leading = if (syncIconShown) ({ OneDriveSyncIcon() }) else null,
+                        menuBelow = { barBottom },
                     )
                 },
             )

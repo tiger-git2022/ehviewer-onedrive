@@ -62,7 +62,8 @@ class BarAction(val label: String, val icon: ImageVector? = null, val onClick: (
  * Fork: the actions of a top bar, the first ones as icons and the rest in the overflow menu, like [AppBarRow]
  * with the same [maxItemCount] (the overflow button counts as one). With [glass], the menu is liquid glass drawn in
  * the page like the dialogs (a popup window lies above the page and cannot refract it); else it is [AppBarRow].
- * [leading] stays in the bar, before the actions.
+ * [leading] stays in the bar, before the actions. [menuBelow], the bottom of the bar in the window: the glass menu
+ * opens below it, apart from the bar, and not just below the button, over the bar.
  */
 context(_: DialogState)
 @Composable
@@ -71,6 +72,7 @@ fun BarActions(
     maxItemCount: Int,
     glass: Boolean,
     leading: (@Composable () -> Unit)? = null,
+    menuBelow: () -> Float = { 0f },
 ) {
     if (!glass) {
         AppBarRow(
@@ -106,7 +108,7 @@ fun BarActions(
             var anchor by remember { mutableStateOf(Rect.Zero) }
             val scope = rememberCoroutineScope()
             IconButton(
-                onClick = { scope.launch { showGlassMenu(anchor, inMenu)?.onClick?.invoke() } },
+                onClick = { scope.launch { showGlassMenu(anchor, inMenu, menuBelow())?.onClick?.invoke() } },
                 modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
                 shapes = IconButtonDefaults.shapes(),
             ) {
@@ -116,15 +118,18 @@ fun BarActions(
     }
 }
 
-/** Fork: a menu below [anchor] (in window coordinates) as liquid glass, the chosen action or null. */
+/**
+ * Fork: a menu below [anchor] (in window coordinates) as liquid glass, the chosen action or null. With [below], the
+ * bottom of the bar of [anchor], it opens a little below that, apart from the bar.
+ */
 context(_: DialogState)
-suspend fun showGlassMenu(anchor: Rect, actions: List<BarAction>): BarAction? = dialog { cont ->
+suspend fun showGlassMenu(anchor: Rect, actions: List<BarAction>, below: Float = 0f): BarAction? = dialog { cont ->
     val close = { action: BarAction? -> if (cont.isActive) cont.resume(action) }
-    GlassMenu(anchor, actions, close)
+    GlassMenu(anchor, actions, below, close)
 }
 
 @Composable
-private fun BoxScope.GlassMenu(anchor: Rect, actions: List<BarAction>, close: (BarAction?) -> Unit) {
+private fun BoxScope.GlassMenu(anchor: Rect, actions: List<BarAction>, below: Float, close: (BarAction?) -> Unit) {
     BackHandler { close(null) }
     // A tap outside closes it, as with a menu window
     Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null) { close(null) })
@@ -157,7 +162,8 @@ private fun BoxScope.GlassMenu(anchor: Rect, actions: List<BarAction>, close: (B
         modifier = Modifier.matchParentSize().onGloballyPositioned { origin = it.positionInWindow() },
     ) { measurables, constraints ->
         val margin = 8.dp.roundToPx()
-        val top = (anchor.bottom - origin.y).roundToInt().coerceIn(margin, max(margin, constraints.maxHeight - margin))
+        val gap = if (below > anchor.bottom) 8.dp.roundToPx() else 0
+        val top = (max(anchor.bottom, below) - origin.y + gap).roundToInt().coerceIn(margin, max(margin, constraints.maxHeight - margin))
         val menu = measurables.first().measure(
             constraints.copy(minWidth = 0, minHeight = 0, maxHeight = max(0, constraints.maxHeight - top - margin)),
         )
