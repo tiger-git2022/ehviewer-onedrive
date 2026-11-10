@@ -97,6 +97,9 @@ object Settings : DataStorePreferences(null) {
     val commentTranslateApiKey = stringPref("comment_translate_api_key", "")
     val commentTranslateModel = stringPref("comment_translate_model", "")
     val commentTranslateThinking = stringPref("comment_translate_thinking", "auto")
+
+    // Fork: in the auto thinking mode, a request of up to this many characters of comments goes without thinking
+    val commentTranslateThinkingChars = intPref("comment_translate_thinking_chars", 500)
     val commentTranslateStream = boolPref("comment_translate_stream", false)
 
     val theme = intPref("theme_2", -1).observed(::updateWhenThemeChanges)
