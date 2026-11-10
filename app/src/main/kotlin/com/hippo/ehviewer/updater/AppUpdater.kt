@@ -1,26 +1,39 @@
 package com.hippo.ehviewer.updater
 
 import com.ehviewer.core.files.write
+import com.ehviewer.core.util.withIOContext
 import com.hippo.ehviewer.BuildConfig
 import com.hippo.ehviewer.EhApplication.Companion.ktorClient
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.executeAndParseAs
-import com.hippo.ehviewer.spider.timeoutBySpeed
-import com.hippo.ehviewer.util.copyTo
+import com.hippo.ehviewer.client.executeSafely
+import com.hippo.ehviewer.ktor.reset
+import com.hippo.ehviewer.util.ensureSuccess
+import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.onDownload
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.accept
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.utils.io.jvm.javaio.copyTo
 import io.ktor.utils.io.jvm.javaio.toInputStream
+import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import kotlinx.io.asSource
 import moe.tarsin.coroutines.runSuspendCatching
 import okio.Path
@@ -41,9 +54,13 @@ const val LATEST_MANIFEST_URL = "$RELEASES_URL/latest/download/update.json"
 // Fork: the update interval that checks once on every app start, the default
 const val UPDATE_ON_LAUNCH = -1
 
-// Fork: GitHub's download servers, or a proxy on the way, now and then answer 502/503/504 or stall for a moment.
-// The download starts over a few times before it fails.
+// Fork: GitHub's download servers, or a proxy on the way, now and then answer 502/503/504, stall, or slow down for a
+// while. The update download has no lower speed limit like the gallery downloads (Settings.timeoutSpeed, which failed
+// a slow update download as a timeout within seconds). It gives up on an attempt only after STALL_TIMEOUT
+// without a byte, and the next attempt goes on from the bytes already saved. It fails after DOWNLOAD_ATTEMPTS
+// attempts in a row that got no byte further.
 private const val DOWNLOAD_ATTEMPTS = 3
+private val STALL_TIMEOUT = 30.seconds
 
 object AppUpdater {
     // A new activity (a rotation, a return from the background) is not a new start of the app. Set once a check
@@ -77,40 +94,64 @@ object AppUpdater {
 
     /**
      * Downloads to [path], telling [onProgress] the bytes done and the total, null while the total is unknown. A failed
-     * download starts over, up to [DOWNLOAD_ATTEMPTS] tries.
+     * attempt goes on where it stopped, see [DOWNLOAD_ATTEMPTS].
      */
     suspend fun downloadUpdate(url: String, path: Path, onProgress: (done: Long, total: Long?) -> Unit = { _, _ -> }) {
-        var attempt = 1
+        // The fork's releases are APKs, a zip (upstream's CI artifacts) is unpacked while it downloads and starts over
+        val resumable = !url.endsWith("zip")
+        val file = path.toFile()
+        var failures = 0
         while (true) {
+            val saved = if (resumable) file.length() else 0L
             try {
-                downloadOnce(url, path, onProgress)
+                downloadOnce(url, path, resumable, saved, onProgress)
                 return
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (attempt >= DOWNLOAD_ATTEMPTS) throw e
-                onProgress(0, null)
-                delay((attempt * 2).seconds)
-                attempt++
+                if (resumable && file.length() > saved) failures = 0 else failures++
+                if (failures >= DOWNLOAD_ATTEMPTS) throw e
+                delay((failures + 1).seconds * 2)
             }
         }
     }
 
-    private suspend fun downloadOnce(url: String, path: Path, onProgress: (done: Long, total: Long?) -> Unit) {
-        val isZip = url.endsWith("zip")
-        timeoutBySpeed(
-            url,
-            {
-                statement(url) {
-                    // https://docs.github.com/en/rest/releases/assets?apiVersion=2022-11-28#get-a-release-asset
-                    if (!isZip) accept(ContentType.Application.OctetStream)
-                    it()
+    private suspend fun downloadOnce(
+        url: String,
+        path: Path,
+        resumable: Boolean,
+        saved: Long,
+        onProgress: (done: Long, total: Long?) -> Unit,
+    ) = coroutineScope {
+        // Bytes of this response so far, the watchdog waits again on every change
+        val received = MutableStateFlow(-1L)
+        val stallWatchdog = launch {
+            received.collectLatest {
+                delay(STALL_TIMEOUT)
+                throw SocketTimeoutException("No data for $STALL_TIMEOUT [url=$url]")
+            }
+        }
+        // Where this response starts in the file: saved when the server sends the rest (206), 0 when it sends it all
+        var start = 0L
+        try {
+            statement(url) {
+                // https://docs.github.com/en/rest/releases/assets?apiVersion=2022-11-28#get-a-release-asset
+                if (resumable) accept(ContentType.Application.OctetStream)
+                if (saved > 0) header(HttpHeaders.Range, "bytes=$saved-")
+                // No time limit for the whole request, the default is 10 seconds
+                timeout { reset() }
+                onDownload { done, total ->
+                    received.value = done
+                    onProgress(start + done, total?.let { start + it })
                 }
-            },
-            // timeoutBySpeed passes Long.MAX_VALUE without a Content-Length
-            { total, done, _ -> onProgress(done, total.takeIf { it in 1..<Long.MAX_VALUE }) },
-            { response ->
-                if (isZip) {
+            }.executeSafely { response ->
+                received.value = 0
+                if (response.status == HttpStatusCode.RequestedRangeNotSatisfiable) {
+                    // The saved part does not fit the file on the server, start over
+                    path.toFile().delete()
+                }
+                response.status.ensureSuccess()
+                if (!resumable) {
                     response.bodyAsChannel().toInputStream().use { stream ->
                         ZipInputStream(stream).use { zip ->
                             zip.nextEntry
@@ -118,10 +159,16 @@ object AppUpdater {
                         }
                     }
                 } else {
-                    response.bodyAsChannel().copyTo(path)
+                    val append = saved > 0 && response.status == HttpStatusCode.PartialContent
+                    start = if (append) saved else 0
+                    withIOContext {
+                        FileOutputStream(path.toFile(), append).use { response.bodyAsChannel().copyTo(it) }
+                    }
                 }
-            },
-        )
+            }
+        } finally {
+            stallWatchdog.cancel()
+        }
     }
 }
 
