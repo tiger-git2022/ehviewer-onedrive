@@ -59,6 +59,7 @@ object CommentTranslations {
             apiKey = Settings.commentTranslateApiKey.value,
             model = Settings.commentTranslateModel.value,
             thinking = ThinkingMode.of(Settings.commentTranslateThinking.value),
+            shortRequestChars = Settings.commentTranslateThinkingChars.value,
             stream = Settings.commentTranslateStream.value,
         )
 

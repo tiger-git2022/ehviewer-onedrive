@@ -38,6 +38,8 @@ data class TranslateConfig(
     val apiKey: String,
     val model: String,
     val thinking: ThinkingMode = ThinkingMode.AUTO,
+    /** In [ThinkingMode.AUTO], a request of up to this many characters of comments goes without thinking. */
+    val shortRequestChars: Int = CommentTranslateApi.DEFAULT_SHORT_REQUEST_CHARS,
     val stream: Boolean = false,
 ) {
     val isComplete: Boolean
@@ -59,7 +61,7 @@ class TranslateException(message: String) : Exception(message)
 
 /** Fork: whether the model thinks before it translates. Thinking helps with a long page, it only slows a short one. */
 enum class ThinkingMode(val code: String) {
-    /** Thinks on a long request only: short ones go without, see [CommentTranslateApi.SHORT_REQUEST_CHARS]. */
+    /** Thinks on a long request only: short ones go without, see [TranslateConfig.shortRequestChars]. */
     AUTO("auto"),
 
     /** As the API does by default: no parameter sent. */
@@ -84,7 +86,10 @@ object CommentTranslateApi {
     private const val TIMEOUT_MILLIS = 120_000L
 
     /** Up to this many characters of comments, a request is short: in [ThinkingMode.AUTO] the model does not think. */
-    const val SHORT_REQUEST_CHARS = 500
+    const val DEFAULT_SHORT_REQUEST_CHARS = 500
+
+    /** The most [TranslateConfig.shortRequestChars] can be set to, about a full request (CommentTranslations). */
+    const val MAX_SHORT_REQUEST_CHARS = 4000
 
     // The APIs that answered an error to the parameters turning thinking off, asked without them since
     private val noThinkingParamsRejected = mutableSetOf<String>()
@@ -92,10 +97,10 @@ object CommentTranslateApi {
     class Item(val id: Int, val text: String)
 
     /** Whether thinking is turned off for a request of [items]. */
-    fun thinkingOff(mode: ThinkingMode, items: List<Item>) = when (mode) {
+    fun thinkingOff(mode: ThinkingMode, items: List<Item>, shortRequestChars: Int = DEFAULT_SHORT_REQUEST_CHARS) = when (mode) {
         ThinkingMode.ON -> false
         ThinkingMode.OFF -> true
-        ThinkingMode.AUTO -> items.sumOf { it.text.length } <= SHORT_REQUEST_CHARS
+        ThinkingMode.AUTO -> items.sumOf { it.text.length } <= shortRequestChars
     }
 
     /**
@@ -112,7 +117,7 @@ object CommentTranslateApi {
         val onContent: ((String) -> Unit)? = onPartial?.let { callback ->
             { content -> partialTranslations(content).takeIf { it.isNotEmpty() }?.let(callback) }
         }
-        val content = request(config, systemPrompt(target), userContent(items), thinkingOff(config.thinking, items), onContent)
+        val content = request(config, systemPrompt(target), userContent(items), thinkingOff(config.thinking, items, config.shortRequestChars), onContent)
         val parsed = parseTranslations(content)
         if (parsed != null) return parsed
         // Not the JSON asked for: a single comment is its own translation, a page is asked again comment by comment

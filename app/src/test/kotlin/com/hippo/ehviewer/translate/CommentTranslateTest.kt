@@ -142,9 +142,12 @@ class CommentTranslateTest {
     @Test
     fun thinking() {
         val short = listOf(CommentTranslateApi.Item(1, "Thanks!"))
-        val long = listOf(CommentTranslateApi.Item(1, "a".repeat(CommentTranslateApi.SHORT_REQUEST_CHARS + 1)))
+        val long = listOf(CommentTranslateApi.Item(1, "a".repeat(CommentTranslateApi.DEFAULT_SHORT_REQUEST_CHARS + 1)))
         assertTrue(CommentTranslateApi.thinkingOff(ThinkingMode.AUTO, short))
         assertFalse(CommentTranslateApi.thinkingOff(ThinkingMode.AUTO, long))
+        // The limit as set: higher, the long request goes without thinking; 0, even a short one thinks
+        assertTrue(CommentTranslateApi.thinkingOff(ThinkingMode.AUTO, long, shortRequestChars = 1000))
+        assertFalse(CommentTranslateApi.thinkingOff(ThinkingMode.AUTO, short, shortRequestChars = 0))
         assertFalse(CommentTranslateApi.thinkingOff(ThinkingMode.ON, short))
         assertTrue(CommentTranslateApi.thinkingOff(ThinkingMode.OFF, long))
         assertEquals(ThinkingMode.AUTO, ThinkingMode.of("?"))

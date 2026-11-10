@@ -1,6 +1,7 @@
 package com.hippo.ehviewer.ui.settings
 
 import android.text.format.Formatter
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -140,8 +141,9 @@ fun AnimatedVisibilityScope.CommentTranslateScreen(navigator: DestinationsNaviga
                 }
             }
             val thinking = Settings.commentTranslateThinking.asMutableState()
+            val thinkingChars by Settings.commentTranslateThinkingChars.collectAsState()
             val thinkingModes = mapOf(
-                ThinkingMode.AUTO.code to stringResource(id = R.string.comment_translate_thinking_auto, CommentTranslateApi.SHORT_REQUEST_CHARS),
+                ThinkingMode.AUTO.code to stringResource(id = R.string.comment_translate_thinking_auto, thinkingChars),
                 ThinkingMode.ON.code to stringResource(id = R.string.comment_translate_thinking_on),
                 ThinkingMode.OFF.code to stringResource(id = R.string.comment_translate_thinking_off),
             )
@@ -151,6 +153,16 @@ fun AnimatedVisibilityScope.CommentTranslateScreen(navigator: DestinationsNaviga
                 title = { Text(text = stringResource(id = R.string.comment_translate_thinking)) },
                 summary = { Text(text = thinkingModes[ThinkingMode.of(thinking.value).code].orEmpty()) },
             )
+            // How long a request goes without thinking in the auto mode, in steps of 100 characters
+            AnimatedVisibility(visible = ThinkingMode.of(thinking.value) == ThinkingMode.AUTO) {
+                IntSliderPreference(
+                    maxValue = CommentTranslateApi.MAX_SHORT_REQUEST_CHARS,
+                    step = CommentTranslateApi.MAX_SHORT_REQUEST_CHARS / 100 - 1,
+                    title = stringResource(id = R.string.comment_translate_thinking_chars),
+                    summary = stringResource(id = R.string.comment_translate_thinking_chars_summary),
+                    pref = Settings.commentTranslateThinkingChars,
+                )
+            }
             SwitchPreference(
                 title = stringResource(id = R.string.comment_translate_stream),
                 summary = stringResource(id = R.string.comment_translate_stream_summary),

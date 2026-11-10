@@ -861,6 +861,8 @@
     <string name="comment_translate_thinking_auto">自动：短评论（%d 字以内）不思考</string>
     <string name="comment_translate_thinking_on">总是思考（按接口默认）</string>
     <string name="comment_translate_thinking_off">不思考：更快</string>
+    <string name="comment_translate_thinking_chars">不思考的字数</string>
+    <string name="comment_translate_thinking_chars_summary">自动模式下，一次请求的评论加起来不超过这个字数就不思考；设为 0 就总是思考</string>
     <string name="comment_translate_stream">流式输出</string>
     <string name="comment_translate_stream_summary">译文边收边显示，逐字出现；也适合只支持流式、或等太久会断开的中转</string>
     <string name="comment_translate_test">测试连接</string>
