@@ -7,9 +7,13 @@ import com.hippo.ehviewer.EhApplication.Companion.ktorClient
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.executeAndParseAs
 import com.hippo.ehviewer.client.executeSafely
+import com.hippo.ehviewer.ktor.configureClient
 import com.hippo.ehviewer.ktor.reset
 import com.hippo.ehviewer.util.ensureSuccess
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.onDownload
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
@@ -23,6 +27,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.utils.io.jvm.javaio.copyTo
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
@@ -34,8 +39,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.io.IOException
 import kotlinx.io.asSource
 import moe.tarsin.coroutines.runSuspendCatching
+import okhttp3.ConnectionPool
+import okhttp3.Protocol
 import okio.Path
 import tachiyomi.data.release.Release
 
@@ -61,6 +69,41 @@ const val UPDATE_ON_LAUNCH = -1
 // attempts in a row that got no byte further.
 private const val DOWNLOAD_ATTEMPTS = 3
 private val STALL_TIMEOUT = 30.seconds
+
+// Fork: a connection to GitHub's download servers can drop from megabytes to some ten kilobytes a second in the middle
+// of the file and stay there, while a new connection is fast again. When the speed over SPEED_WINDOW seconds falls
+// below 1/SLOW_FRACTION of the best speed of this download (and under FAST_ENOUGH), the attempt ends and the next one
+// goes on from the saved bytes on a new connection. An attempt runs at least MIN_ATTEMPT_SECONDS first, doubled after
+// every such cut that did not get the speed back, up to MAX_ATTEMPT_SECONDS.
+private const val SPEED_WINDOW = 5
+private const val SLOW_FRACTION = 4
+private const val FAST_ENOUGH = 1024L * 1024
+private const val MIN_ATTEMPT_SECONDS = 8
+private const val MAX_ATTEMPT_SECONDS = 64
+
+private class SlowDownloadException(speed: Long) : IOException("Download slowed down to $speed B/s")
+
+// The best speed of a download over SPEED_WINDOW, and the cuts in a row since the speed was last at least half of it
+private class SpeedRecord {
+    var best = 0L
+    var slowCuts = 0
+}
+
+// Fork: the update download gets its own client. It never reuses a connection (HTTP/1.1, no idle connections kept),
+// so an attempt after a slow one really opens a new connection, where the shared client (Cronet, HTTP/2) would go on
+// on the same slow one.
+private val updateClient by lazy {
+    HttpClient(OkHttp) {
+        engine {
+            configureClient()
+            config {
+                protocols(listOf(Protocol.HTTP_1_1))
+                connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            }
+        }
+        install(HttpTimeout) { reset() }
+    }
+}
 
 object AppUpdater {
     // A new activity (a rotation, a return from the background) is not a new start of the app. Set once a check
@@ -100,18 +143,20 @@ object AppUpdater {
         // The fork's releases are APKs, a zip (upstream's CI artifacts) is unpacked while it downloads and starts over
         val resumable = !url.endsWith("zip")
         val file = path.toFile()
+        val record = SpeedRecord()
         var failures = 0
         while (true) {
             val saved = if (resumable) file.length() else 0L
             try {
-                downloadOnce(url, path, resumable, saved, onProgress)
+                downloadOnce(url, path, resumable, saved, record, onProgress)
                 return
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (resumable && file.length() > saved) failures = 0 else failures++
                 if (failures >= DOWNLOAD_ATTEMPTS) throw e
-                delay((failures + 1).seconds * 2)
+                // A slow connection is left for a new one right away
+                if (e !is SlowDownloadException) delay((failures + 1).seconds * 2)
             }
         }
     }
@@ -121,6 +166,7 @@ object AppUpdater {
         path: Path,
         resumable: Boolean,
         saved: Long,
+        record: SpeedRecord,
         onProgress: (done: Long, total: Long?) -> Unit,
     ) = coroutineScope {
         // Bytes of this response so far, the watchdog waits again on every change
@@ -131,10 +177,31 @@ object AppUpdater {
                 throw SocketTimeoutException("No data for $STALL_TIMEOUT [url=$url]")
             }
         }
+        val slowWatchdog = launch {
+            if (!resumable) return@launch
+            // Bytes received at the end of each of the last seconds
+            val samples = ArrayDeque<Long>()
+            var seconds = 0
+            while (true) {
+                delay(1.seconds)
+                seconds++
+                samples.addLast(received.value.coerceAtLeast(0))
+                if (samples.size > SPEED_WINDOW + 1) samples.removeFirst()
+                if (samples.size <= SPEED_WINDOW) continue
+                val speed = (samples.last() - samples.first()) / SPEED_WINDOW
+                record.best = maxOf(record.best, speed)
+                if (speed >= record.best / 2) record.slowCuts = 0
+                val minSeconds = (MIN_ATTEMPT_SECONDS shl record.slowCuts).coerceAtMost(MAX_ATTEMPT_SECONDS)
+                if (seconds >= minSeconds && speed < record.best / SLOW_FRACTION && speed < FAST_ENOUGH) {
+                    record.slowCuts = (record.slowCuts + 1).coerceAtMost(4)
+                    throw SlowDownloadException(speed)
+                }
+            }
+        }
         // Where this response starts in the file: saved when the server sends the rest (206), 0 when it sends it all
         var start = 0L
         try {
-            statement(url) {
+            updateClient.prepareGet(url) {
                 // https://docs.github.com/en/rest/releases/assets?apiVersion=2022-11-28#get-a-release-asset
                 if (resumable) accept(ContentType.Application.OctetStream)
                 if (saved > 0) header(HttpHeaders.Range, "bytes=$saved-")
@@ -168,6 +235,7 @@ object AppUpdater {
             }
         } finally {
             stallWatchdog.cancel()
+            slowWatchdog.cancel()
         }
     }
 }
