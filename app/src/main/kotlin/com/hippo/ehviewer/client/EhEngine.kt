@@ -278,6 +278,9 @@ object EhEngine {
         }
     }
 
+    // Fork: for 「我的上传」 (myuploads/), with all the comments, none filtered by score or by the blocked commenters
+    suspend fun getGalleryDetailAllComments(url: String) = ehRequest(url, EhUrl.referer).fetchUsingAsByteBuffer(GalleryDetailParser::parse).detail
+
     suspend fun getPreviewList(url: String) = ehRequest(url, EhUrl.referer).fetchUsingAsByteBuffer(GalleryDetailParser::parsePreviews)
 
     suspend fun getFavorites(url: String) = getFavoritesPage(url).apply { galleryInfoList.fillInfo(url) }

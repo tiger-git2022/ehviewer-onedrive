@@ -21,6 +21,9 @@ enum class SyncCategory(val fileName: String, val automatic: Boolean) {
     PROGRESS("progress.json.gz", automatic = true),
     QUICK_SEARCH("quicksearch.json.gz", automatic = false),
     SUGGESTIONS("suggestions.json.gz", automatic = true),
+
+    // Fork: the comments read of 「我的上传」, see com.hippo.ehviewer.myuploads.MyUploads
+    MY_UPLOADS("myuploads.json.gz", automatic = true),
 }
 
 /** Common wrapper of the per category files. */
@@ -97,6 +100,13 @@ data class SyncGalleryRecord(
     val time: Long,
     val gallery: SyncGallery,
     val queued: Long = 0,
+)
+
+/** Fork: the newest comment read of a gallery of 「我的上传」, see com.hippo.ehviewer.myuploads.MyUploads. */
+@Serializable
+data class SyncSeenComment(
+    val gid: Long,
+    val id: Long,
 )
 
 @Serializable

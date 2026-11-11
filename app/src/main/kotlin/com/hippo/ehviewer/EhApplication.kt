@@ -66,6 +66,7 @@ import com.hippo.ehviewer.ktor.Cronet
 import com.hippo.ehviewer.ktor.configureClient
 import com.hippo.ehviewer.ktor.configureCommon
 import com.hippo.ehviewer.ktor.isCronetAvailable
+import com.hippo.ehviewer.myuploads.MyUploadsWork
 import com.hippo.ehviewer.pctranslate.PcTranslateWork
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.ui.keepNoMediaFileStatus
@@ -116,6 +117,8 @@ class EhApplication : Application(), SingletonImageLoader.Factory {
         OneDriveSync.init()
         // Fork: sends and takes back the downloads translated on the PC each time the app comes to the front
         PcTranslateWork.init()
+        // Fork: reads 「我的上传」 again every hour, once opened
+        MyUploadsWork.schedule()
         launch {
             FavouriteStatusRouter.collect { info ->
                 detailCache[info.gid]?.apply {

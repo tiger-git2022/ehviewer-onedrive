@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.DrawerDefaults
 import androidx.compose.material3.DrawerState2
@@ -61,6 +62,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalSideDrawer
+import androidx.compose.material3.Badge
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
@@ -128,6 +130,7 @@ import com.hippo.ehviewer.client.data.ListUrlBuilder
 import com.hippo.ehviewer.client.parser.GalleryDetailUrlParser
 import com.hippo.ehviewer.client.parser.GalleryPageUrlParser
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.myuploads.MyUploads
 import com.hippo.ehviewer.download.DownloadService
 import com.hippo.ehviewer.download.downloadLocation
 import com.hippo.ehviewer.ui.destinations.DownloadScreenDestination
@@ -135,6 +138,7 @@ import com.hippo.ehviewer.ui.destinations.DownloadsScreenDestination
 import com.hippo.ehviewer.ui.destinations.FavouritesScreenDestination
 import com.hippo.ehviewer.ui.destinations.HistoryScreenDestination
 import com.hippo.ehviewer.ui.destinations.HomePageScreenDestination
+import com.hippo.ehviewer.ui.destinations.MyUploadsScreenDestination
 import com.hippo.ehviewer.ui.destinations.ProgressScreenDestination
 import com.hippo.ehviewer.ui.destinations.SettingsScreenDestination
 import com.hippo.ehviewer.ui.destinations.SignInScreenDestination
@@ -179,6 +183,8 @@ private val navItems = arrayOf<Triple<Direction, Int, ImageVector>>(
     Triple(FavouritesScreenDestination, R.string.favourite, Icons.Default.Favorite),
     Triple(HistoryScreenDestination, R.string.history, Icons.Default.History),
     Triple(DownloadsScreenDestination, R.string.downloads, Icons.Default.Download),
+    // Fork: the galleries published from this account and their new comments, see myuploads/
+    Triple(MyUploadsScreenDestination, R.string.my_uploads, Icons.Default.Upload),
     Triple(SettingsScreenDestination, R.string.settings, Icons.Default.Settings),
 )
 
@@ -436,6 +442,9 @@ class MainActivity : AppCompatActivity() {
                                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                                         contentScale = ContentScale.FillWidth,
                                     )
+                                    // Fork: the number of new comments of 「我的上传」 on its item
+                                    val myUploads by MyUploads.data.collectAsState()
+                                    val newComments = remember(myUploads) { MyUploads.newCount(myUploads) }
                                     navItems.forEach { (direction, stringId, icon) ->
                                         NavigationDrawerItem(
                                             label = {
@@ -449,6 +458,11 @@ class MainActivity : AppCompatActivity() {
                                             modifier = Modifier.padding(horizontal = 12.dp),
                                             icon = {
                                                 Icon(imageVector = icon, contentDescription = null)
+                                            },
+                                            badge = if (direction === MyUploadsScreenDestination && newComments > 0) {
+                                                { Badge { Text(text = "$newComments") } }
+                                            } else {
+                                                null
                                             },
                                             // Fork: over liquid glass, the selected item is a light in the glass
                                             colors = if (drawerGlass != null) glassDrawerItemColors() else NavigationDrawerItemDefaults.colors(),

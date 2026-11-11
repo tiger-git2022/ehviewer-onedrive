@@ -1316,6 +1316,7 @@ object OneDriveSync {
         SyncCategory.PROGRESS -> R.string.onedrive_sync_category_progress
         SyncCategory.QUICK_SEARCH -> R.string.onedrive_sync_category_quick_search
         SyncCategory.SUGGESTIONS -> R.string.onedrive_sync_category_suggestions
+        SyncCategory.MY_UPLOADS -> R.string.onedrive_sync_category_my_uploads
     }
 
     // endregion
