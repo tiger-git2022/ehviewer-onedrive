@@ -20,6 +20,7 @@ import com.ehviewer.core.model.GalleryInfo
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.client.EhFilter
+import com.hippo.ehviewer.myuploads.MyUploads
 import com.hippo.ehviewer.todownload.ToDownload
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.KSerializer
@@ -53,7 +54,7 @@ sealed class SyncSection<T>(val category: SyncCategory, val serializer: KSeriali
 
     companion object {
         val all: List<SyncSection<*>> by lazy {
-            listOf(SettingsSection, FavoritesSection, HistorySection, ProgressSection, QuickSearchSection, SuggestionsSection)
+            listOf(SettingsSection, FavoritesSection, HistorySection, ProgressSection, QuickSearchSection, SuggestionsSection, MyUploadsSection)
         }
     }
 }
@@ -451,5 +452,27 @@ object SuggestionsSection : SyncSection<List<SyncSuggestion>>(
         EhDB.applySyncedSuggestions(upsert.map { Search(it.date, it.query) }, delete)
         val added = upsert.count { it.query !in localByQuery }
         return SyncCounts(added = added, updated = upsert.size - added, removed = delete.size)
+    }
+}
+
+/** Fork: the comments read of 「我的上传」, merged by the newest of each gallery, see MyUploads. */
+object MyUploadsSection : SyncSection<List<SyncSeenComment>>(
+    SyncCategory.MY_UPLOADS,
+    ListSerializer(SyncSeenComment.serializer()),
+    emptyList(),
+) {
+    override suspend fun collect(baseline: List<SyncSeenComment>?, changedAt: Long) = MyUploads.seen().map { (gid, id) -> SyncSeenComment(gid, id) }
+
+    override fun merge(local: List<SyncSeenComment>, cloud: List<SyncSeenComment>, baseline: List<SyncSeenComment>?) = MyUploads.mergeSeen(local.associate { it.gid to it.id }, cloud.associate { it.gid to it.id })
+        .map { (gid, id) -> SyncSeenComment(gid, id) }
+        .sortedBy { it.gid }
+
+    override suspend fun apply(local: List<SyncSeenComment>, merged: List<SyncSeenComment>): SyncCounts {
+        val localById = local.associate { it.gid to it.id }
+        val changed = merged.filter { localById[it.gid] != it.id }
+        if (changed.isEmpty()) return SyncCounts()
+        MyUploads.applySynced(merged.associate { it.gid to it.id })
+        val added = changed.count { it.gid !in localById }
+        return SyncCounts(added = added, updated = changed.size - added)
     }
 }

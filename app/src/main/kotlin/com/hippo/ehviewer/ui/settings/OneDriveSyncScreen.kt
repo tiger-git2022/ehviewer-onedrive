@@ -239,6 +239,11 @@ fun AnimatedVisibilityScope.OneDriveSyncScreen(navigator: DestinationsNavigator)
                         title = stringResource(id = R.string.onedrive_sync_category_suggestions),
                         state = OneDriveSyncState.syncSuggestions.asMutableState(),
                     )
+                    // Fork: the comments read of 「我的上传」
+                    SwitchPreference(
+                        title = stringResource(id = R.string.onedrive_sync_category_my_uploads),
+                        state = OneDriveSyncState.syncMyUploads.asMutableState(),
+                    )
                     SwitchPreference(
                         title = stringResource(id = R.string.onedrive_sync_upload_downloads),
                         summary = stringResource(id = R.string.onedrive_sync_upload_downloads_summary) + "\n" + stringResource(id = R.string.onedrive_sync_manual_only),

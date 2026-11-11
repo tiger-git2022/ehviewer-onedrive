@@ -28,6 +28,9 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     val syncHistory = boolPref("sync_history_list", false)
     val syncQuickSearch = boolPref("sync_quick_search", true)
     val syncSuggestions = boolPref("sync_suggestions", true)
+
+    // Fork: the comments read of 「我的上传」
+    val syncMyUploads = boolPref("sync_my_uploads", true)
     val uploadDownloads = boolPref("upload_downloads", true)
 
     // Favorites index for other apps, see FavoritesIndexSync
@@ -118,6 +121,7 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
         SyncCategory.PROGRESS -> syncProgress
         SyncCategory.QUICK_SEARCH -> syncQuickSearch
         SyncCategory.SUGGESTIONS -> syncSuggestions
+        SyncCategory.MY_UPLOADS -> syncMyUploads
     }
 
     private val json = Json { ignoreUnknownKeys = true }
