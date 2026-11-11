@@ -29,7 +29,7 @@ object PcPrompt {
 5. 创建根目录批处理脚本，可完成注册、准备、规则导入、翻译、质检、写回、漏翻检查
 环境要求： Windows PowerShell Python，优先使用 uv 管理 Rust / rustup Visual Studio Build Tools 或可用的 C++ 编译环境 模型 API Key 在配置文件中，不能写进脚本、日志或报告
 示例环境变量：
-目录约定： 待翻目标：{翻译文件夹} 工作区：att-mz\workspace\{编号}
+目录约定： 待翻目标：{翻译文件夹} 工作区：att-mz\workspace\<目标文件夹>
 基础流程：
 6. 更新源码
 进入 att-mz-source
@@ -37,7 +37,7 @@ object PcPrompt {
 查看 README、skills 和 CLI --help 是否有流程变化
 7. 检查环境
 执行 doctor 命令，确认 Python、uv、Rust、依赖和扩展可用
-8. 读取 {根目录}\AGENTS.md，按它执行；流程细节见 {根目录}\att-mz\skills\manga-json-translation 的 SKILL.md 和 references。
+8. 读取 E:\漫画源文件\AGENTS.md，按它执行；流程细节见 E:\漫画源文件\att-mz\skills\manga-json-translation 的 SKILL.md 和 references。
 9. 准备工作区 为每个漫画创建独立 workspace 生成术语表、规则文件、报告和缓存 旧漫画的工作区和术语表不得覆盖，新漫画使用新文件夹
 10. 术语表和规则 换漫画时重新建立术语表，不能直接套用旧漫画 更新版本时优先复用旧版本翻译记忆和术语，避免重翻大部分文本
 11. 翻译前对通过ocr标注文本信息，生成指示图，然后通过mtui_json_tool.py 与 translate.py 生成翻译文件并发送给翻译api进行翻译
