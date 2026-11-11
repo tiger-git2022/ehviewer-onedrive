@@ -54,6 +54,7 @@ import com.ehviewer.core.ui.util.listThumbGenerator
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.download.DownloadManager
+import com.hippo.ehviewer.ui.PcTranslateBadge
 import com.hippo.ehviewer.util.FileUtils
 
 @Composable
@@ -172,6 +173,8 @@ fun DownloadCard(
                 )
                 // Fork: the size, to decide whether to download it
                 DownloadSizeText(info = info, state = downloadState, modifier = Modifier.padding(start = 8.dp))
+                // Fork: sent to the PC to translate, or translated there
+                PcTranslateBadge(gid = info.gid, modifier = Modifier.padding(start = 6.dp))
                 Spacer(modifier = Modifier.weight(1f))
                 val running = downloadState == DownloadInfo.STATE_WAIT || downloadState == DownloadInfo.STATE_DOWNLOAD
                 val icon = when (downloadState) {

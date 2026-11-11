@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -121,6 +122,8 @@ import com.hippo.ehviewer.restore.fromPandaChaika
 import com.hippo.ehviewer.ui.DrawerHandle
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
+import com.hippo.ehviewer.ui.sendToPc
+import com.hippo.ehviewer.ui.destinations.PcTranslateScreenDestination
 import com.hippo.ehviewer.ui.main.DownloadCard
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
@@ -560,6 +563,14 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                         }
                     },
                 )
+                // Fork: the downloads sent to the PC to translate
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(id = R.string.pc_translate)) },
+                    onClick = {
+                        expanded = false
+                        navigate(PcTranslateScreenDestination)
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text(text = stringResource(id = R.string.download_start_all_reversed)) },
                     onClick = {
@@ -753,6 +764,10 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                 // Fork: off the list at once, the files go on being deleted after
                 val failed = confirmRemoveDownloadRange(infoList) { list.removeAll(infoList) }
                 if (failed > 0) snackbar(removeFilesFailed.format(failed))
+            }
+            // Fork: 「发到电脑翻译」, to EH 上传助手 on the PC over the local network
+            onClick(Icons.Default.Translate) {
+                sendToPc(checkedInfoMap.takeAndClear())
             }
             onClick(Icons.AutoMirrored.Default.DriveFileMove) {
                 val infoList = checkedInfoMap.takeAndClear()
