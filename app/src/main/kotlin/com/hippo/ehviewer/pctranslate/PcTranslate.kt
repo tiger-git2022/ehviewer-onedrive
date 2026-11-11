@@ -51,6 +51,8 @@ data class PcItem(
     val backup: String? = null,
     /** All sent: the PC has it. */
     val sent: Boolean = false,
+    /** The folder of the work in the batch on the PC ("<gid>-<title>"). */
+    val dir: String? = null,
 )
 
 @Serializable
@@ -78,6 +80,10 @@ private data class PcData(
     val lastFolderDay: String? = null,
     val keepOriginal: Boolean = true,
     val items: Map<Long, PcItem> = emptyMap(),
+    /** The comic root folder on the PC, as EH 上传助手 said it last. */
+    val root: String? = null,
+    /** The template of 「复制提示词」, null for [PcPrompt.DEFAULT_TEMPLATE]. */
+    val promptTemplate: String? = null,
 )
 
 /**
@@ -111,6 +117,8 @@ object PcTranslate {
 
     val server: PcServer? get() = data.value.server
     val keepOriginal: Boolean get() = data.value.keepOriginal
+    val root: String? get() = data.value.root
+    val promptTemplate: String get() = data.value.promptTemplate ?: PcPrompt.DEFAULT_TEMPLATE
 
     private fun load(): PcData = runCatching { json.decodeFromString<PcData>(file.readText()) }
         .onFailure { if (file.exists()) logcat(TAG, it) }
@@ -131,6 +139,20 @@ object PcTranslate {
 
     suspend fun setKeepOriginal(keep: Boolean) = edit { it.copy(keepOriginal = keep) }
 
+    suspend fun setRoot(root: String) {
+        if (root.isNotBlank() && root != data.value.root) edit { it.copy(root = root) }
+    }
+
+    /** Null or the default puts back [PcPrompt.DEFAULT_TEMPLATE]. */
+    suspend fun setPromptTemplate(template: String?) =
+        edit { it.copy(promptTemplate = template?.takeIf { t -> t.isNotBlank() && t != PcPrompt.DEFAULT_TEMPLATE }) }
+
+    /** The prompt of [item], with its paths on the PC. */
+    fun prompt(item: PcItem, root: String): String {
+        val dir = item.dir ?: PcPrompt.pcDir(item.gid, DownloadManager.getDownloadInfo(item.gid)?.dirname)
+        return PcPrompt.fill(promptTemplate, root, item, dir)
+    }
+
     /** The folder picked last, when picked today: sent again the same day, they go together. */
     fun lastFolder(today: String): String? = data.value.takeIf { it.lastFolderDay == today }?.lastFolder
 
@@ -147,7 +169,8 @@ object PcTranslate {
                 lastFolder = folder,
                 lastFolderDay = today,
                 items = d.items + infos.associate {
-                    it.gid to PcItem(gid = it.gid, title = EhUtils.getSuitableTitle(it), folder = folder, state = PcState.QUEUED, time = now)
+                    val dir = PcPrompt.pcDir(it.gid, it.dirname)
+                    it.gid to PcItem(gid = it.gid, title = EhUtils.getSuitableTitle(it), folder = folder, state = PcState.QUEUED, time = now, dir = dir)
                 },
             )
         }

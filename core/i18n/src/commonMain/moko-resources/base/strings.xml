@@ -994,6 +994,14 @@
     <string name="pc_translate_restored">Original put back</string>
     <string name="pc_translate_retry">Retry</string>
     <string name="pc_translate_searching">Looking for the PC…</string>
+    <string name="pc_translate_prompt_copy">Copy prompt</string>
+    <string name="pc_translate_prompt_copied">Prompt copied</string>
+    <string name="pc_translate_prompt_copied_guess">Prompt copied (the comic root of the PC is not known yet, used %s)</string>
+    <string name="pc_translate_prompt_template">Prompt template</string>
+    <string name="pc_translate_prompt_save">Save</string>
+    <string name="pc_translate_prompt_reset">Default</string>
+    <string name="pc_translate_prompt_saved">Prompt template saved</string>
+    <string name="pc_translate_prompt_placeholders">Replaced when copying:</string>
     <string name="pc_translate_section_done">Taken back · %d</string>
     <string name="pc_translate_section_failed">Failed · %d</string>
     <string name="pc_translate_section_on_pc">On the PC · %d</string>
