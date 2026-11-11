@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.translate
 
+import android.os.SystemClock
 import com.hippo.ehviewer.EhApplication.Companion.ktorClient
 import com.hippo.ehviewer.client.executeSafely
 import com.hippo.ehviewer.util.bodyAsUtf8Text
@@ -232,7 +233,8 @@ object CommentTranslateApi {
             body.append(line).append('\n')
             if (onContent == null) continue
             streamEvents(line).forEach { event -> deltaContent(event)?.let(content::append) }
-            val now = System.currentTimeMillis()
+            // Fork: boot clock, not wall clock: a time change mid stream can't stop the updates
+            val now = SystemClock.elapsedRealtime()
             if (content.isNotEmpty() && now - lastSent >= PARTIAL_INTERVAL_MILLIS) {
                 lastSent = now
                 onContent(content.toString())
