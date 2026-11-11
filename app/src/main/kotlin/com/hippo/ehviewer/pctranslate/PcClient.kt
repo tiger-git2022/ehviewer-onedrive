@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.pctranslate
 
+import android.os.SystemClock
 import com.ehviewer.core.files.read
 import com.ehviewer.core.files.write
 import java.io.IOException
@@ -99,9 +100,9 @@ object PcClient {
                 targets.forEach { runCatching { socket.send(DatagramPacket(data, data.size, it, port)) } }
             }
             val found = LinkedHashMap<String, PcFound>()
-            val end = System.currentTimeMillis() + timeoutMillis
+            val end = SystemClock.elapsedRealtime() + timeoutMillis
             val buffer = ByteArray(1024)
-            while (System.currentTimeMillis() < end) {
+            while (SystemClock.elapsedRealtime() < end) {
                 ensureActive()
                 val packet = DatagramPacket(buffer, buffer.size)
                 try {

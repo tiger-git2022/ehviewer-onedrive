@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -42,13 +43,13 @@ private const val MAX_RUN_MILLIS = 24L * 60 * 60 * 1000
  */
 class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withIOContext {
-        val start = System.currentTimeMillis()
+        val start = SystemClock.elapsedRealtime()
         var status: String? = null
         suspend fun foreground() = runCatching { setForeground(foregroundInfo(applicationContext, status)) }
             .onFailure { logcat(WORK_NAME, it) }
         foreground()
         val doneBefore = PcTranslate.items.value.values.count { it.state == PcState.DONE }
-        while (PcTranslate.hasWork() && System.currentTimeMillis() - start < MAX_RUN_MILLIS) {
+        while (PcTranslate.hasWork() && SystemClock.elapsedRealtime() - start < MAX_RUN_MILLIS) {
             val reached = try {
                 PcTranslate.runOnce { title ->
                     status = title
