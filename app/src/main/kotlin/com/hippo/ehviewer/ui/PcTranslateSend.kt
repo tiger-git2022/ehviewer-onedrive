@@ -77,7 +77,6 @@ suspend fun sendToPc(infos: Collection<DownloadInfo>) {
         snackbar(string(R.string.pc_translate_unreachable, e.message))
         return
     }
-    PcTranslate.setRoot(folders.root)
     val size = PcTranslate.sizeOf(sendable)
     val today = folders.suggest.ifEmpty { LocalDate.now().toString() }
     val folder = awaitPickFolder(server, folders, today, sendable.size, size)

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -28,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,8 +49,6 @@ import com.hippo.ehviewer.pctranslate.PcTranslateWork
 import com.hippo.ehviewer.pctranslate.transferText
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.connectPc
-import com.hippo.ehviewer.ui.copyPcPrompt
-import com.hippo.ehviewer.ui.editPcPromptTemplate
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
@@ -71,6 +69,8 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
     val transfer by PcTranslate.transfer.collectAsState()
     var server by remember { mutableStateOf(PcTranslate.server) }
     var keepOriginal by remember { mutableStateOf(PcTranslate.keepOriginal) }
+    // Asks the PC each time the page opens: translations done meanwhile are taken back now
+    LaunchedEffect(Unit) { PcTranslateWork.start(appCtx) }
     val sections = remember(items) {
         listOf(
             R.string.pc_translate_section_queued to PcState.QUEUED,
@@ -99,13 +99,6 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
                                     connectPc(force = true)?.let { server = it }
                                     PcTranslateWork.start(appCtx)
                                 }
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(text = stringResource(id = R.string.pc_translate_prompt_template)) },
-                            onClick = {
-                                expanded = false
-                                launch { editPcPromptTemplate() }
                             },
                         )
                         if (server != null) {
@@ -227,9 +220,6 @@ private fun PcItemRow(item: PcItem, moving: PcTransfer?) {
                             }
                         }
                         else -> Unit
-                    }
-                    IconButton(onClick = { launch { copyPcPrompt(item) } }) {
-                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = stringResource(id = R.string.pc_translate_prompt_copy))
                     }
                     TextButton(onClick = { launch { PcTranslate.remove(item.gid) } }, shapes = ButtonDefaults.shapes()) {
                         Text(text = stringResource(id = if (item.state == PcState.QUEUED || item.state == PcState.ON_PC) R.string.pc_translate_cancel else R.string.pc_translate_remove))

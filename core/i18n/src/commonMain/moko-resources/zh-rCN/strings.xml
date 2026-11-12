@@ -982,14 +982,6 @@
     <string name="pc_translate_restored">已还原原版</string>
     <string name="pc_translate_retry">重试</string>
     <string name="pc_translate_searching">正在找电脑…</string>
-    <string name="pc_translate_prompt_copy">复制提示词</string>
-    <string name="pc_translate_prompt_copied">已复制提示词</string>
-    <string name="pc_translate_prompt_copied_guess">已复制提示词（还不知道电脑上的漫画根目录，先用了 %s）</string>
-    <string name="pc_translate_prompt_template">提示词模板</string>
-    <string name="pc_translate_prompt_save">保存</string>
-    <string name="pc_translate_prompt_reset">恢复默认</string>
-    <string name="pc_translate_prompt_saved">提示词模板已保存</string>
-    <string name="pc_translate_prompt_placeholders">复制时会替换成这一本的内容：</string>
     <string name="pc_translate_section_done">已取回 · %d</string>
     <string name="pc_translate_section_failed">失败 · %d</string>
     <string name="pc_translate_section_on_pc">电脑翻译中 · %d</string>

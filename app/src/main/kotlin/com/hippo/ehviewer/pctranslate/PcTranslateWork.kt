@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.SystemClock
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -22,10 +21,8 @@ import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import com.hippo.ehviewer.util.FileUtils
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import splitties.init.appCtx
 
 private const val WORK_NAME = "PcTranslateWork"
@@ -33,38 +30,44 @@ private const val CHANNEL_ID = "pc_translate"
 private const val NOTIFICATION_ID = 0x0D61
 private const val RESULT_NOTIFICATION_ID = 0x0D62
 
-// Asked every half minute while the PC answers, less often while it does not
-private const val POLL_MILLIS = 30_000L
-private const val UNREACHABLE_POLL_MILLIS = 120_000L
-
-// A run stops after a day: the next start of the app goes on
-private const val MAX_RUN_MILLIS = 24L * 60 * 60 * 1000
+// Rounds in one run at most, while more is queued during them
+private const val MAX_ROUNDS = 20
 
 /**
- * Fork: sends the downloads queued by [PcTranslate] to the PC, then asks it every half minute about those it has and
- * takes back the packed ones, while any is left. Runs in the foreground with a quiet notification, so it goes on with
- * the screen off; started again each time the app comes to the front.
+ * Fork: sends the downloads queued by [PcTranslate] to the PC, asks it about those it has and takes back the packed
+ * ones, in one round. Not asked again in the background while the translation is made (that takes hours): each time
+ * the app comes to the front or 「电脑翻译」 opens, it asks again. In the foreground with a notification only while a
+ * file moves, so a transfer goes on with the screen off; no notification stays while it waits.
  */
 class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withIOContext {
-        val start = SystemClock.elapsedRealtime()
         var status: String? = null
         var shown: PcTransfer? = null
-        suspend fun foreground() = runCatching {
-            shown = PcTranslate.transfer.value
-            setForeground(foregroundInfo(applicationContext, status, shown))
-        }.onFailure { logcat(WORK_NAME, it) }
-        foreground()
+        var inForeground = false
+
+        // The notification from the first file moved on, not for asking the PC only
+        suspend fun foreground() {
+            if (status == null && !inForeground) return
+            inForeground = true
+            runCatching {
+                shown = PcTranslate.transfer.value
+                setForeground(foregroundInfo(applicationContext, status, shown))
+            }.onFailure { logcat(WORK_NAME, it) }
+        }
+
         // The bytes moved, in the notification once a second
         val progress = launch {
             while (isActive) {
                 delay(1000)
-                if (PcTranslate.transfer.value != shown) foreground()
+                if (inForeground && PcTranslate.transfer.value != shown) foreground()
             }
         }
         val doneBefore = PcTranslate.items.value.values.count { it.state == PcState.DONE }
-        while (PcTranslate.hasWork() && SystemClock.elapsedRealtime() - start < MAX_RUN_MILLIS) {
-            val reached = try {
+        var reached = false
+        var rounds = 0
+        while (rounds++ < MAX_ROUNDS) {
+            val roundStart = System.currentTimeMillis()
+            reached = try {
                 PcTranslate.runOnce { title ->
                     status = title
                     foreground()
@@ -79,10 +82,10 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
                 false
             }
             status = null
-            foreground()
-            if (!PcTranslate.hasWork()) break
-            // Something sent meanwhile wakes it up before the time
-            withTimeoutOrNull(if (reached) POLL_MILLIS else UNREACHABLE_POLL_MILLIS) { PcTranslate.kicks.first() }
+            if (inForeground) foreground()
+            // Sent while the round asked the PC: another round at once, not a minute later
+            val queuedMeanwhile = PcTranslate.items.value.values.any { it.state == PcState.QUEUED && it.message == null && it.time >= roundStart }
+            if (!reached || !queuedMeanwhile) break
         }
         progress.cancel()
         val taken = PcTranslate.items.value.values.count { it.state == PcState.DONE } - doneBefore
@@ -93,10 +96,9 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, null, null)
 
     companion object {
-        /** Starts the work, or wakes up the running one: it sees what was just queued. */
+        /** Starts the work; a running one sends what was just queued too, in another round. */
         fun start(context: Context) {
             if (PcTranslate.server == null || !PcTranslate.hasWork()) return
-            PcTranslate.kicks.tryEmit(Unit)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME,
                 ExistingWorkPolicy.KEEP,
