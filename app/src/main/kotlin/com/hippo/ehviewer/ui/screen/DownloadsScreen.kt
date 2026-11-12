@@ -525,6 +525,14 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                 Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                // Fork: the downloads sent to the PC to translate, first in the menu
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(id = R.string.pc_translate)) },
+                    onClick = {
+                        expanded = false
+                        navigate(PcTranslateScreenDestination)
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text(text = stringResource(id = R.string.download_labels)) },
                     onClick = {
@@ -561,14 +569,6 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                                 DownloadManager.resetAllReadingProgress()
                             }
                         }
-                    },
-                )
-                // Fork: the downloads sent to the PC to translate
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.pc_translate)) },
-                    onClick = {
-                        expanded = false
-                        navigate(PcTranslateScreenDestination)
                     },
                 )
                 DropdownMenuItem(
@@ -759,15 +759,15 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                 val gidList = checkedInfoMap.takeAndClear().mapToLongArray(DownloadInfo::gid)
                 DownloadManager.stopRangeDownload(gidList)
             }
+            // Fork: 「发到电脑翻译」, to EH 上传助手 on the PC over the local network; above delete
+            onClick(Icons.Default.Translate) {
+                sendToPc(checkedInfoMap.takeAndClear())
+            }
             onClick(Icons.Default.Delete) {
                 val infoList = checkedInfoMap.takeAndClear()
                 // Fork: off the list at once, the files go on being deleted after
                 val failed = confirmRemoveDownloadRange(infoList) { list.removeAll(infoList) }
                 if (failed > 0) snackbar(removeFilesFailed.format(failed))
-            }
-            // Fork: 「发到电脑翻译」, to EH 上传助手 on the PC over the local network
-            onClick(Icons.Default.Translate) {
-                sendToPc(checkedInfoMap.takeAndClear())
             }
             onClick(Icons.AutoMirrored.Default.DriveFileMove) {
                 val infoList = checkedInfoMap.takeAndClear()
