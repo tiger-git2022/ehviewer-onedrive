@@ -143,9 +143,10 @@ object Wnacg {
     private val COMMENT = Regex("""class="plItem" data-id="(\d+)"[\s\S]*?class="plName">([\s\S]*?)</span>\s*<span class="plTime">([^<]*)</span>[\s\S]*?class="plText">([\s\S]*?)</div>""")
     private val COMMENT_UP = Regex("""class="plUp"[^>]*>[\s\S]*?<i>(-?\d+)</i>""")
     private val COMMENT_DOWN = Regex("""class="plDown"[^>]*>[\s\S]*?<i>(-?\d+)</i>""")
-    private val IMAGE = Regex("""(?:https?:)?//[^\s"'\\<>]+?\.(?:jpe?g|png|webp|gif|avif|bmp)""", RegexOption.IGNORE_CASE)
+    // An image and what asks for it after "?" ("?verify=..."): the site refuses an image without it (403)
+    private val IMAGE = Regex("""(?:https?:)?//[^\s"'\\<>]+?\.(?:jpe?g|png|webp|gif|avif|bmp)(?:\?[^\s"'\\<>]*)?""", RegexOption.IGNORE_CASE)
     private val IMAGE_HOST = Regex("""fast_img_host\s*=\s*["']([^"']*)["']""")
-    private val IMAGE_PATH = Regex("""url:\s*fast_img_host\s*\+\s*\\?["'](/[^"'\\]+)""")
+    private val IMAGE_PATH = Regex("""url:\s*fast_img_host\s*\+\s*["'](/[^"']+)["']""")
     private val BR = Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE)
     private val HTML_TAG = Regex("""<[^>]+>""")
     private val CHINA = ZoneOffset.ofHours(8)
@@ -203,19 +204,17 @@ object Wnacg {
     }
 
     /**
-     * The images of the reader of an album, from the script that lists them: each one's address starts with "//", or
-     * with a path after the host told in "fast_img_host". The last one, a picture asking to bookmark the site, is a
-     * path of the site itself and is not taken.
+     * The images of the reader of an album, from the script that lists them (written out by document.writeln, its
+     * quotes escaped): each one is the host told in "fast_img_host" (often empty) followed by its address, which
+     * starts with "//" or a path. Each address keeps what follows its "?" ("verify=..."), without which the site
+     * refuses the image. The last one, a picture asking to bookmark the site, is a path of the site itself and is not
+     * taken.
      */
     fun parseImages(script: String): List<String> {
-        val text = script.replace("\\/", "/")
-        val host = IMAGE_HOST.find(text)?.groupValues?.get(1)?.trimEnd('/')
-        val withHost = if (host.isNullOrEmpty()) {
-            emptyList()
-        } else {
-            IMAGE_PATH.findAll(text).map { absolute(host + it.groupValues[1]) }.toList()
-        }
-        val urls = withHost.ifEmpty { IMAGE.findAll(text).map { absolute(it.value) }.toList() }
+        val text = script.replace("\\/", "/").replace("\\\"", "\"").replace("\\'", "'")
+        val host = IMAGE_HOST.find(text)?.groupValues?.get(1)?.trimEnd('/').orEmpty()
+        val listed = IMAGE_PATH.findAll(text).map { absolute(host + it.groupValues[1]) }.toList()
+        val urls = listed.ifEmpty { IMAGE.findAll(text).map { absolute(it.value) }.toList() }
         return urls.filter { it.startsWith("http") && "/themes/" !in it && "shoucang" !in it }.distinct()
     }
 
