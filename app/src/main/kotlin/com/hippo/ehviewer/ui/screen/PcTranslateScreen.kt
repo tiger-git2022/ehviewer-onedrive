@@ -44,7 +44,9 @@ import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.pctranslate.PcItem
 import com.hippo.ehviewer.pctranslate.PcState
 import com.hippo.ehviewer.pctranslate.PcTranslate
+import com.hippo.ehviewer.pctranslate.PcTransfer
 import com.hippo.ehviewer.pctranslate.PcTranslateWork
+import com.hippo.ehviewer.pctranslate.transferText
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.connectPc
 import com.hippo.ehviewer.ui.copyPcPrompt
@@ -174,7 +176,7 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
                     )
                 }
                 items(list, key = { it.gid }) { item ->
-                    val moving = transfer?.takeIf { it.first == item.gid }?.second
+                    val moving = transfer?.takeIf { it.gid == item.gid }
                     PcItemRow(item = item, moving = moving)
                 }
             }
@@ -184,7 +186,7 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
 
 @Composable
 context(_: Context, _: SnackbarHostState, _: DialogState, _: CoroutineScope)
-private fun PcItemRow(item: PcItem, moving: Pair<Long, Long>?) {
+private fun PcItemRow(item: PcItem, moving: PcTransfer?) {
     val info = remember(item.gid) { DownloadManager.getDownloadInfo(item.gid) }
     Column {
         ListItem(
@@ -192,6 +194,10 @@ private fun PcItemRow(item: PcItem, moving: Pair<Long, Long>?) {
             supportingContent = {
                 val parts = buildList {
                     add("→ ${item.folder}")
+                    if (moving != null) {
+                        val bytes = transferText(contextOf<Context>(), moving)
+                        add(stringResource(id = if (moving.sending) R.string.pc_translate_sending else R.string.pc_translate_taking, bytes))
+                    }
                     if (item.pages > 0 && item.state == PcState.ON_PC) add(stringResource(id = R.string.pc_translate_translated_of, item.translated, item.pages))
                     if (item.state == PcState.DONE) add(stringResource(id = R.string.pc_translate_pages, item.pages))
                     item.message?.let { add(it) }
@@ -232,11 +238,14 @@ private fun PcItemRow(item: PcItem, moving: Pair<Long, Long>?) {
             },
         )
         if (moving != null) {
-            val (done, total) = moving
-            LinearProgressIndicator(
-                progress = { if (total > 0) done.toFloat() / total else 0f },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
+            if (moving.total > 0) {
+                LinearProgressIndicator(
+                    progress = { moving.done.toFloat() / moving.total },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            }
         }
     }
 }

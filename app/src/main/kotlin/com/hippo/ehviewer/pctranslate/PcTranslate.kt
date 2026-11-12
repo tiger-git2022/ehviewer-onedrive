@@ -8,7 +8,9 @@ import com.ehviewer.core.files.find
 import com.ehviewer.core.files.metadataOrNull
 import com.ehviewer.core.files.moveTo
 import com.ehviewer.core.files.openFileDescriptor
+import com.ehviewer.core.files.read
 import com.ehviewer.core.util.logcat
+import com.ehviewer.core.util.withIOContext
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.download.ArchivePages
 import com.hippo.ehviewer.download.DownloadManager
@@ -19,20 +21,32 @@ import com.hippo.ehviewer.spider.COMIC_INFO_FILE
 import com.hippo.ehviewer.sync.OneDriveSync
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketException
+import java.net.UnknownHostException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.io.asInputStream
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path
 import splitties.init.appCtx
 
 /** The PC paired with: 「平板收发」 of EH 上传助手. [id] finds it again when its address changes. */
 @Serializable
 data class PcServer(val host: String, val port: Int, val token: String, val name: String, val id: String = "")
+
+/** The download moving now: [sending] to the PC or taken back from it, [done] of [total] bytes (-1 when unknown). */
+data class PcTransfer(val gid: Long, val sending: Boolean, val done: Long, val total: Long) {
+    /** 0 to 100, -1 when the size is unknown. */
+    val percent: Int get() = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else -1
+}
 
 /** A download sent to the PC to be translated. */
 @Serializable
@@ -104,13 +118,13 @@ object PcTranslate {
     private val data = MutableStateFlow(load())
 
     private val _items = MutableStateFlow(data.value.items)
-    private val _transfer = MutableStateFlow<Pair<Long, Pair<Long, Long>>?>(null)
+    private val _transfer = MutableStateFlow<PcTransfer?>(null)
 
     /** The downloads sent, by gid. */
     val items: StateFlow<Map<Long, PcItem>> = _items.asStateFlow()
 
-    /** Bytes sent or taken back so far of the one moving now: gid to (done, total). */
-    val transfer: StateFlow<Pair<Long, Pair<Long, Long>>?> = _transfer.asStateFlow()
+    /** The one moving now, with the bytes sent or taken back so far. */
+    val transfer: StateFlow<PcTransfer?> = _transfer.asStateFlow()
 
     /** Something to do now: wakes up the work waiting for its next round. */
     val kicks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -157,6 +171,40 @@ object PcTranslate {
     fun lastFolder(today: String): String? = data.value.takeIf { it.lastFolderDay == today }?.lastFolder
 
     fun deviceName(): String = OneDriveSync.deviceName
+
+    /** The bytes of the archives of [infos], to show before sending. */
+    suspend fun sizeOf(infos: Collection<DownloadInfo>): Long = withIOContext { infos.sumOf { it.archiveFile?.let(::sizeOf)?.coerceAtLeast(0) ?: 0L } }
+
+    /**
+     * The size of [path]: from its metadata, else from the file opened. A download folder picked with the system picker
+     * (content://) has no size in its metadata: taken as 0, the upload was cut off before reaching the PC, and the
+     * download stayed 「待发到电脑」 for ever.
+     */
+    private fun sizeOf(path: Path): Long = path.metadataOrNull()?.size?.takeIf { it >= 0 }
+        ?: runCatching { path.openFileDescriptor("r").use { it.statSize } }.getOrDefault(-1L).takeIf { it >= 0 }
+        ?: path.read {
+            asInputStream().use { input ->
+                val buffer = ByteArray(256 * 1024)
+                var n = 0L
+                while (true) {
+                    val r = input.read(buffer)
+                    if (r < 0) break
+                    n += r
+                }
+                n
+            }
+        }
+
+    /** Sets [_transfer], only when the percent moved: not a new state for each piece of 256 KB. */
+    private fun progress(gid: Long, sending: Boolean, done: Long, total: Long) {
+        val old = _transfer.value
+        val new = PcTransfer(gid, sending, done, total)
+        if (old == null || old.gid != gid || old.sending != sending || old.percent != new.percent ||
+            (new.percent < 0 && done - old.done >= 1L shl 20) || done == total
+        ) {
+            _transfer.value = new
+        }
+    }
 
     /** Downloads that can be sent: finished, kept as an archive. */
     fun sendable(info: DownloadInfo) = info.state == DownloadInfo.STATE_FINISH && info.archiveFile != null
@@ -210,7 +258,11 @@ object PcTranslate {
     suspend fun runOnce(onStatus: suspend (String?) -> Unit): Boolean {
         var server = server ?: return false
         var reached = false
-        for (item in items.value.values.filter { it.state == PcState.QUEUED }.sortedBy { it.time }) {
+        // One at a time, the oldest first; those queued meanwhile are sent in this round too
+        val tried = HashSet<Long>()
+        while (true) {
+            val item = items.value.values.filter { it.state == PcState.QUEUED && it.gid !in tried }.minByOrNull { it.time } ?: break
+            tried += item.gid
             val info = DownloadManager.getDownloadInfo(item.gid)
             if (info == null || !sendable(info)) {
                 update(item.gid) { it.copy(state = PcState.FAILED, message = "下载不在了，或还没下载完") }
@@ -221,12 +273,24 @@ object PcTranslate {
                 sendOne(server, info, item)
                 reached = true
                 update(item.gid) { it.copy(state = PcState.ON_PC, message = "已发到电脑", sent = true) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PcAuthException) {
+                throw e
             } catch (e: PcHttpException) {
-                if (e is PcAuthException) throw e
-                update(item.gid) { it.copy(state = PcState.FAILED, message = e.message) }
-            } catch (e: IOException) {
+                reached = true
+                update(item.gid) { it.copy(state = PcState.FAILED, message = "电脑没收下：${e.message}") }
+            } catch (e: Exception) {
                 logcat(TAG, e)
-                server = relocate(server) ?: return reached
+                val reason = e.message ?: e.javaClass.simpleName
+                if (e.isNetwork()) {
+                    // Kept to send: the next round tries again, and says why it waits
+                    update(item.gid) { it.copy(message = "连不上电脑（$reason），稍后自动重试") }
+                    server = relocate(server) ?: return reached
+                } else {
+                    // Not the network: trying again would fail the same, so it shows and waits for 「重试」
+                    update(item.gid) { it.copy(state = PcState.FAILED, message = "发送失败：$reason") }
+                }
             } finally {
                 _transfer.value = null
             }
@@ -286,12 +350,13 @@ object PcTranslate {
         val archive = checkNotNull(info.archiveFile) { "No archive" }
         val dirname = info.dirname ?: "${info.gid}"
         val files = listOfNotNull(archive to "${info.gid}.cbz", dir.find(COMIC_INFO_FILE)?.let { it to COMIC_INFO_FILE })
-        val sizes = files.map { (path, _) -> path.metadataOrNull()?.size ?: 0L }
+        val sizes = withIOContext { files.map { (path, _) -> sizeOf(path) } }
         val total = sizes.sum()
         var before = 0L
+        _transfer.value = PcTransfer(info.gid, true, 0, total)
         files.forEachIndexed { i, (path, name) ->
-            PcClient.upload(server, info.gid, name, item.folder, dirname, path, sizes[i]) { done ->
-                _transfer.value = info.gid to ((before + done) to total)
+            PcClient.upload(server, info.gid, name, item.folder, dirname, item.title, path, sizes[i]) { done ->
+                progress(info.gid, true, before + done, total)
             }
             before += sizes[i]
         }
@@ -312,7 +377,8 @@ object PcTranslate {
         val temp = dir / "${info.gid}.pc.part"
         try {
             if (temp.exists()) temp.delete()
-            PcClient.download(server, item.gid, temp) { done, total -> _transfer.value = item.gid to (done to total) }
+            _transfer.value = PcTransfer(item.gid, false, 0, -1)
+            PcClient.download(server, item.gid, temp) { done, total -> progress(item.gid, false, done, total) }
             val pages = runCatching {
                 ParcelFileDescriptor.AutoCloseInputStream(temp.openFileDescriptor("r")).use { countZipPages(it.channel) }
             }.getOrNull()
@@ -351,6 +417,9 @@ object PcTranslate {
         ArchivePages.refresh(info)
         return true
     }
+
+    /** The network failed, not the file or the PC: worth trying again by itself. */
+    private fun Exception.isNetwork() = this is SocketException || this is InterruptedIOException || this is UnknownHostException
 
     /** The download still has its original archive beside the translated one. */
     fun hasBackup(info: DownloadInfo, item: PcItem) = item.backup != null && info.downloadDir?.find(item.backup) != null

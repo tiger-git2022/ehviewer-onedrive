@@ -944,6 +944,12 @@
     <string name="pc_translate_badge_failed">电脑翻译失败</string>
     <string name="pc_translate_badge_on_pc">电脑翻译中</string>
     <string name="pc_translate_badge_queued">待发到电脑</string>
+    <string name="pc_translate_badge_sending">正在发送 %d%%</string>
+    <string name="pc_translate_badge_taking">正在取回 %d%%</string>
+    <string name="pc_translate_badge_retrying">待发送 · 连不上电脑</string>
+    <string name="pc_translate_sending">正在发送：%s</string>
+    <string name="pc_translate_taking">正在取回：%s</string>
+    <string name="pc_translate_progress">%1$s / %2$s · %3$d%%</string>
     <string name="pc_translate_cancel">撤销</string>
     <string name="pc_translate_empty">还没有发过。在下载列表里多选，再点「文A」按钮，就能发到电脑翻译</string>
     <string name="pc_translate_find_again">重新找电脑</string>

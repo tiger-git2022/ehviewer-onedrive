@@ -29,9 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.database.model.DownloadInfo
-import com.ehviewer.core.files.metadataOrNull
 import com.ehviewer.core.i18n.R
-import com.hippo.ehviewer.download.archiveFile
 import com.hippo.ehviewer.pctranslate.PcAuthException
 import com.hippo.ehviewer.pctranslate.PcClient
 import com.hippo.ehviewer.pctranslate.PcFolders
@@ -80,7 +78,7 @@ suspend fun sendToPc(infos: Collection<DownloadInfo>) {
         return
     }
     PcTranslate.setRoot(folders.root)
-    val size = sendable.sumOf { it.archiveFile?.metadataOrNull()?.size ?: 0L }
+    val size = PcTranslate.sizeOf(sendable)
     val today = folders.suggest.ifEmpty { LocalDate.now().toString() }
     val folder = awaitPickFolder(server, folders, today, sendable.size, size)
     PcTranslate.send(sendable, folder, today)
@@ -205,21 +203,30 @@ private suspend fun awaitPickFolder(server: PcServer, folders: PcFolders, today:
     return awaitInputText(initial = today, title = other, hint = string(R.string.pc_translate_folder_name)).trim().ifEmpty { today }
 }
 
-/** On a download card: where it is with the PC translation, nothing when never sent. */
+/** On a download card: where it is with the PC translation, with the percent while it moves; nothing when never sent. */
 @Composable
 fun PcTranslateBadge(gid: Long, modifier: Modifier = Modifier) {
     val items by PcTranslate.items.collectAsState()
+    val transfer by PcTranslate.transfer.collectAsState()
     val item = items[gid] ?: return
+    val moving = transfer?.takeIf { it.gid == gid }
     val colors = MaterialTheme.colorScheme
-    val (text, container, content) = when (item.state) {
-        PcState.QUEUED -> Triple(R.string.pc_translate_badge_queued, colors.secondaryContainer, colors.onSecondaryContainer)
-        PcState.ON_PC -> Triple(R.string.pc_translate_badge_on_pc, colors.primaryContainer, colors.onPrimaryContainer)
-        PcState.DONE -> Triple(R.string.pc_translate_badge_done, colors.tertiaryContainer, colors.onTertiaryContainer)
-        PcState.FAILED -> Triple(R.string.pc_translate_badge_failed, colors.errorContainer, colors.onErrorContainer)
-        PcState.RESTORED -> return
+    val (text, container, content) = when {
+        moving != null -> Triple(
+            stringResource(id = if (moving.sending) R.string.pc_translate_badge_sending else R.string.pc_translate_badge_taking, moving.percent.coerceAtLeast(0)),
+            colors.primaryContainer,
+            colors.onPrimaryContainer,
+        )
+        item.state == PcState.QUEUED && item.message != null ->
+            Triple(stringResource(id = R.string.pc_translate_badge_retrying), colors.errorContainer, colors.onErrorContainer)
+        item.state == PcState.QUEUED -> Triple(stringResource(id = R.string.pc_translate_badge_queued), colors.secondaryContainer, colors.onSecondaryContainer)
+        item.state == PcState.ON_PC -> Triple(stringResource(id = R.string.pc_translate_badge_on_pc), colors.primaryContainer, colors.onPrimaryContainer)
+        item.state == PcState.DONE -> Triple(stringResource(id = R.string.pc_translate_badge_done), colors.tertiaryContainer, colors.onTertiaryContainer)
+        item.state == PcState.FAILED -> Triple(stringResource(id = R.string.pc_translate_badge_failed), colors.errorContainer, colors.onErrorContainer)
+        else -> return
     }
     Text(
-        text = stringResource(id = text),
+        text = text,
         modifier = modifier.clip(ShapeDefaults.Small).background(container).padding(vertical = 1.dp, horizontal = 6.dp),
         color = content,
         style = MaterialTheme.typography.labelMedium,
