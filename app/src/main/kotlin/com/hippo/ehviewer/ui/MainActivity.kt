@@ -180,11 +180,12 @@ private val navItems = arrayOf<Triple<Direction, Int, ImageVector>>(
     Triple(SubscriptionScreenDestination, R.string.subscription, EhIcons.Default.Subscriptions),
     Triple(WhatshotScreenDestination, R.string.whats_hot, Icons.Default.Whatshot),
     Triple(ToplistScreenDestination, R.string.toplist, Icons.Default.FormatListNumbered),
+    // Fork: the galleries published from this account and their new comments, see myuploads/; above the favorites
+    // (only the first four are launch pages, so the indices after them may move)
+    Triple(MyUploadsScreenDestination, R.string.my_uploads, Icons.Default.Upload),
     Triple(FavouritesScreenDestination, R.string.favourite, Icons.Default.Favorite),
     Triple(HistoryScreenDestination, R.string.history, Icons.Default.History),
     Triple(DownloadsScreenDestination, R.string.downloads, Icons.Default.Download),
-    // Fork: the galleries published from this account and their new comments, see myuploads/
-    Triple(MyUploadsScreenDestination, R.string.my_uploads, Icons.Default.Upload),
     Triple(SettingsScreenDestination, R.string.settings, Icons.Default.Settings),
 )
 
