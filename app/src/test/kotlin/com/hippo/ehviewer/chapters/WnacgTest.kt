@@ -200,6 +200,22 @@ class WnacgTest {
     }
 
     @Test
+    fun keepsTheVerifyOfEachImage() {
+        // As the site writes it (2026-11): without its "?verify=..." an image is refused (403)
+        val script = """
+            document.writeln("  var fast_img_host=\"\";");
+            document.writeln("  var imglist = [{ url: fast_img_host+\"//img5.qy0.ru/data/3000/00/01.jpg?verify=1794506400-mrcjnNBKCpxb\", caption: \"[01]\"},{ url: fast_img_host+\"//img5.qy0.ru/data/3000/00/02.webp?verify=1794506400-5jncFCw_Mn-p\", caption: \"[02]\"},{ url: fast_img_host+\"/themes/weitu/images/bg/shoucang.jpg\", caption: \"喜歡紳士漫畫的同學請加入收藏哦！\"}];");
+        """.trimIndent()
+        assertEquals(
+            listOf(
+                "https://img5.qy0.ru/data/3000/00/01.jpg?verify=1794506400-mrcjnNBKCpxb",
+                "https://img5.qy0.ru/data/3000/00/02.webp?verify=1794506400-5jncFCw_Mn-p",
+            ),
+            Wnacg.parseImages(script),
+        )
+    }
+
+    @Test
     fun readsTheImagesAfterTheirHost() {
         val script = """
             var fast_img_host = "https://img4.qy0.ru";
