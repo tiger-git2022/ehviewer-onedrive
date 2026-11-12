@@ -20,7 +20,11 @@ import androidx.work.WorkerParameters
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
+import com.hippo.ehviewer.util.FileUtils
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import splitties.init.appCtx
 
@@ -45,9 +49,19 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = withIOContext {
         val start = SystemClock.elapsedRealtime()
         var status: String? = null
-        suspend fun foreground() = runCatching { setForeground(foregroundInfo(applicationContext, status)) }
-            .onFailure { logcat(WORK_NAME, it) }
+        var shown: PcTransfer? = null
+        suspend fun foreground() = runCatching {
+            shown = PcTranslate.transfer.value
+            setForeground(foregroundInfo(applicationContext, status, shown))
+        }.onFailure { logcat(WORK_NAME, it) }
         foreground()
+        // The bytes moved, in the notification once a second
+        val progress = launch {
+            while (isActive) {
+                delay(1000)
+                if (PcTranslate.transfer.value != shown) foreground()
+            }
+        }
         val doneBefore = PcTranslate.items.value.values.count { it.state == PcState.DONE }
         while (PcTranslate.hasWork() && SystemClock.elapsedRealtime() - start < MAX_RUN_MILLIS) {
             val reached = try {
@@ -70,12 +84,13 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
             // Something sent meanwhile wakes it up before the time
             withTimeoutOrNull(if (reached) POLL_MILLIS else UNREACHABLE_POLL_MILLIS) { PcTranslate.kicks.first() }
         }
+        progress.cancel()
         val taken = PcTranslate.items.value.values.count { it.state == PcState.DONE } - doneBefore
         if (taken > 0) notifyResult(applicationContext, applicationContext.getString(R.string.pc_translate_taken_back, taken))
         Result.success()
     }
 
-    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, null)
+    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, null, null)
 
     companion object {
         /** Starts the work, or wakes up the running one: it sees what was just queued. */
@@ -112,17 +127,28 @@ private fun openAppIntent(context: Context): PendingIntent? = context.packageMan
     PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE)
 }
 
-private fun foregroundInfo(context: Context, moving: String?): ForegroundInfo {
+private fun foregroundInfo(context: Context, moving: String?, transfer: PcTransfer?): ForegroundInfo {
     createChannel(context)
     val items = PcTranslate.items.value.values
     val queued = items.count { it.state == PcState.QUEUED }
     val onPc = items.count { it.state == PcState.ON_PC }
-    val text = moving?.let { context.getString(R.string.pc_translate_moving, it) }
-        ?: context.getString(R.string.pc_translate_notification, queued, onPc)
+    val text = moving?.let {
+        when (transfer?.sending) {
+            true -> context.getString(R.string.pc_translate_sending, it)
+            false -> context.getString(R.string.pc_translate_taking, it)
+            null -> context.getString(R.string.pc_translate_moving, it)
+        }
+    } ?: context.getString(R.string.pc_translate_notification, queued, onPc)
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.stat_notify_sync)
         .setContentTitle(context.getString(R.string.pc_translate))
         .setContentText(text)
+        .apply {
+            if (moving != null && transfer != null) {
+                setProgress(100, transfer.percent.coerceAtLeast(0), transfer.percent < 0)
+                setSubText(transferText(context, transfer))
+            }
+        }
         .setContentIntent(openAppIntent(context))
         .setOngoing(true)
         .setOnlyAlertOnce(true)
@@ -133,6 +159,16 @@ private fun foregroundInfo(context: Context, moving: String?): ForegroundInfo {
         ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     } else {
         ForegroundInfo(NOTIFICATION_ID, notification)
+    }
+}
+
+/** "12.3 MB / 45.6 MB · 27%", or only the bytes moved while the size is unknown. */
+fun transferText(context: Context, transfer: PcTransfer): String {
+    val done = FileUtils.humanReadableByteCount(transfer.done)
+    return if (transfer.total > 0) {
+        context.getString(R.string.pc_translate_progress, done, FileUtils.humanReadableByteCount(transfer.total), transfer.percent)
+    } else {
+        done
     }
 }
 

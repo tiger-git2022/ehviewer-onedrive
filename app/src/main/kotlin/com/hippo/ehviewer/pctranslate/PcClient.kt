@@ -161,13 +161,17 @@ object PcClient {
         json.decodeFromString<PcFolders>(it.body.string())
     }
 
-    /** Sends one file of a download: [name] is "<gid>.cbz" or "ComicInfo.xml". */
+    /**
+     * Sends one file of a download: [name] is "<gid>.cbz" or "ComicInfo.xml", [size] its exact size (the PC reads that
+     * many bytes). [title] lets the PC show it while it comes in.
+     */
     suspend fun upload(
         server: PcServer,
         gid: Long,
         name: String,
         folder: String,
         dir: String,
+        title: String,
         file: Path,
         size: Long,
         onProgress: (Long) -> Unit,
@@ -187,11 +191,12 @@ object PcClient {
                             done += n
                             onProgress(done)
                         }
+                        if (done != size) throw IOException("$name 读到 $done 字节，和大小 $size 对不上")
                     }
                 }
             }
         }
-        val path = "/api/items/$gid/files/${enc(name)}?folder=${enc(folder)}&dir=${enc(dir)}"
+        val path = "/api/items/$gid/files/${enc(name)}?folder=${enc(folder)}&dir=${enc(dir)}&title=${enc(title.take(200))}"
         call(Request.Builder().url(url(server, path)).auth(server).put(body).build()) { }
     }
 

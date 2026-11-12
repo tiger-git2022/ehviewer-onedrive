@@ -962,6 +962,12 @@
     <string name="pc_translate_badge_failed">PC failed</string>
     <string name="pc_translate_badge_on_pc">On the PC</string>
     <string name="pc_translate_badge_queued">To send</string>
+    <string name="pc_translate_badge_sending">Sending %d%%</string>
+    <string name="pc_translate_badge_taking">Taking back %d%%</string>
+    <string name="pc_translate_badge_retrying">To send · PC unreachable</string>
+    <string name="pc_translate_sending">Sending %s</string>
+    <string name="pc_translate_taking">Taking back %s</string>
+    <string name="pc_translate_progress">%1$s / %2$s · %3$d%%</string>
     <string name="pc_translate_cancel">Cancel</string>
     <string name="pc_translate_empty">Nothing sent yet. In the downloads, select some and tap the translate button to send them to the PC</string>
     <string name="pc_translate_find_again">Find the PC again</string>

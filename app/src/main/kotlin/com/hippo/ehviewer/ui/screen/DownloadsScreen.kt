@@ -76,9 +76,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
@@ -120,9 +123,9 @@ import com.hippo.ehviewer.download.DownloadsFilterMode
 import com.hippo.ehviewer.download.shownPages
 import com.hippo.ehviewer.restore.fromPandaChaika
 import com.hippo.ehviewer.ui.DrawerHandle
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.confirmRemoveDownloadRange
-import com.hippo.ehviewer.ui.sendToPc
 import com.hippo.ehviewer.ui.destinations.PcTranslateScreenDestination
 import com.hippo.ehviewer.ui.main.DownloadCard
 import com.hippo.ehviewer.ui.main.GalleryInfoGridItem
@@ -130,11 +133,14 @@ import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.rememberDownloadPages
 import com.hippo.ehviewer.ui.navToReader
+import com.hippo.ehviewer.ui.sendToPc
 import com.hippo.ehviewer.ui.showMoveDownloadLabelList
+import com.hippo.ehviewer.ui.tools.BarAction
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
 import com.hippo.ehviewer.ui.tools.awaitInputText
 import com.hippo.ehviewer.ui.tools.awaitSelectAction
+import com.hippo.ehviewer.ui.tools.showGlassMenu
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -521,64 +527,62 @@ fun AnimatedVisibilityScope.DownloadsScreen(navigator: DestinationsNavigator) = 
                 val icon = if (gridView) Icons.AutoMirrored.Default.ViewList else Icons.Default.GridView
                 Icon(imageVector = icon, contentDescription = null)
             }
-            IconButton(onClick = { expanded = !expanded }, shapes = IconButtonDefaults.shapes()) {
-                Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                // Fork: the downloads sent to the PC to translate, first in the menu
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.pc_translate)) },
-                    onClick = {
-                        expanded = false
-                        navigate(PcTranslateScreenDestination)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.download_labels)) },
-                    onClick = {
-                        expanded = false
-                        launch { sideSheetState.open() }
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.download_start_all)) },
-                    onClick = {
-                        expanded = false
-                        DownloadService.startService(DownloadService.ACTION_START_ALL)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.download_stop_all)) },
-                    onClick = {
-                        expanded = false
-                        launchIO { DownloadManager.stopAllDownload() }
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.download_reset_reading_progress)) },
-                    onClick = {
-                        expanded = false
-                        launchIO {
-                            awaitConfirmationOrCancel(
-                                confirmText = android.R.string.ok,
-                                dismissText = android.R.string.cancel,
-                            ) {
-                                Text(text = stringResource(id = R.string.reset_reading_progress_message))
-                            }
-                            withNonCancellableContext {
-                                DownloadManager.resetAllReadingProgress()
-                            }
+            // Fork: the menu as a list of actions, in liquid glass when the page is (as the menu of the gallery detail)
+            val labelsText = stringResource(id = R.string.download_labels)
+            val startAllText = stringResource(id = R.string.download_start_all)
+            val stopAllText = stringResource(id = R.string.download_stop_all)
+            val resetProgressText = stringResource(id = R.string.download_reset_reading_progress)
+            val startAllReversedText = stringResource(id = R.string.download_start_all_reversed)
+            val pcTranslateText = stringResource(id = R.string.pc_translate)
+            val menu = listOf(
+                BarAction(labelsText) { launch { sideSheetState.open() } },
+                BarAction(startAllText) { DownloadService.startService(DownloadService.ACTION_START_ALL) },
+                BarAction(stopAllText) { launchIO { DownloadManager.stopAllDownload() } },
+                BarAction(resetProgressText) {
+                    launchIO {
+                        awaitConfirmationOrCancel(
+                            confirmText = android.R.string.ok,
+                            dismissText = android.R.string.cancel,
+                        ) {
+                            Text(text = stringResource(id = R.string.reset_reading_progress_message))
                         }
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(id = R.string.download_start_all_reversed)) },
-                    onClick = {
-                        expanded = false
-                        val gidList = list.filter { it.state != DownloadInfo.STATE_FINISH }.asReversed().mapToLongArray(DownloadInfo::gid)
-                        DownloadService.startRangeDownload(gidList)
-                    },
-                )
+                        withNonCancellableContext {
+                            DownloadManager.resetAllReadingProgress()
+                        }
+                    }
+                },
+                BarAction(startAllReversedText) {
+                    val gidList = list.filter { it.state != DownloadInfo.STATE_FINISH }.asReversed().mapToLongArray(DownloadInfo::gid)
+                    DownloadService.startRangeDownload(gidList)
+                },
+                // Fork: the downloads sent to the PC to translate, last in the menu
+                BarAction(pcTranslateText) { navigate(PcTranslateScreenDestination) },
+            )
+            if (LocalPageBackdrop.current != null) {
+                var anchor by remember { mutableStateOf(Rect.Zero) }
+                IconButton(
+                    // Opens a little below the button, apart from the search bar
+                    onClick = { launch { showGlassMenu(anchor, menu, anchor.bottom + 1)?.onClick?.invoke() } },
+                    modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
+                    shapes = IconButtonDefaults.shapes(),
+                ) {
+                    Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
+                }
+            } else {
+                IconButton(onClick = { expanded = !expanded }, shapes = IconButtonDefaults.shapes()) {
+                    Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    menu.forEach { action ->
+                        DropdownMenuItem(
+                            text = { Text(text = action.label) },
+                            onClick = {
+                                expanded = false
+                                action.onClick()
+                            },
+                        )
+                    }
+                }
             }
         },
     ) { contentPadding ->
