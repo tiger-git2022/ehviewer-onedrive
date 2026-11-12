@@ -25,8 +25,6 @@ import java.io.InterruptedIOException
 import java.net.SocketException
 import java.net.UnknownHostException
 import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,9 +123,6 @@ object PcTranslate {
 
     /** The one moving now, with the bytes sent or taken back so far. */
     val transfer: StateFlow<PcTransfer?> = _transfer.asStateFlow()
-
-    /** Something to do now: wakes up the work waiting for its next round. */
-    val kicks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     val server: PcServer? get() = data.value.server
     val keepOriginal: Boolean get() = data.value.keepOriginal
