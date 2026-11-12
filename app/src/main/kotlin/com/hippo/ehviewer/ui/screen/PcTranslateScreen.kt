@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,8 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
     val transfer by PcTranslate.transfer.collectAsState()
     var server by remember { mutableStateOf(PcTranslate.server) }
     var keepOriginal by remember { mutableStateOf(PcTranslate.keepOriginal) }
+    // Asks the PC each time the page opens: translations done meanwhile are taken back now
+    LaunchedEffect(Unit) { PcTranslateWork.start(appCtx) }
     val sections = remember(items) {
         listOf(
             R.string.pc_translate_section_queued to PcState.QUEUED,

@@ -20,30 +20,24 @@ import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
 import com.hippo.ehviewer.util.FileUtils
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 
 private const val WORK_NAME = "PcTranslateWork"
-private const val POLL_NAME = "PcTranslatePoll"
 private const val CHANNEL_ID = "pc_translate"
 private const val NOTIFICATION_ID = 0x0D61
 private const val RESULT_NOTIFICATION_ID = 0x0D62
-
-// Asked every minute while the PC answers, less often while it does not
-private const val POLL_MILLIS = 60_000L
-private const val UNREACHABLE_POLL_MILLIS = 180_000L
 
 // Rounds in one run at most, while more is queued during them
 private const val MAX_ROUNDS = 20
 
 /**
  * Fork: sends the downloads queued by [PcTranslate] to the PC, asks it about those it has and takes back the packed
- * ones. One round per run: while some are still on the PC, [PcTranslatePoll] starts the next a minute later. In the
- * foreground with a notification only while a file moves (so it goes on with the screen off): while it only waits for
- * the translation, no notification stays. Started again each time the app comes to the front.
+ * ones, in one round. Not asked again in the background while the translation is made (that takes hours): each time
+ * the app comes to the front or 「电脑翻译」 opens, it asks again. In the foreground with a notification only while a
+ * file moves, so a transfer goes on with the screen off; no notification stays while it waits.
  */
 class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withIOContext {
@@ -70,7 +64,6 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
         }
         val doneBefore = PcTranslate.items.value.values.count { it.state == PcState.DONE }
         var reached = false
-        var unpaired = false
         var rounds = 0
         while (rounds++ < MAX_ROUNDS) {
             val roundStart = System.currentTimeMillis()
@@ -83,7 +76,6 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
                 logcat(WORK_NAME, e)
                 PcTranslate.setServer(null)
                 notifyResult(applicationContext, applicationContext.getString(R.string.pc_translate_unpaired))
-                unpaired = true
                 break
             } catch (e: Exception) {
                 logcat(WORK_NAME, e)
@@ -98,7 +90,6 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
         progress.cancel()
         val taken = PcTranslate.items.value.values.count { it.state == PcState.DONE } - doneBefore
         if (taken > 0) notifyResult(applicationContext, applicationContext.getString(R.string.pc_translate_taken_back, taken))
-        if (!unpaired && PcTranslate.hasWork()) schedulePoll(applicationContext, if (reached) POLL_MILLIS else UNREACHABLE_POLL_MILLIS)
         Result.success()
     }
 
@@ -123,23 +114,6 @@ class PcTranslateWork(context: Context, params: WorkerParameters) : CoroutineWor
                 },
             )
         }
-    }
-}
-
-/** The next round [delayMillis] from now: the last one waiting replaced. */
-private fun schedulePoll(context: Context, delayMillis: Long) {
-    WorkManager.getInstance(context).enqueueUniqueWork(
-        POLL_NAME,
-        ExistingWorkPolicy.REPLACE,
-        OneTimeWorkRequestBuilder<PcTranslatePoll>().setInitialDelay(delayMillis, TimeUnit.MILLISECONDS).build(),
-    )
-}
-
-/** Fork: starts [PcTranslateWork] again a while after a round, while some downloads are still on the PC. */
-class PcTranslatePoll(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
-        runCatching { PcTranslateWork.start(applicationContext) }.onFailure { logcat(WORK_NAME, it) }
-        return Result.success()
     }
 }
 
