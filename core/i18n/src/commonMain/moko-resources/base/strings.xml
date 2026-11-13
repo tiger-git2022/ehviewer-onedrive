@@ -999,6 +999,12 @@
     <string name="pc_translate_restore_confirm">Put the original archive back in place of the translated one? The translated one is deleted from the tablet (it stays on the PC).</string>
     <string name="pc_translate_restored">Original put back</string>
     <string name="pc_translate_retry">Retry</string>
+    <string name="pc_translate_delete_original">Delete original</string>
+    <string name="pc_translate_delete_original_confirm">Delete the original archive kept beside the translated one? This can\'t be undone (the PC still has the received copy).</string>
+    <string name="pc_translate_deleted_original">Original deleted</string>
+    <string name="pc_translate_delete_all_originals">Delete all kept originals</string>
+    <string name="pc_translate_delete_all_originals_confirm">Delete the %d original archives kept beside translated ones? This can\'t be undone.</string>
+    <string name="pc_translate_no_originals">No originals kept</string>
     <string name="pc_translate_searching">Looking for the PC…</string>
     <string name="pc_translate_section_done">Taken back · %d</string>
     <string name="pc_translate_section_failed">Failed · %d</string>

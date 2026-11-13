@@ -981,6 +981,12 @@
     <string name="pc_translate_restore_confirm">用原版换回译本？平板上的译本会删掉（电脑上还有）。</string>
     <string name="pc_translate_restored">已还原原版</string>
     <string name="pc_translate_retry">重试</string>
+    <string name="pc_translate_delete_original">删除原版</string>
+    <string name="pc_translate_delete_original_confirm">删除和译本放在一起的原版？删了不能恢复（电脑上收到的那份还在）。</string>
+    <string name="pc_translate_deleted_original">已删除原版</string>
+    <string name="pc_translate_delete_all_originals">删除所有原版备份</string>
+    <string name="pc_translate_delete_all_originals_confirm">删除 %d 本译本旁边留着的原版？删了不能恢复。</string>
+    <string name="pc_translate_no_originals">没有留着的原版</string>
     <string name="pc_translate_searching">正在找电脑…</string>
     <string name="pc_translate_section_done">已取回 · %d</string>
     <string name="pc_translate_section_failed">失败 · %d</string>

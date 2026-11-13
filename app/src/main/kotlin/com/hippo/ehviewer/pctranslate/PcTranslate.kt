@@ -292,6 +292,8 @@ object PcTranslate {
                     } catch (e: Exception) {
                         logcat(TAG, e)
                         update(r.gid) { it.copy(message = "取回失败，稍后再试：${e.message}") }
+                        // The PC list shows it too; on a network failure the PC may not be reachable, so best effort
+                        runCatching { PcClient.takeFailed(server, r.gid, e.message ?: e.javaClass.simpleName) }
                     } finally {
                         _transfer.value = null
                     }
@@ -388,6 +390,21 @@ object PcTranslate {
         update(gid) { it.copy(state = PcState.RESTORED, backup = null) }
         ArchivePages.refresh(info)
         return true
+    }
+
+    /** Deletes the original archive kept beside the translated one of [gid]. */
+    suspend fun deleteBackup(gid: Long): Boolean {
+        val item = items.value[gid] ?: return false
+        val info = DownloadManager.getDownloadInfo(gid) ?: return false
+        val backup = item.backup?.let { info.downloadDir?.find(it) } ?: return false
+        backup.delete()
+        update(gid) { it.copy(backup = null) }
+        return true
+    }
+
+    /** Downloads whose original is still kept beside the translated one. */
+    fun withBackup() = items.value.values.filter { item ->
+        DownloadManager.getDownloadInfo(item.gid)?.let { hasBackup(it, item) } == true
     }
 
     /** The network failed, not the file or the PC: worth trying again by itself. */

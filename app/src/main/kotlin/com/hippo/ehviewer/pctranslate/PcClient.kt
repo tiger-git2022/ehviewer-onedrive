@@ -241,6 +241,12 @@ object PcClient {
         call(Request.Builder().url(url(server, "/api/items/$gid/taken")).auth(server).post(ByteArray(0).toRequestBody()).build()) { }
     }
 
+    /** Tells the PC that taking [gid] back failed, so its list shows why. */
+    suspend fun takeFailed(server: PcServer, gid: Long, reason: String) {
+        val body = json.encodeToString(mapOf("message" to reason)).toRequestBody(jsonType)
+        call(Request.Builder().url(url(server, "/api/items/$gid/failed")).auth(server).post(body).build()) { }
+    }
+
     suspend fun cancel(server: PcServer, gid: Long) {
         call(Request.Builder().url(url(server, "/api/items/$gid")).auth(server).delete().build()) { }
     }
