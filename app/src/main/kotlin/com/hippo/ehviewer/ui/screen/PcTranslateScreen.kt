@@ -101,6 +101,24 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
                                 }
                             },
                         )
+                        DropdownMenuItem(
+                            text = { Text(text = stringResource(id = R.string.pc_translate_delete_all_originals)) },
+                            onClick = {
+                                expanded = false
+                                launch {
+                                    val kept = PcTranslate.withBackup()
+                                    if (kept.isEmpty()) {
+                                        snackbar(string(R.string.pc_translate_no_originals))
+                                        return@launch
+                                    }
+                                    awaitConfirmationOrCancel(confirmText = R.string.pc_translate_delete_original) {
+                                        Text(text = stringResource(id = R.string.pc_translate_delete_all_originals_confirm, kept.size))
+                                    }
+                                    kept.forEach { PcTranslate.deleteBackup(it.gid) }
+                                    snackbar(string(R.string.pc_translate_deleted_original))
+                                }
+                            },
+                        )
                         if (server != null) {
                             DropdownMenuItem(
                                 text = { Text(text = stringResource(id = R.string.pc_translate_unpair)) },
@@ -204,7 +222,26 @@ private fun PcItemRow(item: PcItem, moving: PcTransfer?) {
                         PcState.FAILED -> TextButton(onClick = { launch { PcTranslate.retry(item.gid) } }, shapes = ButtonDefaults.shapes()) {
                             Text(text = stringResource(id = R.string.pc_translate_retry))
                         }
+                        // Taking back failed: it tries again by itself when the app or this page opens, or now
+                        PcState.ON_PC -> if (item.message?.startsWith("取回失败") == true) {
+                            TextButton(onClick = { launch { PcTranslate.retry(item.gid) } }, shapes = ButtonDefaults.shapes()) {
+                                Text(text = stringResource(id = R.string.pc_translate_retry))
+                            }
+                        }
                         PcState.DONE -> if (info != null && PcTranslate.hasBackup(info, item)) {
+                            TextButton(
+                                onClick = {
+                                    launch {
+                                        awaitConfirmationOrCancel(confirmText = R.string.pc_translate_delete_original) {
+                                            Text(text = stringResource(id = R.string.pc_translate_delete_original_confirm))
+                                        }
+                                        if (PcTranslate.deleteBackup(item.gid)) snackbar(string(R.string.pc_translate_deleted_original))
+                                    }
+                                },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(text = stringResource(id = R.string.pc_translate_delete_original))
+                            }
                             TextButton(
                                 onClick = {
                                     launch {
