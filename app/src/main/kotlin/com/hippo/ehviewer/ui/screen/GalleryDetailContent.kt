@@ -52,11 +52,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LocalPinnableContainer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.core.text.parseAsHtml
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -130,6 +132,7 @@ import com.hippo.ehviewer.ui.cycleFavorite
 import com.hippo.ehviewer.ui.destinations.GalleryCommentsScreenDestination
 import com.hippo.ehviewer.ui.getFavoriteIcon
 import com.hippo.ehviewer.ui.jumpToReaderByPage
+import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
 import com.hippo.ehviewer.ui.main.ArchiveList
 import com.hippo.ehviewer.ui.main.EhPreviewItem
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
@@ -139,6 +142,9 @@ import com.hippo.ehviewer.ui.main.GalleryTags
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TorrentList
+import com.hippo.ehviewer.ui.main.decorate
+import com.hippo.ehviewer.ui.main.handleAnthologyLink
+import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
 import com.hippo.ehviewer.ui.main.selectableSections
 import com.hippo.ehviewer.ui.modifyFavorites
 import com.hippo.ehviewer.ui.navToReader
@@ -464,6 +470,10 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             if (translate) CommentTranslations.request(shownComments)
         }
         val originalShown = remember { mutableStateSetOf<Long>() }
+        // Fork: the contents list of an anthology and the pages of its mind control work, marked, see ui/main/AnthologyMarks.kt
+        val anthologyMarks = rememberAnthologyMarks(galleryDetail.gid, galleryDetail.pages, commentsList)
+        val anthologyContext = LocalContext.current
+        val mihonMissing = stringResource(R.string.mihon_not_installed)
         val originalLabel = stringResource(R.string.comment_original)
         val translationLabel = stringResource(R.string.select_text_translation)
         CrystalCard {
@@ -474,7 +484,17 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     onCardClick = ::navigateToCommentScreen,
                     onUserClick = ::navigateToCommentScreen,
                     onUrlClick = {
-                        if (it.startsWith("#c")) {
+                        if (it.startsWith(ANTHOLOGY_LINK)) {
+                            launch {
+                                anthologyMarks.handleAnthologyLink(
+                                    it,
+                                    anthologyContext,
+                                    galleryDetail,
+                                    showContents = { withUIContext { navigateToCommentScreen() } },
+                                    onMihonMissing = { snackbar(mihonMissing) },
+                                )
+                            }
+                        } else if (it.startsWith("#c")) {
                             navigateToCommentScreen()
                         } else {
                             if (!jumpToReaderByPage(it, galleryDetail)) if (!navWithUrl(it)) openBrowser(it)
@@ -482,6 +502,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                     },
                     maxLines = 5,
                     ellipsis = true,
+                    processComment = { c, ig -> anthologyMarks.decorate(c.comment.parseAsHtml(imageGetter = ig), item, original = c.comment == item.comment, hintFirst = true) },
                     translation = if (translate) CommentTranslations.stateOf(item) else null,
                     showOriginal = item.id in originalShown,
                     onToggleOriginal = { if (!originalShown.remove(item.id)) originalShown.add(item.id) },

@@ -1044,4 +1044,24 @@
     <string name="my_uploads_reply_hint">Reply in the comments</string>
     <string name="my_uploads_reply_too_short">At least 10 characters</string>
     <string name="my_uploads_reply_sent">Sent</string>
+    <!-- Fork: the contents list of an anthology in a comment, see anthology/ -->
+    <string name="anthology_summary_count">Contents: %d</string>
+    <string name="anthology_summary_favorited">♥ Favorited %d</string>
+    <string name="anthology_summary_mind_control">🌀 Mind control %d</string>
+    <string name="anthology_summary_finding">Finding favorites %1$d/%2$d</string>
+    <string name="anthology_mark_favorited">♥ Favorited</string>
+    <string name="anthology_mark_mind_control">🌀 Mind control</string>
+    <string name="anthology_hint_page">🌀 Mind control · page %s</string>
+    <string name="anthology_hint_read">Read</string>
+    <string name="anthology_menu_title">Page %1$d · %2$s</string>
+    <string name="anthology_menu_open_favorite">♥ Open the favorite: %s</string>
+    <string name="anthology_menu_search_tag">Search %s</string>
+    <string name="anthology_menu_search_name">Search “%s”</string>
+    <string name="anthology_menu_search_work">Search “%s” (artist and title, for this work alone)</string>
+    <string name="anthology_menu_copy">Copy “%s”</string>
+    <string name="anthology_sheet_summary">%1$d works by the contents in the comments, %2$d favorited</string>
+    <string name="anthology_sheet_none">%d works by the contents in the comments, none favorited</string>
+    <string name="anthology_sheet_finding">%1$d works by the contents in the comments, finding favorites %2$d/%3$d…</string>
+    <string name="anthology_sheet_failed">Could not find the favorites: %s</string>
+    <string name="anthology_sheet_again">Find again</string>
 </resources>

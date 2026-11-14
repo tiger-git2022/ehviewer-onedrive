@@ -122,7 +122,7 @@ private suspend fun awaitPageRanges(pages: Int, initial: String, detail: Gallery
             PagePicker(
                 pages = pages,
                 initial = initial,
-                detail = detail?.takeIf(ChapterCompare::isTankoubon),
+                detail = detail,
                 onCancel = { cont.cancel() },
                 onDownload = { cont.resume(PageChoice.Ranges(it)) },
                 onOpen = { source, picked -> cont.resume(PageChoice.Open(source, picked)) },
