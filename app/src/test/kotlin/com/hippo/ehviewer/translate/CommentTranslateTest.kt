@@ -247,5 +247,14 @@ class CommentTranslateTest {
         assertFalse(CommentSeries.isSeriesList("Will there be part?\n\nplease translate:\n[Chococornet (Tenro Aya)] Collapse Kuzure Yuku Risei [Digital]"))
         assertFalse(CommentSeries.isSeriesList("Thanks for the translation!\nThe art is great\nPlease do the next part https://exhentai.org/g/1/a/"))
         assertFalse(CommentSeries.isSeriesList("Next: I hope they do the sequel\nEnglish please\nThe Japanese version is better"))
+        // Parts numbered without links
+        assertTrue(CommentSeries.isSeriesList("01 - Sabbat\n02 - Falling\n03 - Infection\n04 - Awakening"))
+        // The words of a heading are not enough, the entries are what count
+        assertFalse(CommentSeries.isSeriesList("The series so far:\n00 - Sabbat - https://exhentai.org/g/1/a/\nSo good, can't wait for more"))
+        assertFalse(CommentSeries.isSeriesList("Other Language or Version\nJapanese digital\nI liked the Japanese one more, the translation here is off"))
+        // Points of a review, numbered but no parts
+        assertFalse(CommentSeries.isSeriesList("Thoughts:\n1. The art is great\n2. The story drags\n3. Too short\n4. Still worth it"))
+        // One language only is no list of versions
+        assertFalse(CommentSeries.isSeriesList("English\nEnglish\nEnglish please"))
     }
 }

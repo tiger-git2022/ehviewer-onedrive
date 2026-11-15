@@ -182,19 +182,17 @@ object CommentLinks {
  *     Other Language or Version
  *     Japanese digital
  *     English digital, translated by Doujins.com
- *     Series part : 催眠用務員
+ *     Chinese digital, translated by 萌意永久润色机翻, You are here!
  *
- * Told by its lines: headings ("The series so far", "Series part : title", "Other Language or Version"), a short title
- * with a link, or a language and who translated it. A question or a remark among them and the comment is translated.
+ * Told by the format of its lines, not by the words of a heading: at least three entries of one kind, a short title with
+ * a link, a title numbered 00, 01, 02 on, or a language and who translated it, in two languages or more. The other lines
+ * are short headings ("Series part : 催眠用務員"), and a question among them or a longer remark and it is translated.
  */
 object CommentSeries {
     private val urlRegex = Regex("""(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
 
-    // "The series so far:", "Series part : 催眠用務員", "Other Language or Version", "Previous: ...", "系列："
-    private val headingRegex = Regex(
-        """^[\p{P}\s]*(?:(?:the\s+)?series(?:\s+(?:so\s+far|parts?|list|index|entries|order))?|other\s+languages?(?:\s+(?:or|and|/)\s+versions?)?|other\s+versions?|previous(?:\s+(?:part|chapter|work))?|prev|next(?:\s+(?:part|chapter|work))?|related(?:\s+works?)?|シリーズ|前作|続編|系列作品|系列|续作|其他语言|其他版本)(?:\s*[:：-]\s*(.*)|\s*)$""",
-        RegexOption.IGNORE_CASE,
-    )
+    // "00 - Sabbat", "01. Falling", "02: Infection"
+    private val numberedRegex = Regex("""^(\d{1,3})\s*[-–—.:：)）]\s*\S""")
 
     private val languages = setOf(
         "japanese", "english", "chinese", "korean", "spanish", "french", "german", "russian", "portuguese", "italian",
@@ -211,49 +209,73 @@ object CommentSeries {
 
     private val translatedByRegex = Regex("""translated\s+by""", RegexOption.IGNORE_CASE)
 
+    private const val MIN_ENTRIES = 3
     private const val MAX_TITLE_WORDS = 10
     private const val MAX_TITLE_CHARS = 80
+
+    // A heading or a title between the entries: "Other Language or Version", "Series part : 催眠用務員CASE.02..."
+    private const val MAX_OTHER_LINE_CHARS = 60
 
     private fun words(text: String) = text.split(Regex("""[^\p{L}\p{N}]+""")).filter(String::isNotEmpty)
 
     private fun isQuestion(text: String) = '?' in text || '？' in text
 
-    private fun isHeading(line: String): Boolean {
-        val match = headingRegex.matchEntire(line) ?: return false
-        val title = match.groupValues[1]
-        return !isQuestion(title) && title.length <= MAX_TITLE_CHARS
-    }
-
-    // "Japanese digital", "Chinese digital, translated by 萌意永久润色机翻, You are here!", or "digital" alone
-    private fun isVersion(line: String): Boolean {
-        if (isQuestion(line)) return false
-        // Who translated it is a name, whatever it is
-        val words = words(line.split(translatedByRegex, limit = 2)[0]).map { it.lowercase() }
-        if (words.isEmpty()) return false
-        val rest = if (words[0] in languages) words.drop(1) else words
-        return (words[0] in languages || rest.isNotEmpty()) && rest.all { it in versionWords }
-    }
+    private fun isShortTitle(text: String) = !isQuestion(text) && text.trim().length <= MAX_TITLE_CHARS && words(text).size <= MAX_TITLE_WORDS
 
     // "00 - Sabbat - https://exhentai.org/g/1483497/3519d9a634/", "Part 2: https://..."
-    private fun isLinkEntry(line: String): Boolean {
-        if (!urlRegex.containsMatchIn(line)) return false
-        val rest = urlRegex.replace(line, " ")
-        return !isQuestion(rest) && rest.trim().length <= MAX_TITLE_CHARS && words(rest).size <= MAX_TITLE_WORDS
+    private fun isLinkEntry(line: String) = urlRegex.containsMatchIn(line) && isShortTitle(urlRegex.replace(line, " "))
+
+    // "01 - Falling": the number of a part, written with two digits or more; "1. The art is great" is a point of a review
+    private fun numberOf(line: String): Int? {
+        val digits = numberedRegex.find(line)?.groupValues?.get(1) ?: return null
+        if (digits.length < 2 || !isShortTitle(urlRegex.replace(line, " "))) return null
+        return digits.toInt()
+    }
+
+    // The language of "Japanese digital", "Chinese digital, translated by 萌意永久润色机翻, You are here!", "" for a
+    // "digital" alone under it, or null for no such line
+    private fun versionOf(line: String): String? {
+        if (isQuestion(line)) return null
+        // Who translated it is a name, whatever it is
+        val words = words(line.split(translatedByRegex, limit = 2)[0]).map { it.lowercase() }
+        if (words.isEmpty()) return null
+        val language = words[0].takeIf { it in languages }
+        val rest = if (language != null) words.drop(1) else words
+        if (language == null && rest.isEmpty()) return null
+        return if (rest.all { it in versionWords }) language.orEmpty() else null
     }
 
     fun isSeriesList(text: String): Boolean {
         val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
-        if (lines.size < 3) return false
-        var headings = 0
-        var entries = 0
+        if (lines.size < MIN_ENTRIES) return false
+        var links = 0
+        val numbers = mutableListOf<Int>()
+        var versions = 0
+        val versionLanguages = mutableSetOf<String>()
+        var others = 0
         lines.forEach { line ->
+            val number = numberOf(line)
+            val version = versionOf(line)
             when {
-                isLinkEntry(line) || isVersion(line) -> entries++
-                isHeading(line) -> headings++
+                isLinkEntry(line) || number != null -> {
+                    if (isLinkEntry(line)) links++
+                    if (number != null) numbers += number
+                }
+                version != null -> {
+                    versions++
+                    if (version.isNotEmpty()) versionLanguages += version
+                }
+                // A heading or a title between them; a question or a remark and the comment says something
+                isQuestion(line) || line.length > MAX_OTHER_LINE_CHARS -> return false
+                else -> others++
             }
         }
-        // A list under a heading, or links alone; most lines are entries, a remark among them is fine
-        return entries >= 2 && (headings >= 1 || entries >= 3) && (entries + headings) * 5 >= lines.size * 4
+        // Parts numbered one after another: 00, 01, 02
+        val numbered = numbers.size >= MIN_ENTRIES && numbers.zipWithNext().all { (a, b) -> b == a + 1 }
+        val versioned = versions >= MIN_ENTRIES && versionLanguages.size >= 2
+        if (links < MIN_ENTRIES && !numbered && !versioned) return false
+        val entries = lines.size - others
+        return entries >= others * 2
     }
 }
 
