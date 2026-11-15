@@ -2,20 +2,19 @@ package com.hippo.ehviewer.ui.screen
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -30,32 +29,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import coil3.compose.rememberAsyncImagePainter
+import com.ehviewer.core.database.model.DownloadInfo
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.launch
 import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.pctranslate.PcItem
 import com.hippo.ehviewer.pctranslate.PcState
-import com.hippo.ehviewer.pctranslate.PcTranslate
 import com.hippo.ehviewer.pctranslate.PcTransfer
+import com.hippo.ehviewer.pctranslate.PcTranslate
 import com.hippo.ehviewer.pctranslate.PcTranslateWork
 import com.hippo.ehviewer.pctranslate.transferText
+import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.connectPc
+import com.hippo.ehviewer.ui.main.DEFAULT_RATIO
 import com.hippo.ehviewer.ui.main.NavigationIcon
+import com.hippo.ehviewer.ui.main.requestOf
+import com.hippo.ehviewer.ui.tools.BarAction
+import com.hippo.ehviewer.ui.tools.BarActions
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
+import com.hippo.ehviewer.ui.tools.shouldCrop
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.CoroutineScope
+import moe.tarsin.navigate
 import moe.tarsin.snackbar
 import moe.tarsin.string
 import splitties.init.appCtx
@@ -69,6 +81,7 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
     val transfer by PcTranslate.transfer.collectAsState()
     var server by remember { mutableStateOf(PcTranslate.server) }
     var keepOriginal by remember { mutableStateOf(PcTranslate.keepOriginal) }
+    var barBottom by remember { mutableFloatStateOf(0f) }
     // Asks the PC each time the page opens: translations done meanwhile are taken back now
     LaunchedEffect(Unit) { PcTranslateWork.start(appCtx) }
     val sections = remember(items) {
@@ -86,25 +99,21 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
                 title = { Text(text = stringResource(id = R.string.pc_translate)) },
                 navigationIcon = { NavigationIcon() },
                 actions = {
-                    var expanded by remember { mutableStateOf(false) }
-                    IconButton(onClick = { expanded = true }) {
-                        Icon(imageVector = Icons.Default.MoreVert, contentDescription = null)
-                    }
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text(text = stringResource(id = R.string.pc_translate_find_again)) },
-                            onClick = {
-                                expanded = false
+                    // Fork: the menu in liquid glass, as the downloads menu that opens this page
+                    val findAgainText = stringResource(id = R.string.pc_translate_find_again)
+                    val deleteAllText = stringResource(id = R.string.pc_translate_delete_all_originals)
+                    val unpairText = stringResource(id = R.string.pc_translate_unpair)
+                    val menu = buildList {
+                        add(
+                            BarAction(findAgainText) {
                                 launch {
                                     connectPc(force = true)?.let { server = it }
                                     PcTranslateWork.start(appCtx)
                                 }
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text(text = stringResource(id = R.string.pc_translate_delete_all_originals)) },
-                            onClick = {
-                                expanded = false
+                        add(
+                            BarAction(deleteAllText) {
                                 launch {
                                     val kept = PcTranslate.withBackup()
                                     if (kept.isEmpty()) {
@@ -120,10 +129,8 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
                             },
                         )
                         if (server != null) {
-                            DropdownMenuItem(
-                                text = { Text(text = stringResource(id = R.string.pc_translate_unpair)) },
-                                onClick = {
-                                    expanded = false
+                            add(
+                                BarAction(unpairText) {
                                     launch {
                                         PcTranslate.setServer(null)
                                         server = null
@@ -132,7 +139,14 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
                             )
                         }
                     }
+                    BarActions(
+                        actions = menu,
+                        maxItemCount = 1,
+                        glass = LocalPageBackdrop.current != null,
+                        menuBelow = { barBottom },
+                    )
                 },
+                modifier = Modifier.onGloballyPositioned { barBottom = it.boundsInWindow().bottom },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -196,11 +210,36 @@ fun AnimatedVisibilityScope.PcTranslateScreen(navigator: DestinationsNavigator) 
 }
 
 @Composable
-context(_: Context, _: SnackbarHostState, _: DialogState, _: CoroutineScope)
+context(_: DestinationsNavigator)
+private fun PcItemThumb(info: DownloadInfo?) {
+    val modifier = Modifier.width(56.dp).aspectRatio(DEFAULT_RATIO)
+    if (info == null) {
+        // Not in the downloads anymore: an empty card keeps the titles in line
+        Card(modifier = modifier) {}
+        return
+    }
+    Card(onClick = { navigate(info.galleryInfo.asDst()) }, modifier = modifier) {
+        var contentScale by remember(info.gid) { mutableStateOf(ContentScale.Fit) }
+        Image(
+            painter = rememberAsyncImagePainter(
+                model = requestOf(info),
+                onSuccess = { if (it.result.image.shouldCrop) contentScale = ContentScale.Crop },
+            ),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = contentScale,
+        )
+    }
+}
+
+@Composable
+context(_: Context, _: SnackbarHostState, _: DialogState, _: CoroutineScope, _: DestinationsNavigator)
 private fun PcItemRow(item: PcItem, moving: PcTransfer?) {
     val info = remember(item.gid) { DownloadManager.getDownloadInfo(item.gid) }
     Column {
         ListItem(
+            // Fork: the cover, as in the download list; a tap opens the gallery
+            leadingContent = { PcItemThumb(info) },
             headlineContent = { Text(text = item.title, maxLines = 2) },
             supportingContent = {
                 val parts = buildList {
