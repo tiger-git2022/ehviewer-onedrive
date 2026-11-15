@@ -109,6 +109,7 @@ import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalSearchExit
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.leavingWithSearch
 import com.ehviewer.core.ui.component.searchExitGlassAlpha
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.EhApplication.Companion.searchDatabase
@@ -412,6 +413,8 @@ fun SearchBarScreen(
     val fieldMorph = remember(searchBarKey) { Animatable(if (searchBarKey == 0) 1f else 0f) }
     LaunchedEffect(fieldMorph) { fieldMorph.animateTo(1f, FieldMorphSpec) }
     val fieldMorphed by remember(fieldMorph) { derivedStateOf { fieldMorph.value == 1f } }
+    // Fork: the line each tag chip is on, kept past the field made anew as the search closes
+    val chipLines = remember { mutableMapOf<String, Int>() }
     LaunchedEffect(expanded) {
         expandProgress.animateTo(if (expanded) 1f else 0f, if (expanded) ExpandSpec else CollapseSpec)
     }
@@ -455,7 +458,8 @@ fun SearchBarScreen(
                             text = it.keyword,
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.thenIf(animateItems) { animateItem() }.padding(start = 4.dp, top = 4.dp),
+                            // Fork: closing the search, it leaves with the cards instead of staying until the end
+                            modifier = Modifier.thenIf(animateItems) { animateItem() }.leavingWithSearch().padding(start = 4.dp, top = 4.dp),
                         )
                     } else {
                         SearchSuggestionCell(
@@ -552,12 +556,19 @@ fun SearchBarScreen(
                     offsetY = searchBarOffsetY,
                 ) {
                     // The buttons of the open search where they were, fading out; they take no touches
-                    Box(Modifier.align(Alignment.CenterStart).offset(x = SearchBarIconOffsetX)) {
+                    // On the first line of the field, where they were, however many lines the tags of the field take
+                    Box(
+                        Modifier.align(Alignment.TopStart).height(SearchBarDefaults.InputFieldHeight).offset(x = SearchBarIconOffsetX),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
                         IconButton(onClick = {}, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = null)
                         }
                     }
-                    Row(Modifier.align(Alignment.CenterEnd).offset(x = -SearchBarIconOffsetX)) {
+                    Row(
+                        Modifier.align(Alignment.TopEnd).height(SearchBarDefaults.InputFieldHeight).offset(x = -SearchBarIconOffsetX),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         IconButton(onClick = {}, shapes = IconButtonDefaults.shapes()) {
                             Icon(if (searchFieldState.text.isNotEmpty()) Icons.Default.Close else Icons.Default.ImageSearch, contentDescription = null)
                         }
@@ -604,7 +615,9 @@ fun SearchBarScreen(
                             val width = lerp(available, minOf(fieldMaxWidth.roundToPx(), available), FieldMorphEasing.transform(fieldMorph.value))
                             val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
                             layout(width, placeable.height) { placeable.place(0, 0) }
-                        }.graphicsLayer { alpha = fieldContentAlpha(fieldMorph.value) }
+                        // Fork: with chips, the field fades in its title and buttons itself, its chips staying, see
+                        // SearchTagChipField
+                        }.thenIf(!tagChips) { graphicsLayer { alpha = fieldContentAlpha(fieldMorph.value) } }
                     } else {
                         Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
                             // Fork: the field is the glass while the search bar is collapsed
@@ -723,6 +736,13 @@ fun SearchBarScreen(
                             placeholder = fieldPlaceholder,
                             leadingIcon = fieldLeadingIcon,
                             trailingIcon = fieldTrailingIcon,
+                            // Fork: closing, the chips stay from the open search and shrink into the field, its buttons
+                            // fading in after those of the open search leave
+                            contentAlpha = { if (expanded) 1f else fieldContentAlpha(fieldMorph.value) },
+                            closing = { if (expanded) 1f else FieldMorphEasing.transform(fieldMorph.value) },
+                            // Opening or closing, a chip of the second line stays there and doesn't pass by the first
+                            holdLines = { expandProgress.value != (if (expanded) 1f else 0f) || !fieldMorphed },
+                            chipLines = chipLines,
                             modifier = fieldModifier,
                         )
                     } else {
