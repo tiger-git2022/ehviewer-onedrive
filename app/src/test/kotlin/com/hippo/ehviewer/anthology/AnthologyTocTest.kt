@@ -125,5 +125,16 @@ class AnthologyTocTest {
         assertEquals(emptyList(), MindControlHints.pages("mcdonalds on p5"))
         assertTrue(MindControlHints.isMindControlTitle("催眠性指導 第3話"))
         assertFalse(MindControlHints.isMindControlTitle("MC Hammer"))
+        // Hidden with a sign for a character
+        assertTrue(MindControlHints.isMindControlTitle("催○アプリで生意気な妹を"))
+        assertTrue(MindControlHints.isMindControlTitle("催o性指導"))
+        assertTrue(MindControlHints.isMindControlTitle("催●術にかかった彼女"))
+        assertTrue(MindControlHints.isMindControlTitle("●眠おじさん"))
+        assertTrue(MindControlHints.isMindControlTitle("洗○された人妻"))
+        assertTrue(MindControlHints.isMindControlTitle("さいみん彼女"))
+        assertFalse(MindControlHints.isMindControlTitle("催促されて"))
+        assertFalse(MindControlHints.isMindControlTitle("洗濯物"))
+        assertFalse(MindControlHints.isMindControlTitle("睡眠不足"))
+        assertEquals(listOf(52..52), MindControlHints.pages("催○那篇在p52"))
     }
 }
