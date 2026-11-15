@@ -46,6 +46,7 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material3.Icon
@@ -137,9 +138,11 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.tarsin.navigate
 
 fun interface SuggestionProvider {
@@ -195,6 +198,20 @@ fun SearchBarScreen(
     val writtenQuery = remember { arrayOfNulls<String>(1) }
     // The chips shown: none in a local search, even if the favorites have just switched to one from a cloud category
     val shownTags = if (tagChips) tags else emptyList()
+    // Fork: the chips and the text before a chip's ✕ or the clear button removed them, for the undo button taking the
+    // place of the clear button a while: with many chips the ✕ are easy to hit when tapping for the keyboard
+    var undoSearch by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
+    LaunchedEffect(undoSearch, expanded) {
+        if (undoSearch == null) return@LaunchedEffect
+        if (expanded) {
+            // Gone after a while, or once something is typed
+            val typed = inputState.text.toString()
+            withTimeoutOrNull(SearchUndoTimeout) {
+                snapshotFlow { inputState.text.toString() }.first { it.isNotBlank() && it != typed }
+            }
+        }
+        undoSearch = null
+    }
     if (tagChips) {
         // The search set from outside (a tag of a gallery, the history, clearing it): its tags become chips
         LaunchedEffect(Unit) {
@@ -625,9 +642,13 @@ fun SearchBarScreen(
                                 SearchTagChips(
                                     tags = shownTags,
                                     interactive = expanded,
-                                    onRemove = { i -> tags = tags.filterIndexed { j, _ -> j != i } },
+                                    onRemove = { i ->
+                                        undoSearch = tags to inputState.text.toString()
+                                        tags = tags.filterIndexed { j, _ -> j != i }
+                                    },
                                     onToggleExcluded = { i -> tags = tags.mapIndexed { j, tag -> if (j == i) toggleExcludedTag(tag) else tag } },
-                                    minTextWidth = { if (inputState.text.isEmpty()) 8.dp else 96.dp },
+                                    // Fork: open, the text always keeps room after the chips, to tap for the keyboard
+                                    minTextWidth = { if (expanded || inputState.text.isNotEmpty()) 96.dp else 8.dp },
                                     glass = glass != null,
                                 )
                             }
@@ -648,13 +669,35 @@ fun SearchBarScreen(
                                 // Fork: the image search (or the clear button) before the buttons of the page, which
                                 // end the bar
                                 Row {
-                                    AnimatedContent(targetState = searchFieldState.text.isNotEmpty()) { hasText ->
-                                        if (hasText) {
-                                            IconButton(onClick = { searchFieldState.clearText() }, shapes = IconButtonDefaults.shapes()) {
+                                    val button = when {
+                                        undoSearch != null -> TrailingButton.Undo
+                                        searchFieldState.text.isNotEmpty() -> TrailingButton.Clear
+                                        else -> TrailingButton.ImageSearch
+                                    }
+                                    AnimatedContent(targetState = button) { shown ->
+                                        when (shown) {
+                                            TrailingButton.Undo -> IconButton(
+                                                onClick = {
+                                                    undoSearch?.let { (oldTags, text) ->
+                                                        if (tagChips) tags = oldTags
+                                                        inputState.setTextAndPlaceCursorAtEnd(text)
+                                                    }
+                                                    undoSearch = null
+                                                },
+                                                shapes = IconButtonDefaults.shapes(),
+                                            ) {
+                                                Icon(Icons.AutoMirrored.Default.Undo, contentDescription = stringResource(R.string.undo_search_edit))
+                                            }
+                                            TrailingButton.Clear -> IconButton(
+                                                onClick = {
+                                                    if (shownTags.isNotEmpty()) undoSearch = tags to inputState.text.toString()
+                                                    searchFieldState.clearText()
+                                                },
+                                                shapes = IconButtonDefaults.shapes(),
+                                            ) {
                                                 Icon(Icons.Default.Close, contentDescription = null)
                                             }
-                                        } else {
-                                            IconButton(onClick = { navigate(ImageSearchScreenDestination) }, shapes = IconButtonDefaults.shapes()) {
+                                            TrailingButton.ImageSearch -> IconButton(onClick = { navigate(ImageSearchScreenDestination) }, shapes = IconButtonDefaults.shapes()) {
                                                 Icon(Icons.Default.ImageSearch, contentDescription = null)
                                             }
                                         }
@@ -853,6 +896,13 @@ fun wrapTagKeyword(keyword: String, translate: Boolean = false): String = run {
 private val TagTerminators = charArrayOf('"', '$')
 private val WhitespaceRegex = Regex("\\s+")
 private val SearchBarHorizontalPadding = 16.dp
+
+// Fork: how long the undo button stays after a chip's ✕ or the clear button, see undoSearch
+private const val SearchUndoTimeout = 5_000L
+
+// Fork: the button before those of the page in the open search bar
+private enum class TrailingButton { Undo, Clear, ImageSearch }
+
 // Fork: the opening animation of the Material search bar (SearchBar.kt), for the glass growing with it
 private val SearchBarVerticalPadding = 8.dp
 private val SearchBarIconOffsetX = 4.dp
