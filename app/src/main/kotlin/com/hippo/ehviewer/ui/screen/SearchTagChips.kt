@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -106,11 +107,10 @@ fun SearchTagChipField(
     // open search (0) into the collapsed field (1): its chips, made in the open search's place, shrink into it
     contentAlpha: () -> Float = { 1f },
     closing: () -> Float = { 1f },
-    // While the search opens or closes, the line each chip was on (kept by the caller, as the field is made anew when
-    // the search closes), which a chip doesn't leave for a line above it: the field's width and the chips' sizes are
-    // between the two then, and would bring a chip of the second line up to the first only to go back down
-    holdLines: () -> Boolean = { false },
-    chipLines: MutableMap<String, Int> = remember { mutableMapOf() },
+    // Whether the search is opening or closing: the field's width is then between the two, and the chips break into
+    // lines as they will at its width once opened or closed, see ChipFieldMemory
+    transitioning: () -> Boolean = { false },
+    memory: ChipFieldMemory = remember { ChipFieldMemory() },
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
@@ -133,8 +133,8 @@ fun SearchTagChipField(
                 tags = tags,
                 expanded = expanded,
                 closing = closing,
-                holdLines = holdLines,
-                chipLines = chipLines,
+                transitioning = transitioning,
+                memory = memory,
                 showText = expanded || tags.isEmpty() || state.text.isNotEmpty(),
                 leadingIcon = leadingIcon?.let { icon ->
                     {
@@ -159,7 +159,7 @@ fun SearchTagChipField(
                         innerTextField()
                     }
                 },
-                chip = { index, tag, chipModifier ->
+                chip = { index, tag, role, chipModifier ->
                     SearchTagChip(
                         tag = tag,
                         translate = translate,
@@ -167,9 +167,11 @@ fun SearchTagChipField(
                         compact = !expanded,
                         // Made as the search closes: as it was in the open search
                         startOpen = { closing() < 1f },
+                        settled = role == ChipRole.Measure,
                         glass = glass,
-                        onRemove = { onRemoveTag(index) },
-                        onToggleExcluded = { onToggleExcluded(index) },
+                        // Not for a chip leaving, whose tag is gone
+                        onRemove = { if (role == ChipRole.Shown) onRemoveTag(index) },
+                        onToggleExcluded = { if (role == ChipRole.Shown) onToggleExcluded(index) },
                         modifier = chipModifier,
                     )
                 },
@@ -187,21 +189,41 @@ fun SearchTagChipField(
 }
 
 /**
+ * What a tag chip field keeps past itself, as the search bar makes a new one each time the search closes: how wide
+ * the field was, open and collapsed, once settled. While the search opens or closes, the field's width is between the
+ * two, and the chips break into lines at the width the field is going to, going straight to their line.
+ */
+class ChipFieldMemory {
+    internal var openWidth = 0
+    internal var collapsedWidth = 0
+}
+
+/** A chip of a tag in the search, of one removed going away, or one at the size it is going to, only measured. */
+internal enum class ChipRole { Shown, Leaving, Measure }
+
+// The same chip when its tag is excluded or taken back, which only changes the sign before it
+private fun chipKey(tag: String) = tag.trimStart('-', '~')
+
+/**
  * The icons on the first line, as tall as the Material search field, and the chips then the text flowing in lines
  * from beside the leading icon: the first line ends before the trailing icons, the next ones at the end of the field.
+ *
+ * Lines break by the size the chips are going to and the width the field is going to, so while chips grow or shrink
+ * and the search opens or closes, a chip goes straight to its line. A tag added grows in from where it goes; one
+ * removed shrinks away where it was, the others moving into its room.
  */
 @Composable
 private fun ChipFieldLayout(
     tags: List<String>,
     expanded: Boolean,
     closing: () -> Float,
-    holdLines: () -> Boolean,
-    chipLines: MutableMap<String, Int>,
+    transitioning: () -> Boolean,
+    memory: ChipFieldMemory,
     showText: Boolean,
     leadingIcon: (@Composable () -> Unit)?,
     trailingIcon: @Composable () -> Unit,
     text: @Composable () -> Unit,
-    chip: @Composable (Int, String, Modifier) -> Unit,
+    chip: @Composable (Int, String, ChipRole, Modifier) -> Unit,
 ) {
     // The height the lines need, and the height shown, going to it
     var targetHeight by remember { mutableIntStateOf(-1) }
@@ -212,15 +234,63 @@ private fun ChipFieldLayout(
             if (height.value < 0f) height.snapTo(it.toFloat()) else height.animateTo(it.toFloat(), FieldHeightSpring)
         }
     }
+    // The chips of the field as it is made show at once; those of tags added later grow in
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { ready = true }
+    // Tags removed, by key, with where they were in the list and the tag, while their chips go away
+    val leaving = remember { mutableStateMapOf<String, Pair<Int, String>>() }
+    val previous = remember { arrayOf(tags) }
+    if (previous[0] != tags) {
+        val keys = tags.mapTo(HashSet(), ::chipKey)
+        previous[0].forEachIndexed { i, tag ->
+            val id = chipKey(tag)
+            if (id !in keys) leaving[id] = i to tag
+        }
+        leaving.keys.removeAll(keys)
+        previous[0] = tags
+    }
+    // The chips shown: those of the tags, and those going away where they were
+    val entries = buildList {
+        tags.forEachIndexed { i, tag -> add(Triple(i, tag, chipKey(tag))) }
+        leaving.entries.sortedBy { it.value.first }.forEach { (id, value) ->
+            add(value.first.coerceAtMost(size), Triple(-1, value.second, id))
+        }
+    }
+    // Where each chip was last placed, for one going away to stay there
+    val places = remember { HashMap<String, IntOffset>() }
     Layout(
         contents = listOf<@Composable () -> Unit>(
             { leadingIcon?.invoke() },
             trailingIcon,
             text,
-            { tags.forEachIndexed { index, tag -> key(tag) { chip(index, tag, Modifier.animatePlacement()) } } },
+            {
+                entries.forEach { (index, tag, id) ->
+                    key(id) {
+                        val shown = index >= 0
+                        val presence = remember { Animatable(if (ready) 0f else 1f) }
+                        LaunchedEffect(shown) {
+                            presence.animateTo(if (shown) 1f else 0f, ChipPresenceSpec)
+                            if (!shown) leaving.remove(id)
+                        }
+                        chip(
+                            index,
+                            tag,
+                            if (shown) ChipRole.Shown else ChipRole.Leaving,
+                            Modifier.animatePlacement().graphicsLayer {
+                                val value = presence.value
+                                alpha = value
+                                scaleX = ChipHiddenScale + (1f - ChipHiddenScale) * value
+                                scaleY = scaleX
+                            },
+                        )
+                    }
+                }
+            },
+            // The chips at the size they are going to: measured for the lines, never shown
+            { tags.forEachIndexed { index, tag -> key(chipKey(tag)) { chip(index, tag, ChipRole.Measure, Modifier) } } },
         ),
         modifier = Modifier.clipToBounds(),
-    ) { (leadingMeasurables, trailingMeasurables, textMeasurables, chipMeasurables), constraints ->
+    ) { (leadingMeasurables, trailingMeasurables, textMeasurables, chipMeasurables, measureMeasurables), constraints ->
         val lineHeight = SearchBarDefaults.InputFieldHeight.roundToPx()
         val iconOffset = IconOffset.roundToPx()
         val padding = TextPadding.roundToPx()
@@ -229,47 +299,56 @@ private fun ChipFieldLayout(
         val leading = leadingMeasurables.firstOrNull()?.measure(iconConstraints)
         val trailing = trailingMeasurables.firstOrNull()?.measure(iconConstraints)
         val trailingWidth = trailing?.width ?: 0
+        val lineStart = if (leading != null && leading.width > 0) leading.width + iconOffset else padding
         // Closing, the lines start where they did beside the back button of the open search, coming to the side
         val closingInset = ((1f - closing()) * ClosingStartInset.toPx()).roundToInt()
-        val start = (if (leading != null && leading.width > 0) leading.width + iconOffset else padding) + closingInset
+        val start = lineStart + closingInset
         val bounded = constraints.hasBoundedWidth
         // Asked how wide it would be (its intrinsic width, which the search bar asks of the field), all on one line
         val width = if (bounded) constraints.maxWidth else Int.MAX_VALUE / 2
-        val firstLineEnd = width - if (trailingWidth > 0) trailingWidth + iconOffset else padding
+        val trailingRoom = if (trailingWidth > 0) trailingWidth + iconOffset else padding
+        val firstLineEnd = width - trailingRoom
         val lineEnd = width - padding
         fun endOf(line: Int) = if (line == 0) firstLineEnd else lineEnd
 
+        // The width the field is going to, opening or closing, where the lines break
+        val moving = bounded && transitioning()
+        val settledWidth = if (expanded) memory.openWidth else memory.collapsedWidth
+        val breakWidth = if (moving && settledWidth > 0) settledWidth else width
+        fun breakEndOf(line: Int) = breakWidth - if (line == 0) trailingRoom else padding
+
         // Unbounded when asked for the intrinsic width: Constraints cannot hold a width as large as the one above
-        val chipMaxWidth = if (bounded) (lineEnd - start).coerceAtLeast(0) else Constraints.Infinity
-        val chips = chipMeasurables.map { it.measure(Constraints(maxWidth = chipMaxWidth)) }
-        val chipHeight = chips.maxOfOrNull { it.height } ?: 0
-        val hold = bounded && holdLines()
+        val chipConstraints = Constraints(maxWidth = if (bounded) (lineEnd - start).coerceAtLeast(0) else Constraints.Infinity)
+        val chips = chipMeasurables.map { it.measure(chipConstraints) }
+        val breakConstraints = Constraints(maxWidth = if (bounded) (breakWidth - padding - lineStart).coerceAtLeast(0) else Constraints.Infinity)
+        val goingTo = measureMeasurables.map { it.measure(breakConstraints) }
+        val chipHeight = maxOf(chips.maxOfOrNull { it.height } ?: 0, goingTo.maxOfOrNull { it.height } ?: 0)
+
+        // Lines by the chips' sizes to come (breakX), places by their sizes now (x)
         var line = 0
         var x = start
-        val chipPlaces = chips.mapIndexed { index, it ->
-            val tag = tags.getOrNull(index)
-            val heldLine = if (hold && tag != null) chipLines[tag] ?: 0 else 0
-            if (heldLine > line) {
-                line = heldLine
-                x = start
-            }
+        var breakX = lineStart
+        val chipPlaces = arrayOfNulls<IntOffset>(chips.size)
+        entries.forEachIndexed { i, (index, _, _) ->
+            if (index < 0) return@forEachIndexed
+            val size = goingTo.getOrNull(index)?.width ?: chips[i].width
             // A chip too wide for the first line even alone goes below it
-            if (x + it.width > endOf(line) && (x > start || line == 0)) {
+            if (breakX + size > breakEndOf(line) && (breakX > lineStart || line == 0)) {
                 line++
                 x = start
+                breakX = lineStart
             }
-            if (bounded && tag != null) chipLines[tag] = line
-            val place = IntOffset(x, line)
-            x += it.width + gap
-            place
+            chipPlaces[i] = IntOffset(x, line)
+            x += chips[i].width + gap
+            breakX += size + gap
         }
         val textMinWidth = when {
             !showText -> 0
-            chips.isEmpty() -> 0
+            tags.isEmpty() -> 0
             expanded -> OpenTextMinWidth.roundToPx()
             else -> CollapsedTextMinWidth.roundToPx()
         }
-        if (textMinWidth > 0 && endOf(line) - x < textMinWidth) {
+        if (textMinWidth > 0 && breakEndOf(line) - breakX < textMinWidth) {
             line++
             x = start
         }
@@ -293,14 +372,25 @@ private fun ChipFieldLayout(
         // Not when asked for its intrinsic width, laid out on one line
         if (bounded) targetHeight = needed
         val shown = if (height.value < 0f) needed else height.value.roundToInt()
-        val layoutWidth = if (bounded) width else textX + textPlaceable.width + if (trailingWidth > 0) trailingWidth + iconOffset else padding
+        val layoutWidth = if (bounded) width else textX + textPlaceable.width + trailingRoom
         val layoutHeight = shown.coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(layoutWidth.coerceIn(constraints.minWidth, constraints.maxWidth), layoutHeight) {
+            if (bounded && !moving) {
+                if (expanded) memory.openWidth = width else memory.collapsedWidth = width
+            }
             leading?.place(iconOffset, (lineHeight - leading.height) / 2)
             trailing?.place(layoutWidth - trailingWidth - iconOffset, (lineHeight - trailing.height) / 2)
             chips.forEachIndexed { i, chip ->
+                val id = entries[i].third
                 val place = chipPlaces[i]
-                chip.place(place.x, topOf(place.y) + (lineSize - chip.height) / 2)
+                if (place != null) {
+                    val position = IntOffset(place.x, topOf(place.y) + (lineSize - chip.height) / 2)
+                    if (bounded) places[id] = position
+                    chip.place(position)
+                } else {
+                    // Going away where it was
+                    chip.place(places[id] ?: IntOffset(start, top))
+                }
             }
             textPlaceable.place(textX, topOf(textLine) + (lineSize - textPlaceable.height) / 2)
         }
@@ -339,6 +429,8 @@ private fun SearchTagChip(
     modifier: Modifier = Modifier,
     // Made as the search closes, starting as the chip of the open search
     startOpen: () -> Boolean = { false },
+    // At the size it is going to, without animations: only measured, see ChipRole.Measure
+    settled: Boolean = false,
 ) {
     val (namespace, name) = searchTagParts(tag)
     val context = LocalContext.current
@@ -367,7 +459,7 @@ private fun SearchTagChip(
     val openAtStart = remember { startOpen() }
     val resize = remember { Animatable(if (openAtStart || !compact) 0f else 1f) }
     LaunchedEffect(compact) { resize.animateTo(if (compact) 1f else 0f, ChipResizeSpec) }
-    val fraction = resize.value
+    val fraction = if (settled) (if (compact) 1f else 0f) else resize.value
     // The namespace and the ✕ shown by the open chip, leaving or coming with the change of size
     val openParts = remember { MutableTransitionState(openAtStart || !compact) }
     openParts.targetState = !compact
@@ -389,8 +481,11 @@ private fun SearchTagChip(
     ) {
         if (prefix.isNotEmpty()) Text(text = prefix, color = content, style = style, maxLines = 1)
         if (namespaceLabel.isNotEmpty()) {
-            AnimatedVisibility(visibleState = openParts) {
-                Text(text = namespaceLabel, color = content, style = style, maxLines = 1, softWrap = false)
+            val namespaceText = @Composable { Text(text = namespaceLabel, color = content, style = style, maxLines = 1, softWrap = false) }
+            if (settled) {
+                if (!compact) namespaceText()
+            } else {
+                AnimatedVisibility(visibleState = openParts) { namespaceText() }
             }
         }
         Text(
@@ -401,7 +496,7 @@ private fun SearchTagChip(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = lerp(ChipMaxTextWidth, CompactChipMaxTextWidth, fraction)),
         )
-        AnimatedVisibility(visibleState = removable) {
+        val removeButton = @Composable {
             Box(
                 modifier = Modifier
                     .padding(start = 4.dp)
@@ -417,6 +512,11 @@ private fun SearchTagChip(
                     modifier = Modifier.size(16.dp),
                 )
             }
+        }
+        if (settled) {
+            if (interactive) removeButton()
+        } else {
+            AnimatedVisibility(visibleState = removable) { removeButton() }
         }
     }
 }
@@ -444,5 +544,9 @@ private val TextPadding = 16.dp
 private const val ClearFocusDelayMillis = 100L
 
 private val ChipResizeSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
+private val ChipPresenceSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 0.01f)
+
+// A tag picked comes from this scale, and one removed goes to it
+private const val ChipHiddenScale = 0.6f
 private val ChipMoveSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset(1, 1))
 private val FieldHeightSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 1f)
