@@ -62,6 +62,8 @@ fun GalleryTags(
                                 text = translation,
                                 weak = power == PowerStatus.Weak,
                                 solid = power == PowerStatus.Solid && showVote,
+                                // Fork: tapped, it flies into the search bar of its list, see TagFlight
+                                surfaceModifier = Modifier.tagFlight(tag),
                                 modifier = Modifier.combinedClickable(
                                     onClick = { onTagClick(tag) },
                                     onLongClick = {
@@ -90,6 +92,7 @@ fun GalleryTags(
 private fun BaseRoundText(
     text: String,
     modifier: Modifier = Modifier,
+    surfaceModifier: Modifier = Modifier,
     weak: Boolean = false,
     solid: Boolean = false,
     isGroup: Boolean = false,
@@ -100,7 +103,7 @@ private fun BaseRoundText(
         MaterialTheme.colorScheme.tertiaryContainer
     }
     Surface(
-        modifier = Modifier.padding(4.dp),
+        modifier = Modifier.padding(4.dp).then(surfaceModifier),
         color = bgColor,
         shape = GalleryTagCorner,
     ) {
