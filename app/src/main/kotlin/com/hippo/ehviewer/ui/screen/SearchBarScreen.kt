@@ -382,11 +382,15 @@ fun SearchBarScreen(
     // Fork: the height of the field, for the glass growing out of it and shrinking into it and for the cards below it:
     // with a larger font it is taller than InputFieldHeight, and the glass jumped to it at the end of the animations
     var fieldHeight by remember { mutableIntStateOf(0) }
+    // Fork: the height of the collapsed field, taller when its tags take more lines: the list starts below it
+    var collapsedFieldHeight by remember { mutableIntStateOf(0) }
+    val collapsedFieldHeightDp = with(LocalDensity.current) { collapsedFieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight) }
     // Fork: liquid glass refracting the list, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current
     val glass = rememberLiquidGlass(backdrop)
     val refreshHost = remember { RefreshIndicatorHost() }
-    val glassShape = SearchBarDefaults.inputFieldShape
+    // Fork: round at the ends of a field of one line, with the corners of one when the tags take more lines
+    val glassShape = RoundedCornerShape(FieldCornerRadius)
     val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_BAR_TINT)
     val expandedGlassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f)
     // Fork: the expanded search grows out of the search field like the Material search bar, in step with it
@@ -475,7 +479,7 @@ fun SearchBarScreen(
                     Box(Modifier.windowInsetsTopHeight(WindowInsets.statusBars).fillMaxWidth().thenIf(glass == null) { background(scrim) })
 
                     // Placeholder, fill immutable SearchBar padding
-                    Spacer(modifier = Modifier.height(SearchBarDefaults.InputFieldHeight + 16.dp))
+                    Spacer(modifier = Modifier.height(collapsedFieldHeightDp + 16.dp))
                     // Fork
                     if (showSyncProgress) Spacer(modifier = Modifier.height(with(LocalDensity.current) { syncProgressHeight.toDp() }))
                 }
@@ -515,7 +519,7 @@ fun SearchBarScreen(
                 modifier = Modifier.align(Alignment.TopCenter)
                     .thenIf(expanded) { graphicsLayer { alpha = 0f } }
                     .offset {
-                        val below = statusBarTop + (SearchBarDefaults.InputFieldHeight + 16.dp).roundToPx()
+                        val below = statusBarTop + (collapsedFieldHeightDp + 16.dp).roundToPx()
                         IntOffset(0, maxOf(statusBarTop, below + searchBarOffsetY()))
                     }
                     .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
@@ -573,159 +577,172 @@ fun SearchBarScreen(
                 modifier = Modifier.align(Alignment.TopCenter).thenIf(!expanded) { offset { IntOffset(0, searchBarOffsetY()) } }
                     .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)),
                 inputField = {
-                    InputField(
-                        state = inputState,
-                        onSearch = {
-                            hideSearchView()
-                            onApplySearch()
-                        },
-                        expanded = expanded,
-                        onExpandedChange = onExpandedChange,
-                        modifier = Modifier.onSizeChanged { fieldHeight = it.height }
-                            // Fork: backspace in an empty field removes the last chip
-                            .thenIf(tagChips) {
-                                onPreviewKeyEvent {
-                                    if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && inputState.text.isEmpty() && shownTags.isNotEmpty()) {
-                                        tags = tags.dropLast(1)
-                                        true
-                                    } else {
-                                        false
-                                    }
+                    val fieldModifier = Modifier.onSizeChanged {
+                        fieldHeight = it.height
+                        if (!expanded) collapsedFieldHeight = it.height
+                    }
+                        // Fork: backspace in an empty field removes the last chip
+                        .thenIf(tagChips) {
+                            onPreviewKeyEvent {
+                                if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && inputState.text.isEmpty() && shownTags.isNotEmpty()) {
+                                    tags = tags.dropLast(1)
+                                    true
+                                } else {
+                                    false
                                 }
                             }
-                            .then(if (!expanded && !fieldMorphed) {
-                            // Fork: closing, the field shrinks from the whole width into the floating field, see
-                            // ClosingFieldGlass, its title and buttons fading in
-                            val fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)
-                            val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-                            val screenWidth = maxWidth
-                            Modifier.layout { measurable, constraints ->
-                                val available = screenWidth.roundToPx() - navigationBars.getLeft(this, layoutDirection) -
-                                    navigationBars.getRight(this, layoutDirection)
-                                val width = lerp(available, minOf(fieldMaxWidth.roundToPx(), available), FieldMorphEasing.transform(fieldMorph.value))
-                                val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
-                                layout(width, placeable.height) { placeable.place(0, 0) }
-                            }.graphicsLayer { alpha = fieldContentAlpha(fieldMorph.value) }
-                        } else {
-                            Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
-                                // Fork: the field is the glass while the search bar is collapsed
-                                .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) }
-                        }),
-                        // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
-                        // and black by day: the paler Material color got lost over the list showing through
-                        colors = if (glass != null) {
-                            val onGlass = MaterialTheme.colorScheme.onSurface
-                            SearchBarDefaults.inputFieldColors(
-                                focusedLeadingIconColor = onGlass,
-                                unfocusedLeadingIconColor = onGlass,
-                                focusedTrailingIconColor = onGlass,
-                                unfocusedTrailingIconColor = onGlass,
-                                focusedPlaceholderColor = onGlass,
-                                unfocusedPlaceholderColor = onGlass,
-                            )
-                        } else {
-                            SearchBarDefaults.inputFieldColors()
-                        },
-                        // Fork: the placeholder and the chips are always given, empty when not shown: the Material text
-                        // field decides once, at its first composition, whether it shows them at all (TextFieldImpl
-                        // remembers its showPlaceholder and showAffix), so chips picked later stayed invisible
-                        placeholder = {
-                            if (shownTags.isEmpty()) {
-                                val contentActive by activeState.state
-                                val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
-                                Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
+                        }
+                        .then(if (!expanded && !fieldMorphed) {
+                        // Fork: closing, the field shrinks from the whole width into the floating field, see
+                        // ClosingFieldGlass, its title and buttons fading in
+                        val fieldMaxWidth = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)
+                        val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+                        val screenWidth = maxWidth
+                        Modifier.layout { measurable, constraints ->
+                            val available = screenWidth.roundToPx() - navigationBars.getLeft(this, layoutDirection) -
+                                navigationBars.getRight(this, layoutDirection)
+                            val width = lerp(available, minOf(fieldMaxWidth.roundToPx(), available), FieldMorphEasing.transform(fieldMorph.value))
+                            val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                            layout(width, placeable.height) { placeable.place(0, 0) }
+                        }.graphicsLayer { alpha = fieldContentAlpha(fieldMorph.value) }
+                    } else {
+                        Modifier.widthIn(max = (maxWidth - SearchBarHorizontalPadding * 2).coerceAtMost(M3SearchBarMaxWidth)).fillMaxWidth()
+                            // Fork: the field is the glass while the search bar is collapsed
+                            .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) }
+                    })
+                    // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
+                    // and black by day: the paler Material color got lost over the list showing through
+                    val fieldColors = if (glass != null) {
+                        val onGlass = MaterialTheme.colorScheme.onSurface
+                        SearchBarDefaults.inputFieldColors(
+                            focusedLeadingIconColor = onGlass,
+                            unfocusedLeadingIconColor = onGlass,
+                            focusedTrailingIconColor = onGlass,
+                            unfocusedTrailingIconColor = onGlass,
+                            focusedPlaceholderColor = onGlass,
+                            unfocusedPlaceholderColor = onGlass,
+                        )
+                    } else {
+                        SearchBarDefaults.inputFieldColors()
+                    }
+                    val fieldPlaceholder: @Composable () -> Unit = {
+                        if (shownTags.isEmpty()) {
+                            val contentActive by activeState.state
+                            val text = title.takeUnless { expanded || contentActive } ?: searchFieldHint
+                            Text(text, overflow = TextOverflow.Ellipsis, maxLines = 1)
+                        }
+                    }
+                    // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; the room goes to
+                    // the buttons on the right
+                    val fieldLeadingIcon: (@Composable () -> Unit)? = if (expanded) {
+                        {
+                            IconButton(onClick = { hideSearchView() }, shapes = IconButtonDefaults.shapes()) {
+                                Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = null)
                             }
-                        },
-                        // Fork: the tags of the search, see SearchTagChips
-                        prefix = {
-                            if (shownTags.isNotEmpty()) {
-                                SearchTagChips(
-                                    tags = shownTags,
-                                    interactive = expanded,
-                                    onRemove = { i ->
-                                        undoSearch = tags to inputState.text.toString()
-                                        tags = tags.filterIndexed { j, _ -> j != i }
-                                    },
-                                    onToggleExcluded = { i -> tags = tags.mapIndexed { j, tag -> if (j == i) toggleExcludedTag(tag) else tag } },
-                                    // Fork: open, the text always keeps room after the chips, to tap for the keyboard
-                                    minTextWidth = { if (expanded || inputState.text.isNotEmpty()) 96.dp else 8.dp },
-                                    glass = glass != null,
-                                )
-                            }
-                        },
-                        // Fork: no menu button on the collapsed bar, the left drawer opens with a swipe; the room goes to
-                        // the buttons on the right
-                        leadingIcon = if (expanded) {
-                            {
-                                IconButton(onClick = { hideSearchView() }, shapes = IconButtonDefaults.shapes()) {
-                                    Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = null)
+                        }
+                    } else {
+                        null
+                    }
+                    val fieldTrailingIcon: @Composable () -> Unit = {
+                        if (expanded) {
+                            // Fork: the image search (or the clear button) before the buttons of the page, which
+                            // end the bar
+                            Row {
+                                val button = when {
+                                    undoSearch != null -> TrailingButton.Undo
+                                    searchFieldState.text.isNotEmpty() -> TrailingButton.Clear
+                                    else -> TrailingButton.ImageSearch
                                 }
-                            }
-                        } else {
-                            null
-                        },
-                        trailingIcon = {
-                            if (expanded) {
-                                // Fork: the image search (or the clear button) before the buttons of the page, which
-                                // end the bar
-                                Row {
-                                    val button = when {
-                                        undoSearch != null -> TrailingButton.Undo
-                                        searchFieldState.text.isNotEmpty() -> TrailingButton.Clear
-                                        else -> TrailingButton.ImageSearch
-                                    }
-                                    AnimatedContent(targetState = button) { shown ->
-                                        when (shown) {
-                                            TrailingButton.Undo -> IconButton(
-                                                onClick = {
-                                                    undoSearch?.let { (oldTags, text) ->
-                                                        if (tagChips) tags = oldTags
-                                                        inputState.setTextAndPlaceCursorAtEnd(text)
-                                                    }
-                                                    undoSearch = null
-                                                },
-                                                shapes = IconButtonDefaults.shapes(),
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Default.Undo, contentDescription = stringResource(R.string.undo_search_edit))
-                                            }
-                                            TrailingButton.Clear -> IconButton(
-                                                onClick = {
-                                                    if (shownTags.isNotEmpty()) undoSearch = tags to inputState.text.toString()
-                                                    searchFieldState.clearText()
-                                                },
-                                                shapes = IconButtonDefaults.shapes(),
-                                            ) {
-                                                Icon(Icons.Default.Close, contentDescription = null)
-                                            }
-                                            TrailingButton.ImageSearch -> IconButton(onClick = { navigate(ImageSearchScreenDestination) }, shapes = IconButtonDefaults.shapes()) {
-                                                Icon(Icons.Default.ImageSearch, contentDescription = null)
-                                            }
-                                        }
-                                    }
-                                    // Fork: a checked "汉" refracts the blurred glass of the search, see checkedGlass
-                                    CompositionLocalProvider(LocalTileGlass provides tileGlass) { expandedTrailingIcon() }
-                                }
-                            } else {
-                                Row {
-                                    if (onClearSearch != null) {
-                                        IconButton(
+                                AnimatedContent(targetState = button) { shown ->
+                                    when (shown) {
+                                        TrailingButton.Undo -> IconButton(
                                             onClick = {
-                                                searchFieldState.clearText()
-                                                onClearSearch()
+                                                undoSearch?.let { (oldTags, text) ->
+                                                    if (tagChips) tags = oldTags
+                                                    inputState.setTextAndPlaceCursorAtEnd(text)
+                                                }
+                                                undoSearch = null
                                             },
                                             shapes = IconButtonDefaults.shapes(),
                                         ) {
-                                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_search))
+                                            Icon(Icons.AutoMirrored.Default.Undo, contentDescription = stringResource(R.string.undo_search_edit))
+                                        }
+                                        TrailingButton.Clear -> IconButton(
+                                            onClick = {
+                                                if (shownTags.isNotEmpty()) undoSearch = tags to inputState.text.toString()
+                                                searchFieldState.clearText()
+                                            },
+                                            shapes = IconButtonDefaults.shapes(),
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = null)
+                                        }
+                                        TrailingButton.ImageSearch -> IconButton(onClick = { navigate(ImageSearchScreenDestination) }, shapes = IconButtonDefaults.shapes()) {
+                                            Icon(Icons.Default.ImageSearch, contentDescription = null)
                                         }
                                     }
-                                    trailingIcon()
                                 }
+                                // Fork: a checked "汉" refracts the blurred glass of the search, see checkedGlass
+                                CompositionLocalProvider(LocalTileGlass provides tileGlass) { expandedTrailingIcon() }
                             }
-                        },
-                    )
+                        } else {
+                            Row {
+                                if (onClearSearch != null) {
+                                    IconButton(
+                                        onClick = {
+                                            searchFieldState.clearText()
+                                            onClearSearch()
+                                        },
+                                        shapes = IconButtonDefaults.shapes(),
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.clear_search))
+                                    }
+                                }
+                                trailingIcon()
+                            }
+                        }
+                    }
+                    val onFieldSearch = {
+                        hideSearchView()
+                        onApplySearch()
+                    }
+                    if (tagChips) {
+                        // Fork: the tags of the search as chips, on more lines when they don't fit on one, see SearchTagChips
+                        SearchTagChipField(
+                            state = inputState,
+                            onSearch = onFieldSearch,
+                            expanded = expanded,
+                            onExpandedChange = onExpandedChange,
+                            tags = shownTags,
+                            onRemoveTag = { i ->
+                                undoSearch = tags to inputState.text.toString()
+                                tags = tags.filterIndexed { j, _ -> j != i }
+                            },
+                            onToggleExcluded = { i -> tags = tags.mapIndexed { j, tag -> if (j == i) toggleExcludedTag(tag) else tag } },
+                            glass = glass != null,
+                            colors = fieldColors,
+                            placeholder = fieldPlaceholder,
+                            leadingIcon = fieldLeadingIcon,
+                            trailingIcon = fieldTrailingIcon,
+                            modifier = fieldModifier,
+                        )
+                    } else {
+                        InputField(
+                            state = inputState,
+                            onSearch = { onFieldSearch() },
+                            expanded = expanded,
+                            onExpandedChange = onExpandedChange,
+                            modifier = fieldModifier,
+                            colors = fieldColors,
+                            placeholder = fieldPlaceholder,
+                            leadingIcon = fieldLeadingIcon,
+                            trailingIcon = fieldTrailingIcon,
+                        )
+                    }
                 },
                 expanded = expanded,
                 onExpandedChange = onExpandedChange,
+                // Fork: with the corners of the glass, see glassShape
+                shape = glassShape,
                 // Fork: collapsed, the field draws the glass, the bar nothing; expanded, the suggestions keep their color.
                 // With liquid glass, no divider: the cards and the chips lie over the search bar, see fadingTopEdge
                 colors = if (glass != null) {
@@ -783,8 +800,7 @@ private fun ExpandedSearchGlass(
     val size = if (expanded) fraction else 1f
     val searchBarInsets = SearchBarDefaults.windowInsets
     val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-    val fieldHeightDp = with(LocalDensity.current) { fieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight) }
-    val shape = RoundedCornerShape(fieldHeightDp / 2 * (1 - size))
+    val shape = RoundedCornerShape(FieldCornerRadius * (1 - size))
     // The lit edge of the floating search bar, at night; by day the bar has none
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Box(
@@ -833,8 +849,7 @@ private fun ClosingFieldGlass(
     val fraction = FieldMorphEasing.transform(time)
     val searchBarInsets = SearchBarDefaults.windowInsets
     val navigationBars = WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-    val fieldHeightDp = with(LocalDensity.current) { fieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight) }
-    val shape = RoundedCornerShape(fieldHeightDp / 2 * fraction)
+    val shape = RoundedCornerShape(FieldCornerRadius * fraction)
     Box(
         Modifier
             .layout { measurable, constraints ->
@@ -896,6 +911,7 @@ fun wrapTagKeyword(keyword: String, translate: Boolean = false): String = run {
 private val TagTerminators = charArrayOf('"', '$')
 private val WhitespaceRegex = Regex("\\s+")
 private val SearchBarHorizontalPadding = 16.dp
+private val FieldCornerRadius = SearchBarDefaults.InputFieldHeight / 2
 
 // Fork: how long the undo button stays after a chip's ✕ or the clear button, see undoSearch
 private const val SearchUndoTimeout = 5_000L
