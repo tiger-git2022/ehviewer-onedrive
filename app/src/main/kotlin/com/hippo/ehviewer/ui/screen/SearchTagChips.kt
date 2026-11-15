@@ -1,9 +1,11 @@
 package com.hippo.ehviewer.ui.screen
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.round
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.Settings
@@ -306,8 +309,9 @@ private fun SearchTagChip(
     val (namespace, name) = searchTagParts(tag)
     val context = LocalContext.current
     val full = (if (translate) with(context) { translateSearchTag(namespace, name) } else null) ?: "$namespace:$name"
-    // Collapsed, the name without its namespace
-    val label = if (compact) full.substringAfter(':') else full
+    // Collapsed, the name without its namespace: the namespace narrows and fades away
+    val namespaceLabel = full.substringBefore(':', "").let { if (it.isEmpty()) "" else "$it:" }
+    val nameLabel = full.substringAfter(':')
     val excluded = isExcludedTag(tag)
     val prefix = when (tag.first()) {
         '-' -> "−"
@@ -325,26 +329,37 @@ private fun SearchTagChip(
         glass -> colors.onSurface
         else -> colors.onSecondaryContainer
     }
-    val sidePadding = if (compact) 9.dp else 12.dp
+    // From the open chip (0) to the collapsed, smaller one (1), going there with an animation
+    val fraction by animateFloatAsState(if (compact) 1f else 0f, ChipResizeSpec)
+    val typography = MaterialTheme.typography
+    val style = typography.labelLarge.copy(fontSize = lerp(typography.labelLarge.fontSize, typography.labelMedium.fontSize, fraction))
+    val sidePadding = lerp(12.dp, 9.dp, fraction)
     Row(
         modifier = modifier
-            .height(if (compact) CompactChipHeight else ChipHeight)
+            .height(lerp(ChipHeight, CompactChipHeight, fraction))
             .clip(CircleShape)
             .background(container)
             .then(if (glass) Modifier.border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape) else Modifier)
             .then(if (interactive) Modifier.clickable(onClick = onToggleExcluded) else Modifier)
-            .padding(start = sidePadding, end = if (interactive) 4.dp else sidePadding),
+            // The ✕ brings its own room at the end
+            .padding(start = sidePadding, end = lerp(4.dp, sidePadding, fraction)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (prefix.isNotEmpty()) Text(text = prefix, color = content, style = style, maxLines = 1)
+        if (namespaceLabel.isNotEmpty()) {
+            AnimatedVisibility(visible = !compact) {
+                Text(text = namespaceLabel, color = content, style = style, maxLines = 1, softWrap = false)
+            }
+        }
         Text(
-            text = prefix + label,
+            text = nameLabel,
             color = content,
-            style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+            style = style,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = if (compact) CompactChipMaxTextWidth else ChipMaxTextWidth),
+            modifier = Modifier.widthIn(max = lerp(ChipMaxTextWidth, CompactChipMaxTextWidth, fraction)),
         )
-        if (interactive) {
+        AnimatedVisibility(visible = interactive) {
             Box(
                 modifier = Modifier
                     .padding(start = 4.dp)
@@ -383,5 +398,6 @@ private val IconOffset = 4.dp
 private val TextPadding = 16.dp
 private const val ClearFocusDelayMillis = 100L
 
+private val ChipResizeSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 private val ChipMoveSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset(1, 1))
 private val FieldHeightSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 1f)
