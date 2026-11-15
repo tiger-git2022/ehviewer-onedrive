@@ -190,5 +190,71 @@ class CommentTranslateTest {
         assertFalse(isTranslationInto("我也上传了韩文版", "한글판도 올렸습니다", TargetLanguage.English))
         assertTrue(isTranslationInto("最高", "The best", TargetLanguage.Japanese))
         assertFalse(isTranslationInto("The best!", "The best", TargetLanguage.Japanese))
+        // Names and titles kept as they were
+        assertTrue(
+            isTranslationInto(
+                "会有后续部分吗？\n\n请翻译：\n[Chococornet (Tenro Aya)] Collapse Kuzure Yuku Risei [Digital]\n\n????????????",
+                "Will there be part?\n\nplease translate:\n[Chococornet (Tenro Aya)] Collapse Kuzure Yuku Risei [Digital]\n\n????????????",
+                zh,
+            ),
+        )
+        assertTrue(
+            isTranslationInto(
+                "目前的系列：\n00 - Sabbat - https://exhentai.org/g/1483497/3519d9a634/\n01 - Falling - https://exhentai.org/g/1489916/15a374622c/\n02 - Infection - https://exhentai.org/g/1498637/654f6cd1f3/",
+                "The series so far:\n00 - Sabbat - https://exhentai.org/g/1483497/3519d9a634/\n01 - Falling - https://exhentai.org/g/1489916/15a374622c/\n02 - Infection - https://exhentai.org/g/1498637/654f6cd1f3/",
+                zh,
+            ),
+        )
+        assertTrue(isTranslationInto("这是催眠用務員CASE.02杉崎霧香の一週間的续作吗", "Is this the sequel to 催眠用務員CASE.02杉崎霧香の一週間?", zh))
+        // An untranslated sentence, lower case words and all, is still no translation
+        assertFalse(isTranslationInto("会有后续吗？please translate the next one too, it is so good", "Will there be more? please translate the next one too, it is so good", zh))
+        // Capitalized words not in the comment count
+        assertFalse(isTranslationInto("Got It, Noted. I Will Do That", "Page 9 was water damaged", zh))
+    }
+
+    @Test
+    fun seriesList() {
+        val series = """
+            The series so far:
+            00 - Sabbat - https://exhentai.org/g/1483497/3519d9a634/
+            01 - Falling - https://exhentai.org/g/1489916/15a374622c/
+            02 - Infection - https://exhentai.org/g/1498637/654f6cd1f3/
+            06 - Collapse - (JP) https://exhentai.org/g/2572161/f7c3e7e9ca/
+            08 - Undermine - https://exhentai.org/g/2992104/a81bd06755/
+        """.trimIndent()
+        assertTrue(CommentSeries.isSeriesList(series))
+        val versions = """
+            Other Language or Version
+            Japanese digital
+            Korean digital
+            English digital, translated by Doujins.com
+            Chinese digital, translated by 萌意永久润色机翻, You are here!
+
+            Series part : 催眠用務員
+            Japanese digital
+            Korean digital, translated by Team Edge
+            Chinese digital, translated by 高端※心海汉化组
+            digital
+
+            Series part : 催眠用務員CASE.02杉崎霧香の一週間
+            Japanese digital
+            Korean digital, translated by Team Edge
+        """.trimIndent()
+        assertTrue(CommentSeries.isSeriesList(versions))
+        // A question about the series, or a remark with links, is translated
+        assertFalse(CommentSeries.isSeriesList("Is there a part 4?\nThe series so far:\nI loved the first two, the third not so much\nWhen is the next one coming out"))
+        assertFalse(CommentSeries.isSeriesList("这是 https://exhentai.org/g/2572161/f7c3e7e9ca/ 这个之后的下一章吗？"))
+        assertFalse(CommentSeries.isSeriesList("Will there be part?\n\nplease translate:\n[Chococornet (Tenro Aya)] Collapse Kuzure Yuku Risei [Digital]"))
+        assertFalse(CommentSeries.isSeriesList("Thanks for the translation!\nThe art is great\nPlease do the next part https://exhentai.org/g/1/a/"))
+        assertFalse(CommentSeries.isSeriesList("Next: I hope they do the sequel\nEnglish please\nThe Japanese version is better"))
+        // Parts numbered without links
+        assertTrue(CommentSeries.isSeriesList("01 - Sabbat\n02 - Falling\n03 - Infection\n04 - Awakening"))
+        // The words of a heading are not enough, the entries are what count
+        assertFalse(CommentSeries.isSeriesList("The series so far:\n00 - Sabbat - https://exhentai.org/g/1/a/\nSo good, can't wait for more"))
+        assertFalse(CommentSeries.isSeriesList("Other Language or Version\nJapanese digital\nI liked the Japanese one more, the translation here is off"))
+        // Points of a review, numbered but no parts
+        assertFalse(CommentSeries.isSeriesList("Thoughts:\n1. The art is great\n2. The story drags\n3. Too short\n4. Still worth it"))
+        // One language only is no list of versions
+        assertFalse(CommentSeries.isSeriesList("English\nEnglish\nEnglish please"))
     }
 }
