@@ -112,6 +112,7 @@ import com.hippo.ehviewer.ui.tools.awaitSelectTags
 import com.hippo.ehviewer.ui.tools.awaitSelectText
 import com.hippo.ehviewer.ui.tools.mouseDragScroll
 import com.hippo.ehviewer.util.AppHelper
+import com.hippo.ehviewer.util.MemoryReport
 import com.hippo.ehviewer.util.awaitActivityResult
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.displayString
@@ -159,6 +160,8 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     // Fork: an album of 紳士漫畫 is on its site, see wnacg/
     val galleryDetailUrl = remember(gid, token) { if (isWnacg(gid)) Wnacg.albumUrl(-gid) else EhUrl.getGalleryDetailUrl(gid, token) }
     contextOf<MainActivity>().ProvideAssistContent(galleryDetailUrl)
+    // Fork: the memory in use in the log, see MemoryReport
+    LaunchedEffect(gid) { MemoryReport.onGalleryOpened(gid) }
 
     var galleryInfo by rememberInVM {
         val casted = args as? GalleryInfoArgs
