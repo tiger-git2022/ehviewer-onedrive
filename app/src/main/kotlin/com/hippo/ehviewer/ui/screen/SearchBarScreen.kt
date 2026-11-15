@@ -413,6 +413,8 @@ fun SearchBarScreen(
     val fieldMorph = remember(searchBarKey) { Animatable(if (searchBarKey == 0) 1f else 0f) }
     LaunchedEffect(fieldMorph) { fieldMorph.animateTo(1f, FieldMorphSpec) }
     val fieldMorphed by remember(fieldMorph) { derivedStateOf { fieldMorph.value == 1f } }
+    // Fork: the line each tag chip is on, kept past the field made anew as the search closes
+    val chipLines = remember { mutableMapOf<String, Int>() }
     LaunchedEffect(expanded) {
         expandProgress.animateTo(if (expanded) 1f else 0f, if (expanded) ExpandSpec else CollapseSpec)
     }
@@ -738,6 +740,9 @@ fun SearchBarScreen(
                             // fading in after those of the open search leave
                             contentAlpha = { if (expanded) 1f else fieldContentAlpha(fieldMorph.value) },
                             closing = { if (expanded) 1f else FieldMorphEasing.transform(fieldMorph.value) },
+                            // Opening or closing, a chip of the second line stays there and doesn't pass by the first
+                            holdLines = { expandProgress.value != (if (expanded) 1f else 0f) || !fieldMorphed },
+                            chipLines = chipLines,
                             modifier = fieldModifier,
                         )
                     } else {

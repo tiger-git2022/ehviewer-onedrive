@@ -106,6 +106,11 @@ fun SearchTagChipField(
     // open search (0) into the collapsed field (1): its chips, made in the open search's place, shrink into it
     contentAlpha: () -> Float = { 1f },
     closing: () -> Float = { 1f },
+    // While the search opens or closes, the line each chip was on (kept by the caller, as the field is made anew when
+    // the search closes), which a chip doesn't leave for a line above it: the field's width and the chips' sizes are
+    // between the two then, and would bring a chip of the second line up to the first only to go back down
+    holdLines: () -> Boolean = { false },
+    chipLines: MutableMap<String, Int> = remember { mutableMapOf() },
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
@@ -128,6 +133,8 @@ fun SearchTagChipField(
                 tags = tags,
                 expanded = expanded,
                 closing = closing,
+                holdLines = holdLines,
+                chipLines = chipLines,
                 showText = expanded || tags.isEmpty() || state.text.isNotEmpty(),
                 leadingIcon = leadingIcon?.let { icon ->
                     {
@@ -188,6 +195,8 @@ private fun ChipFieldLayout(
     tags: List<String>,
     expanded: Boolean,
     closing: () -> Float,
+    holdLines: () -> Boolean,
+    chipLines: MutableMap<String, Int>,
     showText: Boolean,
     leadingIcon: (@Composable () -> Unit)?,
     trailingIcon: @Composable () -> Unit,
@@ -234,14 +243,22 @@ private fun ChipFieldLayout(
         val chipMaxWidth = if (bounded) (lineEnd - start).coerceAtLeast(0) else Constraints.Infinity
         val chips = chipMeasurables.map { it.measure(Constraints(maxWidth = chipMaxWidth)) }
         val chipHeight = chips.maxOfOrNull { it.height } ?: 0
+        val hold = bounded && holdLines()
         var line = 0
         var x = start
-        val chipPlaces = chips.map {
+        val chipPlaces = chips.mapIndexed { index, it ->
+            val tag = tags.getOrNull(index)
+            val heldLine = if (hold && tag != null) chipLines[tag] ?: 0 else 0
+            if (heldLine > line) {
+                line = heldLine
+                x = start
+            }
             // A chip too wide for the first line even alone goes below it
             if (x + it.width > endOf(line) && (x > start || line == 0)) {
                 line++
                 x = start
             }
+            if (bounded && tag != null) chipLines[tag] = line
             val place = IntOffset(x, line)
             x += it.width + gap
             place
