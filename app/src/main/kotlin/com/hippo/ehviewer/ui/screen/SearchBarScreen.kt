@@ -443,6 +443,8 @@ fun SearchBarScreen(
                 modifier = Modifier.fillMaxSize().thenIf(glass != null) { fadingTopEdge(gridState) }.padding(horizontal = 12.dp),
                 state = gridState,
                 contentPadding = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues(),
+                // Fork: pulled past its end, the list stretches only so far
+                overscrollEffect = rememberCappedOverscrollEffect(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalItemSpacing = 8.dp,
             ) {
