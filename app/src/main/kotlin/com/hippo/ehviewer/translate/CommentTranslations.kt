@@ -110,10 +110,10 @@ object CommentTranslations {
                     is CommentTranslation.Failed -> if (!retry) return@mapNotNull null
                     else -> return@mapNotNull null
                 }
-                // A list of the contents, or a raw and where to buy it, is left as it is, even if it was translated by
-                // an older version
+                // A list of the contents or of the series, or a raw and where to buy it, is left as it is, even if it
+                // was translated by an older version
                 val text = plainText(comment.comment)
-                if (CommentListing.isListing(text) || CommentLinks.isLinksOnly(text)) {
+                if (CommentListing.isListing(text) || CommentSeries.isSeriesList(text) || CommentLinks.isLinksOnly(text)) {
                     states[key] = CommentTranslation.NotNeeded(null)
                     return@mapNotNull null
                 }

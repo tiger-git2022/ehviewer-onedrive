@@ -172,13 +172,105 @@ object CommentLinks {
 }
 
 /**
+ * Fork: a comment that lists the other parts of a series or the other languages of a gallery is titles, links and
+ * translators, nothing worth translating:
+ *
+ *     The series so far:
+ *     00 - Sabbat - https://exhentai.org/g/1483497/3519d9a634/
+ *     01 - Falling - https://exhentai.org/g/1489916/15a374622c/
+ *
+ *     Other Language or Version
+ *     Japanese digital
+ *     English digital, translated by Doujins.com
+ *     Series part : 催眠用務員
+ *
+ * Told by its lines: headings ("The series so far", "Series part : title", "Other Language or Version"), a short title
+ * with a link, or a language and who translated it. A question or a remark among them and the comment is translated.
+ */
+object CommentSeries {
+    private val urlRegex = Regex("""(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
+
+    // "The series so far:", "Series part : 催眠用務員", "Other Language or Version", "Previous: ...", "系列："
+    private val headingRegex = Regex(
+        """^[\p{P}\s]*(?:(?:the\s+)?series(?:\s+(?:so\s+far|parts?|list|index|entries|order))?|other\s+languages?(?:\s+(?:or|and|/)\s+versions?)?|other\s+versions?|previous(?:\s+(?:part|chapter|work))?|prev|next(?:\s+(?:part|chapter|work))?|related(?:\s+works?)?|シリーズ|前作|続編|系列作品|系列|续作|其他语言|其他版本)(?:\s*[:：-]\s*(.*)|\s*)$""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private val languages = setOf(
+        "japanese", "english", "chinese", "korean", "spanish", "french", "german", "russian", "portuguese", "italian",
+        "thai", "vietnamese", "indonesian", "polish", "ukrainian", "turkish", "arabic", "hungarian", "czech", "dutch",
+        "tagalog", "filipino", "malay", "swedish", "finnish", "greek", "hebrew", "romanian", "slovak", "norwegian", "danish",
+    )
+
+    // What follows the language on such a line: "digital", "translated by X", "You are here!"
+    private val versionWords = setOf(
+        "digital", "print", "raw", "decensored", "uncensored", "censored", "colored", "colorized", "coloured", "rewrite",
+        "rewritten", "version", "ver", "edition", "hd", "ai", "mtl", "machine", "translation", "translated", "by",
+        "you", "are", "here", "and", "edited", "edit",
+    )
+
+    private val translatedByRegex = Regex("""translated\s+by""", RegexOption.IGNORE_CASE)
+
+    private const val MAX_TITLE_WORDS = 10
+    private const val MAX_TITLE_CHARS = 80
+
+    private fun words(text: String) = text.split(Regex("""[^\p{L}\p{N}]+""")).filter(String::isNotEmpty)
+
+    private fun isQuestion(text: String) = '?' in text || '？' in text
+
+    private fun isHeading(line: String): Boolean {
+        val match = headingRegex.matchEntire(line) ?: return false
+        val title = match.groupValues[1]
+        return !isQuestion(title) && title.length <= MAX_TITLE_CHARS
+    }
+
+    // "Japanese digital", "Chinese digital, translated by 萌意永久润色机翻, You are here!", or "digital" alone
+    private fun isVersion(line: String): Boolean {
+        if (isQuestion(line)) return false
+        // Who translated it is a name, whatever it is
+        val words = words(line.split(translatedByRegex, limit = 2)[0]).map { it.lowercase() }
+        if (words.isEmpty()) return false
+        val rest = if (words[0] in languages) words.drop(1) else words
+        return (words[0] in languages || rest.isNotEmpty()) && rest.all { it in versionWords }
+    }
+
+    // "00 - Sabbat - https://exhentai.org/g/1483497/3519d9a634/", "Part 2: https://..."
+    private fun isLinkEntry(line: String): Boolean {
+        if (!urlRegex.containsMatchIn(line)) return false
+        val rest = urlRegex.replace(line, " ")
+        return !isQuestion(rest) && rest.trim().length <= MAX_TITLE_CHARS && words(rest).size <= MAX_TITLE_WORDS
+    }
+
+    fun isSeriesList(text: String): Boolean {
+        val lines = text.lines().map(String::trim).filter(String::isNotEmpty)
+        if (lines.size < 3) return false
+        var headings = 0
+        var entries = 0
+        lines.forEach { line ->
+            when {
+                isLinkEntry(line) || isVersion(line) -> entries++
+                isHeading(line) -> headings++
+            }
+        }
+        // A list under a heading, or links alone; most lines are entries, a remark among them is fine
+        return entries >= 2 && (headings >= 1 || entries >= 3) && (entries + headings) * 5 >= lines.size * 4
+    }
+}
+
+/**
  * Fork: whether [result], the reply of the model for [source], reads as a translation into [target], by its scripts. A
  * model sometimes answers a comment instead ("Got it — noted..."), in the language of the comment; that is no
  * translation, it is neither shown nor kept. A reply as the comment was (a name) or without letters passes.
+ *
+ * Names and titles are kept as they were (see [CommentTranslateApi.systemPrompt]): "会有后续吗？请翻译：[Chococornet
+ * (Tenro Aya)] Collapse Kuzure Yuku Risei" is Chinese, though half its letters are Latin. So what the reply took from the
+ * comment as it was is left out before the scripts are counted: links, what is in brackets, capitalized words and words
+ * in kana or hangul. Lower case words taken over are counted, an untranslated sentence is no translation.
  */
 fun isTranslationInto(result: String, source: String, target: TargetLanguage): Boolean {
     if (result.trim() == source.trim()) return true
-    val guess = CommentScript.guess(result) ?: return true
+    // A reply all taken over from the comment is judged as a whole: a Korean comment left as it was is no translation
+    val guess = CommentScript.guess(withoutKeptNames(result, source)) ?: CommentScript.guess(result) ?: return true
     return when (target.primary) {
         // Japanese all in kanji ("最高") reads as Chinese by its script
         CommentScript.JAPANESE -> guess == CommentScript.JAPANESE || guess == CommentScript.CHINESE
@@ -186,4 +278,56 @@ fun isTranslationInto(result: String, source: String, target: TargetLanguage): B
         // Latin or any other script, not Chinese, Japanese or Korean
         else -> guess == CommentScript.OTHER
     }
+}
+
+private val keptUrlRegex = Regex("""(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
+
+// [Chococornet (Tenro Aya)], 【...】, 「...」, 『...』, (...), （...）
+private val bracketRegex = Regex("""\[[^\[\]\n]*]|【[^【】\n]*】|「[^「」\n]*」|『[^『』\n]*』|\([^()\n]*\)|（[^（）\n]*）""")
+
+// Letters and digits; a word of Chinese runs to the next space or punctuation
+private val tokenRegex = Regex("""[\p{L}\p{N}\p{M}'’]+""")
+
+/** [result] without what it kept as it was in [source]: links, brackets, names and titles. */
+internal fun withoutKeptNames(result: String, source: String): String {
+    val sourceLower = source.lowercase()
+    val sourceWords = tokenRegex.findAll(sourceLower).map { it.value }.toSet()
+    var text = keptUrlRegex.replace(result, " ")
+    // Brackets twice: a name in brackets in a title in brackets
+    repeat(2) {
+        text = bracketRegex.replace(text) { match ->
+            val inside = match.value.substring(1, match.value.length - 1).trim()
+            if (inside.isNotEmpty() && inside.lowercase() in sourceLower) " " else match.value
+        }
+    }
+    return tokenRegex.replace(text) { match ->
+        val token = match.value
+        val kept = if (hasCjk(token)) token.lowercase() in sourceLower else token.lowercase() in sourceWords
+        if (kept && isNameLike(token)) " " else token
+    }
+}
+
+// Chinese and Japanese run on without spaces: a title kept is part of a longer run in the comment
+private fun hasCjk(token: String) = token.codePoints().anyMatch {
+    when (Character.UnicodeScript.of(it)) {
+        Character.UnicodeScript.HAN, Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA,
+        Character.UnicodeScript.HANGUL -> true
+        else -> false
+    }
+}
+
+// "Sabbat", "CASE", "02", "杉崎霧香の一週間", "Doujins": a name or a title, not a word of a sentence ("please")
+private fun isNameLike(token: String): Boolean {
+    val first = token.codePointAt(0)
+    if (Character.isUpperCase(first) || Character.isDigit(first)) return true
+    var i = 0
+    while (i < token.length) {
+        val cp = token.codePointAt(i)
+        i += Character.charCount(cp)
+        when (Character.UnicodeScript.of(cp)) {
+            Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA, Character.UnicodeScript.HANGUL -> return true
+            else -> Unit
+        }
+    }
+    return false
 }
