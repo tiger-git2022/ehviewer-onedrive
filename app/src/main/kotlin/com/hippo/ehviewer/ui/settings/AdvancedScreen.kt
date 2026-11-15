@@ -52,6 +52,7 @@ import com.hippo.ehviewer.ui.showRestartDialog
 import com.hippo.ehviewer.util.AdsPlaceholderFile
 import com.hippo.ehviewer.util.AppConfig
 import com.hippo.ehviewer.util.CrashHandler
+import com.hippo.ehviewer.util.MemoryReport
 import com.hippo.ehviewer.util.ReadableTime
 import com.hippo.ehviewer.util.displayPath
 import com.hippo.ehviewer.util.getAppLanguage
@@ -89,6 +90,8 @@ private fun dumplog(uri: Uri): Unit = with(ctx) {
             val logcatEntry = ZipEntry("logcat-" + ReadableTime.getFilenamableTime() + ".txt")
             zipOs.putNextEntry(logcatEntry)
             CrashHandler.collectInfo(zipOs.writer())
+            // Fork: the memory and why the app closed the last times, see MemoryReport
+            MemoryReport.write(zipOs.writer())
             Runtime.getRuntime().exec("logcat -d").inputStream.use { it.copyTo(zipOs) }
         }
     }
