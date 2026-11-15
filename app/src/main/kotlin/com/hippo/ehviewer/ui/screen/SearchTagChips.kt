@@ -212,7 +212,9 @@ private fun ChipFieldLayout(
         val lineEnd = width - padding
         fun endOf(line: Int) = if (line == 0) firstLineEnd else lineEnd
 
-        val chips = chipMeasurables.map { it.measure(Constraints(maxWidth = (lineEnd - start).coerceAtLeast(0))) }
+        // Unbounded when asked for the intrinsic width: Constraints cannot hold a width as large as the one above
+        val chipMaxWidth = if (bounded) (lineEnd - start).coerceAtLeast(0) else Constraints.Infinity
+        val chips = chipMeasurables.map { it.measure(Constraints(maxWidth = chipMaxWidth)) }
         val chipHeight = chips.maxOfOrNull { it.height } ?: 0
         var line = 0
         var x = start
