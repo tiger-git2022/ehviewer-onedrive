@@ -3,9 +3,9 @@ package com.hippo.ehviewer.ui.screen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
@@ -101,6 +102,10 @@ fun SearchTagChipField(
     leadingIcon: (@Composable () -> Unit)?,
     trailingIcon: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    // Closing the search, the alpha of the title and the buttons fading in, and how far the field has come from the
+    // open search (0) into the collapsed field (1): its chips, made in the open search's place, shrink into it
+    contentAlpha: () -> Float = { 1f },
+    closing: () -> Float = { 1f },
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
@@ -122,19 +127,24 @@ fun SearchTagChipField(
             ChipFieldLayout(
                 tags = tags,
                 expanded = expanded,
+                closing = closing,
                 showText = expanded || tags.isEmpty() || state.text.isNotEmpty(),
                 leadingIcon = leadingIcon?.let { icon ->
                     {
                         val color = if (focused) colors.focusedLeadingIconColor else colors.unfocusedLeadingIconColor
-                        CompositionLocalProvider(LocalContentColor provides color) { icon() }
+                        Box(Modifier.graphicsLayer { alpha = contentAlpha() }) {
+                            CompositionLocalProvider(LocalContentColor provides color) { icon() }
+                        }
                     }
                 },
                 trailingIcon = {
                     val color = if (focused) colors.focusedTrailingIconColor else colors.unfocusedTrailingIconColor
-                    CompositionLocalProvider(LocalContentColor provides color) { trailingIcon() }
+                    Box(Modifier.graphicsLayer { alpha = contentAlpha() }) {
+                        CompositionLocalProvider(LocalContentColor provides color) { trailingIcon() }
+                    }
                 },
                 text = {
-                    Box(contentAlignment = Alignment.CenterStart) {
+                    Box(Modifier.graphicsLayer { alpha = contentAlpha() }, contentAlignment = Alignment.CenterStart) {
                         if (state.text.isEmpty() && tags.isEmpty()) {
                             val color = if (focused) colors.focusedPlaceholderColor else colors.unfocusedPlaceholderColor
                             CompositionLocalProvider(LocalContentColor provides color) { placeholder() }
@@ -148,6 +158,8 @@ fun SearchTagChipField(
                         translate = translate,
                         interactive = expanded,
                         compact = !expanded,
+                        // Made as the search closes: as it was in the open search
+                        startOpen = { closing() < 1f },
                         glass = glass,
                         onRemove = { onRemoveTag(index) },
                         onToggleExcluded = { onToggleExcluded(index) },
@@ -175,6 +187,7 @@ fun SearchTagChipField(
 private fun ChipFieldLayout(
     tags: List<String>,
     expanded: Boolean,
+    closing: () -> Float,
     showText: Boolean,
     leadingIcon: (@Composable () -> Unit)?,
     trailingIcon: @Composable () -> Unit,
@@ -207,7 +220,9 @@ private fun ChipFieldLayout(
         val leading = leadingMeasurables.firstOrNull()?.measure(iconConstraints)
         val trailing = trailingMeasurables.firstOrNull()?.measure(iconConstraints)
         val trailingWidth = trailing?.width ?: 0
-        val start = if (leading != null && leading.width > 0) leading.width + iconOffset else padding
+        // Closing, the lines start where they did beside the back button of the open search, coming to the side
+        val closingInset = ((1f - closing()) * ClosingStartInset.toPx()).roundToInt()
+        val start = (if (leading != null && leading.width > 0) leading.width + iconOffset else padding) + closingInset
         val bounded = constraints.hasBoundedWidth
         // Asked how wide it would be (its intrinsic width, which the search bar asks of the field), all on one line
         val width = if (bounded) constraints.maxWidth else Int.MAX_VALUE / 2
@@ -305,6 +320,8 @@ private fun SearchTagChip(
     onRemove: () -> Unit,
     onToggleExcluded: () -> Unit,
     modifier: Modifier = Modifier,
+    // Made as the search closes, starting as the chip of the open search
+    startOpen: () -> Boolean = { false },
 ) {
     val (namespace, name) = searchTagParts(tag)
     val context = LocalContext.current
@@ -330,7 +347,15 @@ private fun SearchTagChip(
         else -> colors.onSecondaryContainer
     }
     // From the open chip (0) to the collapsed, smaller one (1), going there with an animation
-    val fraction by animateFloatAsState(if (compact) 1f else 0f, ChipResizeSpec)
+    val openAtStart = remember { startOpen() }
+    val resize = remember { Animatable(if (openAtStart || !compact) 0f else 1f) }
+    LaunchedEffect(compact) { resize.animateTo(if (compact) 1f else 0f, ChipResizeSpec) }
+    val fraction = resize.value
+    // The namespace and the ✕ shown by the open chip, leaving or coming with the change of size
+    val openParts = remember { MutableTransitionState(openAtStart || !compact) }
+    openParts.targetState = !compact
+    val removable = remember { MutableTransitionState(openAtStart || interactive) }
+    removable.targetState = interactive
     val typography = MaterialTheme.typography
     val style = typography.labelLarge.copy(fontSize = lerp(typography.labelLarge.fontSize, typography.labelMedium.fontSize, fraction))
     val sidePadding = lerp(12.dp, 9.dp, fraction)
@@ -347,7 +372,7 @@ private fun SearchTagChip(
     ) {
         if (prefix.isNotEmpty()) Text(text = prefix, color = content, style = style, maxLines = 1)
         if (namespaceLabel.isNotEmpty()) {
-            AnimatedVisibility(visible = !compact) {
+            AnimatedVisibility(visibleState = openParts) {
                 Text(text = namespaceLabel, color = content, style = style, maxLines = 1, softWrap = false)
             }
         }
@@ -359,7 +384,7 @@ private fun SearchTagChip(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = lerp(ChipMaxTextWidth, CompactChipMaxTextWidth, fraction)),
         )
-        AnimatedVisibility(visible = interactive) {
+        AnimatedVisibility(visibleState = removable) {
             Box(
                 modifier = Modifier
                     .padding(start = 4.dp)
@@ -389,6 +414,9 @@ private val LineGap = 6.dp
 // Open, the room the text keeps after the chips; collapsed, the room a text typed after the tags keeps
 private val OpenTextMinWidth = 96.dp
 private val CollapsedTextMinWidth = 64.dp
+
+// Closing, how much further the chips start in the open search, beside its back button, than in the collapsed field
+private val ClosingStartInset = 36.dp
 
 // As SearchBarDefaults.InputField (SearchBar.kt): its sizes, the icons moved 4dp inwards, and the text 16dp from the
 // sides of the field without icons
