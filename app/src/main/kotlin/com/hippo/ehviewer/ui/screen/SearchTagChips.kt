@@ -51,6 +51,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -61,7 +63,10 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -117,13 +122,16 @@ fun SearchTagChipField(
     val focusManager = LocalFocusManager.current
     val translate by Settings.showTagTranslations.collectAsState()
     val textColor = if (focused) colors.focusedTextColor else colors.unfocusedTextColor
+    val textStyle = LocalTextStyle.current.merge(TextStyle(color = textColor))
+    // Collapsed, a text searched flows on to the line below when it doesn't fit beside the buttons
+    val flowingText = if (!expanded && state.text.isNotEmpty()) state.text.toString() else null
     BasicTextField(
         state = state,
         modifier = modifier
             .sizeIn(minWidth = SearchBarMinWidth, maxWidth = SearchBarMaxWidth, minHeight = SearchBarDefaults.InputFieldHeight)
             .onFocusChanged { if (it.isFocused) onExpandedChange(true) },
         lineLimits = TextFieldLineLimits.SingleLine,
-        textStyle = LocalTextStyle.current.merge(TextStyle(color = textColor)),
+        textStyle = textStyle,
         cursorBrush = SolidColor(colors.cursorColor),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         onKeyboardAction = { onSearch() },
@@ -136,6 +144,9 @@ fun SearchTagChipField(
                 transitioning = transitioning,
                 memory = memory,
                 showText = expanded || tags.isEmpty() || state.text.isNotEmpty(),
+                flowingText = flowingText,
+                textStyle = textStyle,
+                textAlpha = contentAlpha,
                 leadingIcon = leadingIcon?.let { icon ->
                     {
                         val color = if (focused) colors.focusedLeadingIconColor else colors.unfocusedLeadingIconColor
@@ -151,7 +162,8 @@ fun SearchTagChipField(
                     }
                 },
                 text = {
-                    Box(Modifier.graphicsLayer { alpha = contentAlpha() }, contentAlignment = Alignment.CenterStart) {
+                    // The text flowing in lines is drawn by the layout in its place
+                    Box(Modifier.graphicsLayer { alpha = if (flowingText != null) 0f else contentAlpha() }, contentAlignment = Alignment.CenterStart) {
                         if (state.text.isEmpty() && tags.isEmpty()) {
                             val color = if (focused) colors.focusedPlaceholderColor else colors.unfocusedPlaceholderColor
                             CompositionLocalProvider(LocalContentColor provides color) { placeholder() }
@@ -220,6 +232,9 @@ private fun ChipFieldLayout(
     transitioning: () -> Boolean,
     memory: ChipFieldMemory,
     showText: Boolean,
+    flowingText: String?,
+    textStyle: TextStyle,
+    textAlpha: () -> Float,
     leadingIcon: (@Composable () -> Unit)?,
     trailingIcon: @Composable () -> Unit,
     text: @Composable () -> Unit,
@@ -258,6 +273,9 @@ private fun ChipFieldLayout(
     }
     // Where each chip was last placed, for one going away to stay there
     val places = remember { HashMap<String, IntOffset>() }
+    // Collapsed, the text searched: the part beside the buttons and the rest on the next line, where they're drawn
+    val textMeasurer = rememberTextMeasurer()
+    var flowing by remember { mutableStateOf<List<Pair<TextLayoutResult, IntOffset>>>(emptyList()) }
     Layout(
         contents = listOf<@Composable () -> Unit>(
             { leadingIcon?.invoke() },
@@ -289,7 +307,10 @@ private fun ChipFieldLayout(
             // The chips at the size they are going to: measured for the lines, never shown
             { tags.forEachIndexed { index, tag -> key(chipKey(tag)) { chip(index, tag, ChipRole.Measure, Modifier) } } },
         ),
-        modifier = Modifier.clipToBounds(),
+        modifier = Modifier.clipToBounds().drawWithContent {
+            drawContent()
+            flowing.forEach { (text, offset) -> drawText(text, topLeft = Offset(offset.x.toFloat(), offset.y.toFloat()), alpha = textAlpha()) }
+        },
     ) { (leadingMeasurables, trailingMeasurables, textMeasurables, chipMeasurables, measureMeasurables), constraints ->
         val lineHeight = SearchBarDefaults.InputFieldHeight.roundToPx()
         val iconOffset = IconOffset.roundToPx()
@@ -367,6 +388,23 @@ private fun ChipFieldLayout(
         val lineSize = maxOf(chipHeight, if (showText) textPlaceable.height else 0)
         val top = (lineHeight - lineSize) / 2
         fun topOf(index: Int) = if (index == 0) top else top + index * (lineSize + LineGap.roundToPx())
+        // What fits of the text on its line, and what doesn't on the next one, ending with an ellipsis
+        val textParts = if (bounded && flowingText != null) {
+            val firstWidth = (endOf(textLine) - textX).coerceAtLeast(0)
+            val first = textMeasurer.measure(flowingText, textStyle, maxLines = 1, constraints = Constraints(maxWidth = firstWidth))
+            val end = first.getLineEnd(0, visibleEnd = true)
+            val rest = flowingText.substring(end.coerceIn(0, flowingText.length)).trimStart()
+            if (rest.isEmpty()) {
+                listOf(first to textLine)
+            } else {
+                val restWidth = (lineEnd - start).coerceAtLeast(0)
+                val second = textMeasurer.measure(rest, textStyle, overflow = TextOverflow.Ellipsis, maxLines = 1, constraints = Constraints(maxWidth = restWidth))
+                listOf(first to textLine, second to textLine + 1)
+            }
+        } else {
+            emptyList()
+        }
+        if (textParts.size > 1) line = textLine + 1
         val lines = line + 1
         val needed = if (lines == 1) lineHeight else topOf(lines - 1) + lineSize + top
         // Not when asked for its intrinsic width, laid out on one line
@@ -393,6 +431,9 @@ private fun ChipFieldLayout(
                 }
             }
             textPlaceable.place(textX, topOf(textLine) + (lineSize - textPlaceable.height) / 2)
+            flowing = textParts.map { (text, onLine) ->
+                text to IntOffset(if (onLine == textLine) textX else start, topOf(onLine) + (lineSize - text.size.height) / 2)
+            }
         }
     }
 }
