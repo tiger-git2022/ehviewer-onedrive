@@ -141,7 +141,9 @@ import com.hippo.ehviewer.ui.main.GalleryDetailHeaderCard
 import com.hippo.ehviewer.ui.main.GalleryTags
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.TagFlight
 import com.hippo.ehviewer.ui.main.TorrentList
+import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
 import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
@@ -810,9 +812,14 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val withDraw = stringResource(R.string.tag_vote_withdraw)
         val mihonNotInstalled = stringResource(R.string.mihon_not_installed)
         fun search(tag: String) = navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_TAG, keyword = tag).asGalleryLinkDst())
+        // Fork: the tag tapped flies into the search bar of its list, see TagFlight
+        val pageEntry = currentPageEntry()
         GalleryTags(
             tagGroups = tags,
-            onTagClick = ::search,
+            onTagClick = { tag ->
+                TagFlight.start(tag, pageEntry)
+                search(tag)
+            },
             onTagLongClick = { tag, translation, vote ->
                 val rawValue = tag.substringAfter(':')
                 launchIO {

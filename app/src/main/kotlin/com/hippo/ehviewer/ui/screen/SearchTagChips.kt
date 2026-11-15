@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.round
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.ui.main.tagFlight
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -184,7 +185,8 @@ fun SearchTagChipField(
                         // Not for a chip leaving, whose tag is gone
                         onRemove = { if (role == ChipRole.Shown) onRemoveTag(index) },
                         onToggleExcluded = { if (role == ChipRole.Shown) onToggleExcluded(index) },
-                        modifier = chipModifier,
+                        // Fork: the tag tapped in a gallery flies here, and back, see TagFlight
+                        modifier = if (role == ChipRole.Shown && !expanded) chipModifier.tagFlight(tag, claim = true) else chipModifier,
                     )
                 },
             )

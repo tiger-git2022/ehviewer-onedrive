@@ -15,6 +15,7 @@ import com.ehviewer.core.ui.component.LocalFabGlass
 import com.ehviewer.core.ui.util.NoopTransitionsVisibilityScope
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.ehviewer.core.ui.util.togetherWith
+import com.hippo.ehviewer.ui.main.LocalPageVisibility
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.LocalGlobalDialogState
 import com.hippo.ehviewer.util.findActivity
@@ -33,7 +34,8 @@ inline fun <R> Screen(
     val dialogState = with(LocalGlobalDialogState.current) { rememberLocal() }
     // Fork: liquid glass refracting the list of the page, see LiquidGlass.kt
     val backdrop = rememberGlassBackdrop()
-    CompositionLocalProvider(LocalPageBackdrop provides backdrop, LocalFabGlass provides rememberLiquidGlass(backdrop)) {
+    // Fork: the page's enter and exit for the tag flying between pages, see TagFlight
+    CompositionLocalProvider(LocalPageBackdrop provides backdrop, LocalFabGlass provides rememberLiquidGlass(backdrop), LocalPageVisibility provides scope) {
         with(NoopTransitionsVisibilityScope) {
             togetherWith(scope) {
                 val visibility = this
