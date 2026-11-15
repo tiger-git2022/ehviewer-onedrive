@@ -1065,4 +1065,5 @@
     <string name="anthology_sheet_finding">%1$d works by the contents in the comments, finding favorites %2$d/%3$d…</string>
     <string name="anthology_sheet_failed">Could not find the favorites: %s</string>
     <string name="anthology_sheet_again">Find again</string>
+    <string name="page_failed_servers">%1$s (servers tried: %2$s)</string>
 </resources>
