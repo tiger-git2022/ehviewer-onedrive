@@ -14,6 +14,7 @@ import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.HttpStatement
+import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -77,9 +78,13 @@ suspend inline fun <R> timeoutBySpeed(
         onTimeout(ConnectTimeoutException(url, timeout.inWholeMilliseconds))
     }
     val tracker = SpeedTracker(2.seconds)
+    // Fork: ktor only reports progress once bytes arrive, so a server that sends the headers and then nothing never
+    // started the speed watchdog below and the page waited at 0 B/s forever. Give up when no byte comes in 10 s
+    val gotBytes = AtomicBoolean(false)
     request {
         var prev = 0L
         onDownload { done, total ->
+            if (done > 0) gotBytes.store(true)
             val total = total ?: Long.MAX_VALUE
             val bytesRead = (done - prev).toInt()
             if (done == total) {
@@ -96,6 +101,12 @@ suspend inline fun <R> timeoutBySpeed(
         resp.status.ensureSuccess()
         val speedWatchdog = launch {
             val timeoutSpeed = speedLevelToSpeed(Settings.timeoutSpeed.value) * 1024L
+            if (timeoutSpeed > 0) {
+                launch {
+                    delay(FIRST_BYTE_TIMEOUT)
+                    if (!gotBytes.load()) onTimeout(LowSpeedException(url, 0))
+                }
+            }
             tracker.speedFlow().collect { speed ->
                 if (speed < timeoutSpeed) {
                     onTimeout(LowSpeedException(url, speed))
@@ -109,6 +120,9 @@ suspend inline fun <R> timeoutBySpeed(
         }
     }
 }
+
+// Fork: how long a response may send no byte at all after its headers
+val FIRST_BYTE_TIMEOUT = 10.seconds
 
 const val MIN_SPEED_LEVEL = 3
 

@@ -601,6 +601,8 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
             var error: String? = null
             var forceHtml = false
             val original = Settings.downloadOriginImage.value || orgImg
+            // Fork: the image servers tried, shown with the reason when the page fails, see PageFailure.kt
+            val triedServers = mutableListOf<String>()
             runSuspendCatching {
                 repeat(3) { retries ->
                     var imageUrl: String? = null
@@ -661,6 +663,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
                         imageUrl to null
                     }
                     checkNotNull(targetImageUrl)
+                    triedServers += imageServerName(targetImageUrl)
 
                     runCatching {
                         logcat(WORKER_DEBUG_TAG) { "Start download image $index" }
@@ -679,7 +682,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
                         when (it) {
                             is CancellationException, is FileNotFoundException -> throw it
                         }
-                        error = it.displayString()
+                        error = pageFailureMessage(it, triedServers)
                     }
                 }
             }.onFailure {

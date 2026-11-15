@@ -1047,4 +1047,5 @@
     <string name="anthology_sheet_finding">按评论区目录分了 %1$d 篇，正在找收藏 %2$d/%3$d…</string>
     <string name="anthology_sheet_failed">没能查收藏：%s</string>
     <string name="anthology_sheet_again">重新查找</string>
+    <string name="page_failed_servers">%1$s（试过的服务器：%2$s）</string>
 </resources>
