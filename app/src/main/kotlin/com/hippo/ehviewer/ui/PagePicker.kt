@@ -91,6 +91,10 @@ import com.ehviewer.core.ui.component.GLASS_TILE_TINT
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
+import com.hippo.ehviewer.anthology.AnthologyContents
+import com.hippo.ehviewer.anthology.AnthologyMatchState
+import com.hippo.ehviewer.anthology.AnthologyMatches
+import com.hippo.ehviewer.anthology.TocEntry
 import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterBlocks
 import com.hippo.ehviewer.chapters.ChapterCompare
@@ -102,15 +106,22 @@ import com.hippo.ehviewer.chapters.UncomparedChapter
 import com.hippo.ehviewer.chapters.WholeFavorite
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PageRanges
+import com.hippo.ehviewer.ui.main.AnthologyMarks
+import com.hippo.ehviewer.ui.main.anthologyHints
 import com.hippo.ehviewer.ui.main.requestOf
 import com.hippo.ehviewer.ui.settings.SyncLinearProgress
 
 /** Fork: blue for the pages favorited as chapters, see [ChapterCompare]. */
 private val FavoritedBlue = Color(0xFF4A86E8)
 
+/** Fork: the mind control work of an anthology, see anthology/MindControlHints. */
+private val MindControlPink = Color(0xFFFFD9E3)
+private val MindControlInk = Color(0xFF7B2949)
+
 /**
  * Fork: the content of the sheet of "Download some pages": the ranges picked as chips, a range added at a time from
- * two numbers; for a tankoubon ([detail] not null) the blocks of its compare with the favorites, ticked to pick them.
+ * two numbers; for a tankoubon the blocks of its compare with the favorites, ticked to pick them; for an anthology
+ * with a contents list in its comments, its works as blocks the same way (see anthology/).
  */
 @Composable
 fun ColumnScope.PagePicker(
@@ -140,7 +151,12 @@ fun ColumnScope.PagePicker(
         Text(text = stringResource(R.string.download_partial), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
         if (detail != null) {
-            ChapterSection(detail, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
+            if (ChapterCompare.isTankoubon(detail)) {
+                ChapterSection(detail, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
+            } else {
+                val contents = remember(detail) { AnthologyMatches.contentsOf(detail.gid, detail.pages, detail.comments.comments) }
+                if (contents != null) AnthologySection(detail, contents, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
+            }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -452,6 +468,44 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
 }
 
 /**
+ * The works of an anthology by the contents list in its comments: the favorites found among them blue, each work a
+ * block to tick, as the chapters of a tankoubon; the mind control one marked.
+ */
+@Composable
+private fun AnthologySection(detail: GalleryDetail, contents: AnthologyContents, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit, onOpen: (ChapterSource) -> Unit) {
+    val gid = detail.gid
+    val pages = detail.pages
+    LaunchedEffect(contents) { AnthologyMatches.start(gid, contents) }
+    val states by AnthologyMatches.states.collectAsState()
+    val state = states[gid]
+    val hints = remember(detail.comments) { anthologyHints(detail.comments.comments) }
+    val marks = remember(contents, state, hints) { AnthologyMarks(contents, state, hints) }
+    val blocks = remember(marks) { marks.entries.map { ChapterBlock(it.first, it.last, marks.favoritesOf(it)) } }
+    val summary = when (state) {
+        is AnthologyMatchState.Running -> stringResource(R.string.anthology_sheet_finding, blocks.size, state.done, state.total)
+        is AnthologyMatchState.Failed -> stringResource(R.string.anthology_sheet_failed, state.message)
+        else -> if (marks.favoritedCount > 0) {
+            stringResource(R.string.anthology_sheet_summary, blocks.size, marks.favoritedCount)
+        } else {
+            stringResource(R.string.anthology_sheet_none, blocks.size)
+        }
+    }
+    Text(
+        text = summary,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (state is AnthologyMatchState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (pages > 0) BlocksBar(pages, blocks, picked, pending = state is AnthologyMatchState.Running, onPick = onPick)
+    blocks.forEachIndexed { i, block -> BlockCard(detail, block, picked, onPick, onOpen, entry = marks.entries[i], mindControl = i in marks.mindControl) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)) {
+        SheetChip(onClick = { onPick(1..pages, false) }, label = stringResource(R.string.chapter_pick_clear))
+        SheetChip(onClick = { AnthologyMatches.start(gid, contents, force = true) }, label = stringResource(R.string.anthology_sheet_again))
+    }
+}
+
+/**
  * The progress as the one of the sync below the search bar: what is done and the share of all the thumbnails, a bar,
  * then each gallery read now with its thumbnails, the title wrapping rather than cut.
  */
@@ -530,7 +584,16 @@ private fun isPicked(block: ChapterBlock, picked: BooleanArray) = block.pages.al
  * pages and whether it is favorited on the first line, the title of the favorite below on up to three lines.
  */
 @Composable
-private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit, onOpen: (ChapterSource) -> Unit) {
+private fun BlockCard(
+    detail: GalleryDetail,
+    block: ChapterBlock,
+    picked: BooleanArray,
+    onPick: (IntRange, Boolean) -> Unit,
+    onOpen: (ChapterSource) -> Unit,
+    // A work of an anthology: its artist and title in place of the title of the favorite, and whether it is mind control
+    entry: TocEntry? = null,
+    mindControl: Boolean = false,
+) {
     val on = isPicked(block, picked)
     val source = block.source
     val shape = RoundedCornerShape(12.dp)
@@ -601,7 +664,7 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         softWrap = false,
                         modifier = Modifier.background(FavoritedBlue, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
-                } else {
+                } else if (!mindControl) {
                     Text(
                         text = stringResource(R.string.chapter_block_unfavorited),
                         style = MaterialTheme.typography.labelSmall,
@@ -615,8 +678,26 @@ private fun BlockCard(detail: GalleryDetail, block: ChapterBlock, picked: Boolea
                         }.padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 }
+                if (mindControl) {
+                    Text(
+                        text = stringResource(R.string.anthology_mark_mind_control),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MindControlInk,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.background(MindControlPink, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
             }
-            if (source != null) {
+            if (entry != null) {
+                Text(
+                    text = listOfNotNull(entry.names.firstOrNull { !it.latin }?.text ?: entry.names.firstOrNull()?.text, entry.title).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            } else if (source != null) {
                 Text(
                     text = source.title,
                     style = MaterialTheme.typography.bodySmall,

@@ -60,6 +60,19 @@ object EhTagDatabase : CoroutineScope {
 
     fun getTranslation(prefix: String? = NAMESPACE_PREFIX, tag: String?): String? = tagGroups[prefix]?.get(tag)?.trim()?.ifEmpty { null }
 
+    /**
+     * Fork: the tag of [namespace] named [name], as the tag itself ("matsuzawa muni") or as its translation ("松沢夢丹");
+     * null when the database has none. See anthology/ (the artists of a contents list in a comment).
+     */
+    fun findTag(namespace: TagNamespace, name: String): String? {
+        if (!initialized) return null
+        val tags = tagGroups[namespace.prefix] ?: return null
+        val wanted = name.trim()
+        if (wanted.isEmpty()) return null
+        wanted.lowercase().takeIf { it in tags }?.let { return it }
+        return tags.entries.firstOrNull { it.value.trim().equals(wanted, ignoreCase = true) }?.key
+    }
+
     // Copied from https://github.com/EhTagTranslation/EhSyringe/blob/c0cf88da04081072492829673aca34380b14dae6/src/plugin/suggest.ts#L37
     // TODO: Optimize
     private val nsScore = mapOf(

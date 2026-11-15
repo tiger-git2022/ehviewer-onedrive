@@ -1026,4 +1026,24 @@
     <string name="my_uploads_reply_hint">在评论区回复</string>
     <string name="my_uploads_reply_too_short">至少要 10 个字符</string>
     <string name="my_uploads_reply_sent">已发送</string>
+    <!-- Fork: 评论区里选集的目录，见 anthology/ -->
+    <string name="anthology_summary_count">目录 %d 篇</string>
+    <string name="anthology_summary_favorited">♥ 已收藏 %d 篇</string>
+    <string name="anthology_summary_mind_control">🌀 催眠 %d 篇</string>
+    <string name="anthology_summary_finding">正在找收藏 %1$d/%2$d</string>
+    <string name="anthology_mark_favorited">♥ 已收藏</string>
+    <string name="anthology_mark_mind_control">🌀 催眠</string>
+    <string name="anthology_hint_page">🌀 催眠 · 第 %s 页</string>
+    <string name="anthology_hint_read">去看</string>
+    <string name="anthology_menu_title">第 %1$d 页 · %2$s</string>
+    <string name="anthology_menu_open_favorite">♥ 打开已收藏的：%s</string>
+    <string name="anthology_menu_search_tag">搜索 %s</string>
+    <string name="anthology_menu_search_name">搜索「%s」</string>
+    <string name="anthology_menu_search_work">搜索「%s」（作者＋作品名，找这篇的单篇）</string>
+    <string name="anthology_menu_copy">复制「%s」</string>
+    <string name="anthology_sheet_summary">按评论区目录分了 %1$d 篇，已收藏 %2$d 篇（蓝）</string>
+    <string name="anthology_sheet_none">按评论区目录分了 %d 篇，没找到收藏过的</string>
+    <string name="anthology_sheet_finding">按评论区目录分了 %1$d 篇，正在找收藏 %2$d/%3$d…</string>
+    <string name="anthology_sheet_failed">没能查收藏：%s</string>
+    <string name="anthology_sheet_again">重新查找</string>
 </resources>

@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -121,11 +122,15 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
+import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GlassToggleButton
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.decorate
+import com.hippo.ehviewer.ui.main.handleAnthologyLink
+import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
 import com.hippo.ehviewer.ui.main.selectableSections
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -226,6 +231,10 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     }
     var refreshing by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    // Fork: the contents list of an anthology and the pages of its mind control work, marked, see ui/main/AnthologyMarks.kt
+    val anthologyMarks = rememberAnthologyMarks(galleryDetail.gid, galleryDetail.pages, comments.comments)
+    val anthologyContext = LocalContext.current
+    val mihonNotInstalled = stringResource(R.string.mihon_not_installed)
 
     suspend fun refreshComment(showAll: Boolean) {
         // Fork: those of an album of 紳士漫畫 from its page of comments, see wnacg/
@@ -533,7 +542,20 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                         },
                         onCardClick = { launch { doCommentAction(item) } },
                         onUrlClick = {
-                            if (it.startsWith("#c")) {
+                            if (it.startsWith(ANTHOLOGY_LINK)) {
+                                launch {
+                                    anthologyMarks.handleAnthologyLink(
+                                        it,
+                                        anthologyContext,
+                                        galleryDetail,
+                                        showContents = {
+                                            val index = comments.comments.indexOfFirst { c -> c.id == anthologyMarks.contents?.commentId }
+                                            if (index != -1) lazyListState.animateScrollToItem(index)
+                                        },
+                                        onMihonMissing = { snackbar(mihonNotInstalled) },
+                                    )
+                                }
+                            } else if (it.startsWith("#c")) {
                                 it.substring(2).toLongOrNull()?.let { id ->
                                     val index = comments.comments.indexOfFirst { c -> c.id == id }
                                     if (index != -1) {
@@ -544,7 +566,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                                 if (!jumpToReaderByPage(it, galleryDetail)) if (!navWithUrl(it)) openBrowser(it)
                             }
                         },
-                        processComment = { c, ig -> processComment(c, ig) },
+                        processComment = { c, ig -> anthologyMarks.decorate(processComment(c, ig), item, original = c.comment == item.comment) },
                         translation = if (translateConfigured) CommentTranslations.stateOf(item) else null,
                         showOriginal = (item.id in flippedComments) == showTranslations,
                         onToggleOriginal = { if (!flippedComments.remove(item.id)) flippedComments.add(item.id) },
