@@ -99,6 +99,8 @@ open class BackupMerger<T>(
         if (upper < lower) return page
         runSuspendCatching { loadUntil(lower) }.onFailure {
             logcat(TAG, it)
+            // Fork: shown below the loading indicator of a new search, see SearchProgress
+            reportSearchStatus(SiteStatus.Failed(blocked = false))
             onError(it)
             return page
         }
@@ -126,6 +128,7 @@ open class BackupMerger<T>(
         val asked = page.filter { it.gid !in askedTitles }
         if (asked.isEmpty()) return
         askedTitles += asked.map { it.gid }
+        reportSearchStatus(SiteStatus.CheckingTitles)
         val byGid = asked.associateBy { it.gid }
         runSuspendCatching { moreTitles(asked) }.onFailure { logcat(TAG, it) }.getOrNull()?.forEach { (gid, titles) ->
             val info = byGid[gid]
@@ -141,6 +144,7 @@ open class BackupMerger<T>(
     private suspend fun loadUntil(lower: Long) = sources.forEach { source ->
         with(source) {
             while (hasMore && nextPage <= maxPages && oldestFetched >= lower) {
+                reportSearchStatus(SiteStatus.Fetching(nextPage))
                 val result = fetch(nextPage)
                 nextPage++
                 hasMore = result.hasNext && result.postedTimes.isNotEmpty()

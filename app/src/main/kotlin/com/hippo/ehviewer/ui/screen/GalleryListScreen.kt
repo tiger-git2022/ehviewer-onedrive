@@ -644,6 +644,8 @@ fun AnimatedVisibilityScope.GalleryListScreen(
             data = data,
             // Fork: skipping a run of favorites only, see FavoritedGap
             favoritedGapProgress = { viewModel.favoritedGapProgress.value },
+            // Fork: how far a new search has got, see SearchProgressList
+            searchProgress = { viewModel.searchProgress.value },
             contentModifier = Modifier.nestedScroll(searchBarConnection),
             contentPadding = contentPadding,
             listMode = listMode,

@@ -1048,4 +1048,12 @@
     <string name="anthology_sheet_failed">没能查收藏：%s</string>
     <string name="anthology_sheet_again">重新查找</string>
     <string name="page_failed_servers">%1$s（试过的服务器：%2$s）</string>
+    <string name="search_site_wnacg">绅士漫画</string>
+    <string name="search_site_waiting">等待中</string>
+    <string name="search_site_page">第 %d 页…</string>
+    <string name="search_site_page_skipping">第 %d 页（跳过已收藏）…</string>
+    <string name="search_site_checking_titles">核对标题…</string>
+    <string name="search_site_found">%d 本</string>
+    <string name="search_site_blocked">要先验证</string>
+    <string name="search_site_failed">失败</string>
 </resources>

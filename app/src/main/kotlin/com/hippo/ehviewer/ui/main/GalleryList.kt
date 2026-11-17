@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -69,6 +70,7 @@ import com.hippo.ehviewer.coil.PrefetchAround
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.ui.screen.FavoritedGapPause
+import com.hippo.ehviewer.restore.SearchProgress
 import com.hippo.ehviewer.ui.screen.FavoritedGapProgress
 import com.hippo.ehviewer.ui.screen.collectDetailSizeAsState
 import com.hippo.ehviewer.ui.tools.mouseDragScroll
@@ -93,6 +95,8 @@ fun GalleryList(
     scrollToTopOnRefresh: Boolean = true,
     // Fork: skipping a run of favorites only, see ui/screen/FavoritedGap.kt
     favoritedGapProgress: () -> FavoritedGapProgress? = { null },
+    // Fork: how far a new search has got, shown below its loading indicator, see SearchProgressList
+    searchProgress: () -> SearchProgress? = { null },
     onRefresh: () -> Unit,
     onLoading: () -> Unit,
 ) {
@@ -240,9 +244,20 @@ fun GalleryList(
                         contentAlignment = Alignment.Center,
                     ) {
                         ShapeLoadingIndicator()
-                        // Fork: skipping a run of favorites only, see ui/screen/FavoritedGap.kt
-                        favoritedGapProgress()?.let {
-                            FavoritedGapSkipping(it, Modifier.padding(top = 96.dp))
+                        // Fork: below it, how far the search has got on each site, and the skipping of a run of
+                        // favorites only (see ui/screen/FavoritedGap.kt), the indicator staying in the middle
+                        Column(
+                            modifier = Modifier.align(Alignment.TopCenter).layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints.copy(minHeight = 0))
+                                layout(placeable.width, constraints.maxHeight) {
+                                    placeable.place(0, constraints.maxHeight / 2 + SearchProgressTop.roundToPx())
+                                }
+                            },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            searchProgress()?.let { SearchProgressList(it) }
+                            favoritedGapProgress()?.let { FavoritedGapSkipping(it) }
                         }
                     }
                 }
@@ -330,3 +345,6 @@ private fun AppendIndicator(data: LazyPagingItems<BaseGalleryInfo>, favoritedGap
         else -> LoadStateIndicator(state = state) { data.retry() }
     }
 }
+
+// Fork: from the middle of the page, where the loading indicator is, to the top of the progress below it
+private val SearchProgressTop = 48.dp

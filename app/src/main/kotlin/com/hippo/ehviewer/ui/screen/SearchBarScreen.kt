@@ -567,8 +567,10 @@ fun SearchBarScreen(
                             Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = null)
                         }
                     }
+                    // Fork: or on the line below the tags where they were, see ChipFieldMemory.openButtonsTop
                     Row(
-                        Modifier.align(Alignment.TopEnd).height(SearchBarDefaults.InputFieldHeight).offset(x = -SearchBarIconOffsetX),
+                        Modifier.align(Alignment.TopEnd).height(SearchBarDefaults.InputFieldHeight)
+                            .offset { IntOffset(-SearchBarIconOffsetX.roundToPx(), if (tagChips) chipFieldMemory.openButtonsTop else 0) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = {}, shapes = IconButtonDefaults.shapes()) {

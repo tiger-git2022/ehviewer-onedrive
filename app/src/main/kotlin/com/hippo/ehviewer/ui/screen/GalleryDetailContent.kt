@@ -605,23 +605,25 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             }
             Text(text = favButtonText)
         }
+        val detailPageEntry = currentPageEntry()
         EhIconButton(
             icon = Icons.Default.Search,
             text = stringResource(id = R.string.similar_gallery),
             onClick = {
-                // Fork: the Japanese title first, as translations of the same work by different groups usually keep the
-                // original Japanese title while their romaji or English titles differ; quotes inside would end the phrase
-                val keyword = (EhUtils.extractTitle(galleryDetail.titleJpn) ?: EhUtils.extractTitle(galleryDetail.title))
-                    ?.replace('"', ' ')?.trim()?.ifEmpty { null }
+                val keyword = similarTitleQuery(galleryDetail.title, galleryDetail.titleJpn)
                 val artistTag = galleryDetail.tagGroups.artistTag()
                 if (null != keyword) {
+                    // Fork: the title flies into the search bar of the list, see TagFlight
+                    TagFlight.startQuery(keyword, detailPageEntry)
                     navigate(
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_NORMAL,
-                            keyword = "\"" + keyword + "\"",
+                            keyword = keyword,
                         ).asGalleryLinkDst(),
                     )
                 } else if (artistTag != null) {
+                    // Fork: the artist tag flies, when shown, see TagFlight
+                    TagFlight.start(artistTag, detailPageEntry)
                     navigate(
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_TAG,
@@ -948,3 +950,11 @@ private fun LazyGridScope.galleryPreview(detail: GalleryDetail, data: LazyPaging
         PrefetchAround(data, index, if (isV2Thumb) 20 else 6) { imageRequest(it) }
     }
 }
+
+/**
+ * Fork: the search of the similar galleries of a gallery, its title as a phrase: the Japanese title first, as
+ * translations of the same work by different groups usually keep the original Japanese title while their romaji or
+ * English titles differ; quotes inside would end the phrase. Null without a title.
+ */
+fun similarTitleQuery(title: String?, titleJpn: String?): String? = (EhUtils.extractTitle(titleJpn) ?: EhUtils.extractTitle(title))
+    ?.replace('"', ' ')?.trim()?.ifEmpty { null }?.let { "\"$it\"" }

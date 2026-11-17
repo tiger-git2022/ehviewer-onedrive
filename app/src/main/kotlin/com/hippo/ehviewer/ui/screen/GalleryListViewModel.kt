@@ -23,10 +23,17 @@ import com.hippo.ehviewer.client.parser.GalleryListResult
 import com.hippo.ehviewer.restore.BackupMerger
 import com.hippo.ehviewer.restore.PandaChaikaMerger
 import com.hippo.ehviewer.restore.RestoredGalleries
+import com.hippo.ehviewer.restore.SearchProgress
+import com.hippo.ehviewer.restore.SearchSite
+import com.hippo.ehviewer.restore.SiteStatus
+import com.hippo.ehviewer.restore.reportSearchStatus
+import com.hippo.ehviewer.restore.searchingOn
 import com.hippo.ehviewer.ui.tools.foldToLoadResult
 import com.hippo.ehviewer.wnacg.wnacgMerger
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import moe.tarsin.coroutines.runSuspendCatching
 
 class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedStateHandle: SavedStateHandle) : ViewModel() {
@@ -49,7 +56,10 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
 
     // Fork: the searches on PandaChika and 紳士漫畫 of the pages loaded, see BackupMerger
     @Volatile
-    private var backups: List<BackupMerger<*>> = emptyList()
+    private var backups: List<Pair<SearchSite, BackupMerger<*>>> = emptyList()
+
+    // Fork: how far the new search has got, shown below its loading indicator, see SearchProgress
+    val searchProgress = mutableStateOf<SearchProgress?>(null)
 
     // Fork: 紳士漫畫 asked for its check in this search, so its albums are not in the results, see ui/WnacgCheck.kt
     val wnacgBlocked = mutableStateOf(false)
@@ -116,11 +126,18 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         // 紳士漫畫 first: PandaChika leaves out the works it has (mostly Chinese translations)
                         val wnacg = wnacgMerger(urlBuilder, { hideFavoritedPref.value }) { wnacgBlocked.value = true }
                         backups = listOfNotNull(
-                            wnacg,
-                            PandaChaikaMerger.of(urlBuilder, { hideFavoritedPref.value }) { wnacg?.fetchedTitles().orEmpty() },
+                            wnacg?.let { SearchSite.Wnacg to it },
+                            PandaChaikaMerger.of(urlBuilder, { hideFavoritedPref.value }) { wnacg?.fetchedTitles().orEmpty() }
+                                ?.let { SearchSite.PandaChaika to it },
                         )
                     }
                     val mergers = backups
+                    // Fork: a new search shows how far it has got, see SearchProgress
+                    val progress = if (params is LoadParams.Refresh) {
+                        SearchProgress(listOf(SearchSite.EHentai) + mergers.map { it.first }).also { searchProgress.value = it }
+                    } else {
+                        null
+                    }
                     val url = mutex.withLock {
                         with(urlBuilder) {
                             when (params) {
@@ -132,79 +149,97 @@ class GalleryListViewModel(lub: ListUrlBuilder, fromGallery: Boolean, savedState
                         }
                     }
                     runSuspendCatching {
-                        // Fork: without a hit on E-Hentai, PandaChika or 紳士漫畫 may have some
-                        var noHits: NoHitsFoundException? = null
-                        suspend fun fetchAsked() = try {
-                            EhEngine.getGalleryList(url)
-                        } catch (e: NoHitsFoundException) {
-                            if (mergers.isEmpty() || params !is LoadParams.Refresh) throw e
-                            noHits = e
-                            GalleryListResult(null, null, mutableListOf())
-                        }
-                        // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
-                        // (before it when prepending), as an empty page ended the list. Forward, days of favorites
-                        // only pause the list, see FavoritedGap
-                        val hide = hideFavoritedPref.value
-                        hideFavoritedApplied = hide
-                        var result = if (hide && params !is LoadParams.Prepend) {
-                            gap.load(params.key) { cursor ->
-                                if (cursor == null) {
-                                    fetchAsked()
-                                } else {
+                        withContext(progress ?: EmptyCoroutineContext) {
+                            // Fork: without a hit on E-Hentai, PandaChika or 紳士漫畫 may have some
+                            var noHits: NoHitsFoundException? = null
+                            // Fork: the pages of E-Hentai fetched for this load, see SearchProgress
+                            var ehPages = 0
+                            suspend fun reportEhPage() = searchingOn(SearchSite.EHentai) {
+                                ehPages++
+                                reportSearchStatus(SiteStatus.Fetching(ehPages, skippingFavorited = ehPages > 1))
+                            }
+                            suspend fun fetchAsked() = try {
+                                reportEhPage()
+                                EhEngine.getGalleryList(url)
+                            } catch (e: NoHitsFoundException) {
+                                if (mergers.isEmpty() || params !is LoadParams.Refresh) throw e
+                                noHits = e
+                                GalleryListResult(null, null, mutableListOf())
+                            }
+                            // Fork: hide the favorited galleries; a page of favorites only goes on to the page after it
+                            // (before it when prepending), as an empty page ended the list. Forward, days of favorites
+                            // only pause the list, see FavoritedGap
+                            val hide = hideFavoritedPref.value
+                            hideFavoritedApplied = hide
+                            var result = if (hide && params !is LoadParams.Prepend) {
+                                gap.load(params.key) { cursor ->
+                                    if (cursor == null) {
+                                        fetchAsked()
+                                    } else {
+                                        val nextUrl = mutex.withLock {
+                                            with(urlBuilder) {
+                                                setIndex(cursor, isNext = true)
+                                                build()
+                                            }
+                                        }
+                                        try {
+                                            reportEhPage()
+                                            EhEngine.getGalleryList(nextUrl)
+                                        } catch (_: NoHitsFoundException) {
+                                            GalleryListResult(null, null, mutableListOf())
+                                        }
+                                    }
+                                }
+                            } else {
+                                fetchAsked()
+                            }
+                            if (hide && params is LoadParams.Prepend) {
+                                var skipped = 0
+                                var shown = result.withoutFavorited()
+                                while (shown.galleryInfoList.isEmpty() && skipped < MAX_SKIPPED_FAVORITED_PAGES) {
+                                    val key = result.prev ?: break
                                     val nextUrl = mutex.withLock {
                                         with(urlBuilder) {
-                                            setIndex(cursor, isNext = true)
+                                            setIndex(key, isNext = false)
                                             build()
                                         }
                                     }
-                                    try {
-                                        EhEngine.getGalleryList(nextUrl)
-                                    } catch (_: NoHitsFoundException) {
-                                        GalleryListResult(null, null, mutableListOf())
-                                    }
+                                    result = EhEngine.getGalleryList(nextUrl)
+                                    shown = result.withoutFavorited()
+                                    skipped++
                                 }
+                                result = shown
                             }
-                        } else {
-                            fetchAsked()
-                        }
-                        if (hide && params is LoadParams.Prepend) {
-                            var skipped = 0
-                            var shown = result.withoutFavorited()
-                            while (shown.galleryInfoList.isEmpty() && skipped < MAX_SKIPPED_FAVORITED_PAGES) {
-                                val key = result.prev ?: break
-                                val nextUrl = mutex.withLock {
-                                    with(urlBuilder) {
-                                        setIndex(key, isNext = false)
-                                        build()
-                                    }
+                            progress?.update(SearchSite.EHentai, SiteStatus.Done(result.galleryInfoList.size))
+                            // Fork: listed by E-Hentai, not removed: no badge
+                            RestoredGalleries.listed(result.galleryInfoList.map { it.gid })
+                            if (mergers.isNotEmpty()) {
+                                val load = when (params) {
+                                    is LoadParams.Refresh -> BackupMerger.Load.Refresh
+                                    is LoadParams.Append -> BackupMerger.Load.Append
+                                    is LoadParams.Prepend -> BackupMerger.Load.Prepend
                                 }
-                                result = EhEngine.getGalleryList(nextUrl)
-                                shown = result.withoutFavorited()
-                                skipped++
+                                // Each between those listed so far: PandaChika leaves out the works 紳士漫畫 added
+                                var merged: List<BaseGalleryInfo> = result.galleryInfoList
+                                // A failure of the other site never takes the page of E-Hentai with it
+                                mergers.forEach { (site, merger) ->
+                                    val page = merged
+                                    merged = runSuspendCatching { searchingOn(site) { merger.merge(load, params.key, page, result.prev, result.next) } }
+                                        .onFailure {
+                                            logcat(it)
+                                            progress?.update(site, SiteStatus.Failed(blocked = false))
+                                        }
+                                        .getOrDefault(page)
+                                    if (progress != null && progress.statusOf(site) !is SiteStatus.Failed) {
+                                        progress.update(site, SiteStatus.Done(merged.size - page.size))
+                                    }
+                                    if (site == SearchSite.Wnacg && wnacgBlocked.value) progress?.update(site, SiteStatus.Failed(blocked = true))
+                                }
+                                result = result.copy(galleryInfoList = merged.toMutableList())
                             }
-                            result = shown
+                            noHits?.let { if (result.galleryInfoList.isEmpty()) throw it }
+                            result
                         }
-                        // Fork: listed by E-Hentai, not removed: no badge
-                        RestoredGalleries.listed(result.galleryInfoList.map { it.gid })
-                        if (mergers.isNotEmpty()) {
-                            val load = when (params) {
-                                is LoadParams.Refresh -> BackupMerger.Load.Refresh
-                                is LoadParams.Append -> BackupMerger.Load.Append
-                                is LoadParams.Prepend -> BackupMerger.Load.Prepend
-                            }
-                            // Each between those listed so far: PandaChika leaves out the works 紳士漫畫 added
-                            var merged: List<BaseGalleryInfo> = result.galleryInfoList
-                            // A failure of the other site never takes the page of E-Hentai with it
-                            mergers.forEach { merger ->
-                                val page = merged
-                                merged = runSuspendCatching { merger.merge(load, params.key, page, result.prev, result.next) }
-                                    .onFailure { logcat(it) }
-                                    .getOrDefault(page)
-                            }
-                            result = result.copy(galleryInfoList = merged.toMutableList())
-                        }
-                        noHits?.let { if (result.galleryInfoList.isEmpty()) throw it }
-                        result
                     }.foldToLoadResult { result ->
                         LoadResult.Page(result.galleryInfoList, result.prev, result.next)
                     }
