@@ -20,6 +20,7 @@ import com.hippo.ehviewer.download.DownloadManager
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PartialDownloads
 import com.hippo.ehviewer.download.archiveFile
+import com.hippo.ehviewer.ui.theme.DarkInk
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.EhModalBottomSheet
 import com.hippo.ehviewer.ui.tools.awaitConfirmationOrCancel
@@ -101,13 +102,13 @@ object PartialSheetReturn {
 
 context(_: DialogState)
 private suspend fun awaitPageRanges(pages: Int, initial: String, detail: GalleryDetail?) = dialog<PageChoice> { cont ->
-    // As the glass menu of the top bars, its text white in dark themes and black in light ones: the gray text of the
-    // sheets was hard to read over the busy page behind. Its blur and the color inside its glassy edge are set in Settings → EH
+    // As the glass menu of the top bars, its text the near white of the text in dark themes (pure white glared on the
+    // gray glass) and black in light ones: the gray text of the sheets was hard to read over the busy page behind. Its blur and the color inside its glassy edge are set in Settings → EH
     val colors = MaterialTheme.colorScheme
     val blur by Settings.partialSheetBlur.collectAsState()
     val opacity by Settings.partialSheetOpacity.collectAsState()
     val dark = colors.surface.luminance() < 0.5f
-    val ink = if (dark) Color.White else Color.Black
+    val ink = if (dark) DarkInk else Color.Black
     // The borders and the lines as the edge of the floating buttons: a light one in dark themes. By day black ones were
     // too many and too heavy: the few lines left are a pale grey, see PagePicker
     MaterialTheme(

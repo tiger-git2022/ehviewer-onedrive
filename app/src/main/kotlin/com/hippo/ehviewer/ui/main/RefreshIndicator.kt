@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.floatingGlass
+import com.hippo.ehviewer.ui.DARK_GLASS_EDGE
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import kotlin.math.roundToInt
 
@@ -117,7 +118,7 @@ private fun Modifier.refreshDrop(glass: FloatingGlass?): Modifier {
         // Liquid glass off: the same arrow on a plain disc
         shadow(3.dp, CircleShape).background(scheme.surfaceContainerHigh, CircleShape)
     } else {
-        val rim = if (dark) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
+        val rim = if (dark) Color.White.copy(alpha = DARK_GLASS_EDGE) else Color.Black.copy(alpha = 0.12f)
         background(scheme.surfaceContainerHigh.copy(alpha = 0.55f), CircleShape).border(1.dp, rim, CircleShape)
     }
 }

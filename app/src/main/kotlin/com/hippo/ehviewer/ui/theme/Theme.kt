@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.ehviewer.core.ui.component.DarkGlassIcon
 import com.ehviewer.core.ui.component.scrollbarStyle
 import com.ehviewer.core.util.isAtLeastOMR1
 import com.ehviewer.core.util.isAtLeastS
@@ -38,13 +39,22 @@ fun ColorScheme.amoled(amoled: Boolean) = if (amoled) {
     this
 }
 
+/**
+ * Fork: the text in dark themes, a neutral near white like the system apps of vivo, instead of the near white tinted
+ * with the wallpaper colors (a faint purple or blue next to the gray glass, see LiquidGlass.kt). The paler text and the
+ * icons of the menus in the gray white of the icons on glass.
+ */
+val DarkInk = Color(0xFFE6E6E6)
+
+private fun ColorScheme.neutralInk() = copy(onSurface = DarkInk, onBackground = DarkInk, onSurfaceVariant = DarkGlassIcon)
+
 @Composable
 fun EhTheme(useDarkTheme: Boolean, content: @Composable () -> Unit) {
     val amoled by Settings.blackDarkTheme.collectAsState()
     val context = LocalContext.current
     val colors = if (isAtLeastS) {
         if (useDarkTheme) {
-            dynamicDarkColorScheme(context).amoled(amoled)
+            dynamicDarkColorScheme(context).neutralInk().amoled(amoled)
         } else {
             dynamicLightColorScheme(context)
         }
@@ -57,10 +67,10 @@ fun EhTheme(useDarkTheme: Boolean, content: @Composable () -> Unit) {
                 isAmoled = amoled,
                 secondary = color.second,
                 tertiary = color.third,
-            )
+            ).let { if (useDarkTheme && !amoled) it.neutralInk() else it }
         } else {
             if (useDarkTheme) {
-                darkColorScheme().amoled(amoled)
+                darkColorScheme().neutralInk().amoled(amoled)
             } else {
                 expressiveLightColorScheme()
             }
