@@ -45,8 +45,8 @@ fun interface FloatingGlass {
 }
 
 /**
- * Fork: the icons over liquid glass in dark themes, a gray white like the floating bars of vivo's system apps: the near
- * white of the text was glaring on the gray glass. In light themes the text color, black.
+ * Fork: the icons over liquid glass in dark themes, a gray white like the floating bars of vivo's system apps: in the
+ * near white of the text they glared. In light themes the text color, black.
  */
 val DarkGlassIcon = Color(0xFFC4C2C0)
 

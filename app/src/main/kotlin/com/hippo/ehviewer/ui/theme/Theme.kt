@@ -41,7 +41,7 @@ fun ColorScheme.amoled(amoled: Boolean) = if (amoled) {
 
 /**
  * Fork: the text in dark themes, a neutral near white like the system apps of vivo, instead of the near white tinted
- * with the wallpaper colors (a faint purple or blue next to the gray glass, see LiquidGlass.kt). The paler text and the
+ * with the wallpaper colors (a faint purple or blue). The paler text and the
  * icons of the menus in the gray white of the icons on glass.
  */
 val DarkInk = Color(0xFFE6E6E6)

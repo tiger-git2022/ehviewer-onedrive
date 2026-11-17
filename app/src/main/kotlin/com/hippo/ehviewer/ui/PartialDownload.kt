@@ -102,8 +102,8 @@ object PartialSheetReturn {
 
 context(_: DialogState)
 private suspend fun awaitPageRanges(pages: Int, initial: String, detail: GalleryDetail?) = dialog<PageChoice> { cont ->
-    // As the glass menu of the top bars, its text the near white of the text in dark themes (pure white glared on the
-    // gray glass) and black in light ones: the gray text of the sheets was hard to read over the busy page behind. Its blur and the color inside its glassy edge are set in Settings → EH
+    // As the glass menu of the top bars, its text the near white of the text in dark themes (pure white glared over
+    // the glass) and black in light ones: the gray text of the sheets was hard to read over the busy page behind. Its blur and the color inside its glassy edge are set in Settings → EH
     val colors = MaterialTheme.colorScheme
     val blur by Settings.partialSheetBlur.collectAsState()
     val opacity by Settings.partialSheetOpacity.collectAsState()
