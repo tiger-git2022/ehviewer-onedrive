@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -181,7 +182,8 @@ fun FabLayout(
     val glass = LocalFabGlass.current
     val fabColor = FloatingActionButtonDefaults.containerColor
     val glassColor = if (glass != null) Color.Transparent else fabColor
-    val glassContent = MaterialTheme.colorScheme.contentColorFor(fabColor)
+    // Over the glass, the gray white of the icons on glass at night
+    val glassContent = if (glass != null && MaterialTheme.colorScheme.surface.luminance() < 0.5f) DarkGlassIcon else MaterialTheme.colorScheme.contentColorFor(fabColor)
     // A neutral glass, like the search bar: a tint of the button color made it read as a solid colored button
     val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_FAB_TINT)
     val glassElevation = if (glass != null) FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp) else FloatingActionButtonDefaults.elevation()

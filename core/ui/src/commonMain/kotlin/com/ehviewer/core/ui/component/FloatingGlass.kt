@@ -1,10 +1,13 @@
 package com.ehviewer.core.ui.component
 
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -39,6 +42,19 @@ enum class GlassStyle {
  */
 fun interface FloatingGlass {
     fun surface(shape: Shape, tint: Color, style: GlassStyle): Modifier
+}
+
+/**
+ * Fork: the icons over liquid glass in dark themes, a gray white like the floating bars of vivo's system apps: in the
+ * near white of the text they glared. In light themes the text color, black.
+ */
+val DarkGlassIcon = Color(0xFFC4C2C0)
+
+/** The icons over liquid glass, see [DarkGlassIcon]. */
+@Composable
+fun glassIconColor(): Color {
+    val scheme = MaterialTheme.colorScheme
+    return if (scheme.surface.luminance() < 0.5f) DarkGlassIcon else scheme.onSurface
 }
 
 /** The glass of the buttons of [FabLayout]. */

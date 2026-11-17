@@ -109,6 +109,7 @@ import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalSearchExit
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.glassIconColor
 import com.ehviewer.core.ui.component.leavingWithSearch
 import com.ehviewer.core.ui.component.searchExitGlassAlpha
 import com.ehviewer.core.ui.util.thenIf
@@ -118,6 +119,7 @@ import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.sync.OneDriveSync
 import com.hippo.ehviewer.sync.SyncCategory
+import com.hippo.ehviewer.ui.DARK_GLASS_EDGE
 import com.hippo.ehviewer.ui.LocalPageBackdrop
 import com.hippo.ehviewer.ui.destinations.ImageSearchScreenDestination
 import com.hippo.ehviewer.ui.glassContent
@@ -627,10 +629,10 @@ fun SearchBarScreen(
                             // Fork: the field is the glass while the search bar is collapsed
                             .thenIf(!expanded) { floatingGlass(glass, glassShape, glassTint) }
                     })
-                    // Fork: over the glass, the hint, the title and the buttons in the color of the text, white at night
-                    // and black by day: the paler Material color got lost over the list showing through
+                    // Fork: over the glass, the hint, the title and the buttons in the color of the icons on glass, a
+                    // gray white at night and black by day: the paler Material color got lost over the list showing through
                     val fieldColors = if (glass != null) {
-                        val onGlass = MaterialTheme.colorScheme.onSurface
+                        val onGlass = glassIconColor()
                         SearchBarDefaults.inputFieldColors(
                             focusedLeadingIconColor = onGlass,
                             unfocusedLeadingIconColor = onGlass,
@@ -848,7 +850,7 @@ private fun ExpandedSearchGlass(
             .thenIf(!expanded) { graphicsLayer { alpha = searchExitGlassAlpha(1f - fraction) } }
             .layerBackdrop(backdrop)
             .floatingGlass(glass, shape, lerp(tint, expandedTint, size), GlassStyle.Backdrop)
-            .thenIf(dark && size < 1f) { border(1.5.dp, Color.White.copy(alpha = 0.5f * (1 - size)), shape) },
+            .thenIf(dark && size < 1f) { border(1.5.dp, Color.White.copy(alpha = DARK_GLASS_EDGE * (1 - size)), shape) },
     )
 }
 

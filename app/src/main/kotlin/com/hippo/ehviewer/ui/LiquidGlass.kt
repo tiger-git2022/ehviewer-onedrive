@@ -18,6 +18,7 @@ import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.LocalTileGlass
 import com.ehviewer.core.ui.component.floatingGlass
+import com.ehviewer.core.ui.component.glassIconColor
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
 import com.kyant.backdrop.Backdrop
@@ -83,19 +84,25 @@ fun rememberLiquidGlass(backdrop: Backdrop?, sheetBlurOverride: Int? = null, she
     }
 }
 
-// The edge of the glass: a lit edge, wider and brighter than the library default (0.5 dp), so the glass reads as glass.
-// None in light themes, like the system apps of vivo: on the light page a lit edge was a white ring around the glass,
-// a soft shadow all around outlines it instead. The glass is tinted white there: tinted with the gray surface colors,
-// it was darker than the page
-private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.6f)))
+// The edge of the glass: a soft lit edge in dark themes, closer to the floating bars of vivo's system apps (a brighter
+// one, 60 % white, was a glaring white ring around the glass). None in light themes, like those apps too: on the light
+// page a lit edge was a white ring around the glass, a soft shadow all around outlines it instead. The glass is tinted
+// white there: tinted with the gray surface colors, it was darker than the page
+private val DarkGlassEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = DARK_GLASS_EDGE)))
 private val LightGlassShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.12f))
 
 // The drawers and the dialogs, chosen in the drawer glass tuner: a fainter edge and a deeper shadow, lifting them off the pages
-private val DarkSheetEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = 0.5f)))
+private val DarkSheetEdge = Highlight(width = 1.5.dp, blurRadius = 1.dp, style = HighlightStyle.Default(color = Color.White.copy(alpha = DARK_SHEET_EDGE)))
 private val SheetShadow = Shadow(radius = 20.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black.copy(alpha = 0.3f))
 
 // The cards and the chips of the expanded search: many of them side by side, a faint shadow keeps the page calm
 private val TileShadow = Shadow(radius = 12.dp, offset = DpOffset(0.dp, 1.dp), color = Color.Black.copy(alpha = 0.1f))
+
+/** The soft lit edge of the glass in dark themes, see [DarkGlassEdge]; also the rims standing in for it. */
+const val DARK_GLASS_EDGE = 0.28f
+
+// The edge of the drawers and the dialogs, a little fainter (it was 50 % white)
+private const val DARK_SHEET_EDGE = 0.22f
 
 private fun liquidGlass(backdrop: Backdrop, dark: Boolean, sheetBlur: Float, sheetTint: Float, sheetFringe: Float) = FloatingGlass { shape, tint, style ->
     // The drawers and the dialogs take the tint set in the settings
@@ -182,10 +189,13 @@ fun Modifier.checkedGlass(checked: Boolean): Modifier {
 
 private const val CHECKED_GLASS_TINT = 0.3f
 
-/** The items of the left drawer: black or white like the right drawer, the tinted gray was hard to read on the glass. */
+/**
+ * The items of the left drawer: black or white like the right drawer, the tinted gray was hard to read on the glass. The
+ * icons in the gray white of the icons on glass at night ([glassIconColor]).
+ */
 @Composable
 fun glassDrawerItemColors() = NavigationDrawerItemDefaults.colors(
-    unselectedIconColor = MaterialTheme.colorScheme.onSurface,
+    unselectedIconColor = glassIconColor(),
     unselectedTextColor = MaterialTheme.colorScheme.onSurface,
     selectedContainerColor = glassSelectedColor(),
     selectedIconColor = glassOnSelectedColor(),
