@@ -99,6 +99,7 @@ import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.queryFlight
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -306,9 +307,11 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         val titleScope = contextOf<CoroutineScope>()
                         val titleLabel = stringResource(R.string.key_title)
                         val titleJpnLabel = stringResource(R.string.key_title_jpn)
+                        // Fork: searching its similar galleries, it flies into the search bar of their list, see TagFlight
+                        val flight = similarTitleQuery(it.title, it.titleJpn)?.let { query -> Modifier.queryFlight(query) } ?: Modifier
                         Text(
                             text = EhUtils.getSuitableTitle(it),
-                            modifier = Modifier.pointerInput(it) {
+                            modifier = flight.pointerInput(it) {
                                 detectTapGestures(
                                     onLongPress = { _ ->
                                         val sections = listOf(titleLabel to it.title, titleJpnLabel to it.titleJpn)

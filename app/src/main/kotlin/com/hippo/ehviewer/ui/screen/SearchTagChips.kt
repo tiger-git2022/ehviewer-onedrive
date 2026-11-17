@@ -51,7 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.round
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.ui.main.queryFlight
 import com.hippo.ehviewer.ui.main.tagFlight
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -210,6 +211,14 @@ fun SearchTagChipField(
 class ChipFieldMemory {
     internal var openWidth = 0
     internal var collapsedWidth = 0
+
+    /**
+     * How far down the field the buttons of the open search were last placed, as the top of a line as tall as the
+     * Material field: on a line below the tags when those took the whole first line, see ChipFieldLayout. The buttons
+     * of the open search fade out there as it closes.
+     */
+    var openButtonsTop = 0
+        internal set
 }
 
 /** A chip of a tag in the search, of one removed going away, or one at the size it is going to, only measured. */
@@ -221,6 +230,9 @@ private fun chipKey(tag: String) = tag.trimStart('-', '~')
 /**
  * The icons on the first line, as tall as the Material search field, and the chips then the text flowing in lines
  * from beside the leading icon: the first line ends before the trailing icons, the next ones at the end of the field.
+ * When the chips don't all fit beside the trailing icons, they take the whole first line instead, and the trailing
+ * icons go down, at the end of the last line when there is room after the chips (and the text), or on a line of their
+ * own below, moving there with an animation.
  *
  * Lines break by the size the chips are going to and the width the field is going to, so while chips grow or shrink
  * and the search opens or closes, a chip goes straight to its line. A tag added grows in from where it goes; one
@@ -278,6 +290,11 @@ private fun ChipFieldLayout(
     // Collapsed, the text searched: the part beside the buttons and the rest on the next line, where they're drawn
     val textMeasurer = rememberTextMeasurer()
     var flowing by remember { mutableStateOf<List<Pair<TextLayoutResult, IntOffset>>>(emptyList()) }
+    // The line of the trailing icons and how far down they were placed, and how far they still are from where they're
+    // going, moving to another line
+    val scope = rememberCoroutineScope()
+    val buttons = remember { intArrayOf(-1, 0) }
+    val buttonsShift = remember { Animatable(0f) }
     Layout(
         contents = listOf<@Composable () -> Unit>(
             { leadingIcon?.invoke() },
@@ -308,12 +325,22 @@ private fun ChipFieldLayout(
             },
             // The chips at the size they are going to: measured for the lines, never shown
             { tags.forEachIndexed { index, tag -> key(chipKey(tag)) { chip(index, tag, ChipRole.Measure, Modifier) } } },
+            // Collapsed, the text searched in its lines, over the place they take. Fork: the title of a gallery searched
+            // (its similar galleries) flies here, and back, see TagFlight
+            {
+                val flight = if (flowingText != null) Modifier.queryFlight(flowingText, claim = true) else Modifier
+                Box(
+                    flight.drawBehind {
+                        flowing.forEach { (text, offset) -> drawText(text, topLeft = Offset(offset.x.toFloat(), offset.y.toFloat()), alpha = textAlpha()) }
+                    },
+                )
+            },
         ),
-        modifier = Modifier.clipToBounds().drawWithContent {
-            drawContent()
-            flowing.forEach { (text, offset) -> drawText(text, topLeft = Offset(offset.x.toFloat(), offset.y.toFloat()), alpha = textAlpha()) }
-        },
-    ) { (leadingMeasurables, trailingMeasurables, textMeasurables, chipMeasurables, measureMeasurables), constraints ->
+        modifier = Modifier.clipToBounds(),
+    ) { measurables, constraints ->
+        // Lists have no sixth component
+        val (leadingMeasurables, trailingMeasurables, textMeasurables, chipMeasurables, measureMeasurables) = measurables
+        val flowingMeasurables = measurables[5]
         val lineHeight = SearchBarDefaults.InputFieldHeight.roundToPx()
         val iconOffset = IconOffset.roundToPx()
         val padding = TextPadding.roundToPx()
@@ -332,7 +359,6 @@ private fun ChipFieldLayout(
         val trailingRoom = if (trailingWidth > 0) trailingWidth + iconOffset else padding
         val firstLineEnd = width - trailingRoom
         val lineEnd = width - padding
-        fun endOf(line: Int) = if (line == 0) firstLineEnd else lineEnd
 
         // The width the field is going to, opening or closing, where the lines break
         val moving = bounded && transitioning()
@@ -347,36 +373,59 @@ private fun ChipFieldLayout(
         val goingTo = measureMeasurables.map { it.measure(breakConstraints) }
         val chipHeight = maxOf(chips.maxOfOrNull { it.height } ?: 0, goingTo.maxOfOrNull { it.height } ?: 0)
 
-        // Lines by the chips' sizes to come (breakX), places by their sizes now (x)
-        var line = 0
-        var x = start
-        var breakX = lineStart
-        val chipPlaces = arrayOfNulls<IntOffset>(chips.size)
-        entries.forEachIndexed { i, (index, _, _) ->
-            if (index < 0) return@forEachIndexed
-            val size = goingTo.getOrNull(index)?.width ?: chips[i].width
-            // A chip too wide for the first line even alone goes below it
-            if (breakX + size > breakEndOf(line) && (breakX > lineStart || line == 0)) {
-                line++
-                x = start
-                breakX = lineStart
-            }
-            chipPlaces[i] = IntOffset(x, line)
-            x += chips[i].width + gap
-            breakX += size + gap
-        }
         val textMinWidth = when {
             !showText -> 0
             tags.isEmpty() -> 0
             expanded -> OpenTextMinWidth.roundToPx()
             else -> CollapsedTextMinWidth.roundToPx()
         }
-        if (textMinWidth > 0 && breakEndOf(line) - breakX < textMinWidth) {
-            line++
-            x = start
+
+        // Lines by the chips' sizes to come (breakX), places by their sizes now (x). With [buttonsBelow], the chips take
+        // the whole first line, the trailing icons going down
+        class Flow(val chipPlaces: Array<IntOffset?>, val lastLine: Int, val textLine: Int, val textX: Int, val buttonsLine: Int)
+        fun flow(buttonsBelow: Boolean): Flow {
+            fun breakEnd(line: Int) = if (line == 0 && !buttonsBelow) breakEndOf(0) else breakWidth - padding
+            var line = 0
+            var x = start
+            var breakX = lineStart
+            val chipPlaces = arrayOfNulls<IntOffset>(chips.size)
+            entries.forEachIndexed { i, (index, _, _) ->
+                if (index < 0) return@forEachIndexed
+                val size = goingTo.getOrNull(index)?.width ?: chips[i].width
+                // A chip too wide for the first line even alone goes below it
+                if (breakX + size > breakEnd(line) && (breakX > lineStart || line == 0)) {
+                    line++
+                    x = start
+                    breakX = lineStart
+                }
+                chipPlaces[i] = IntOffset(x, line)
+                x += chips[i].width + gap
+                breakX += size + gap
+            }
+            if (textMinWidth > 0 && breakEnd(line) - breakX < textMinWidth) {
+                line++
+                x = start
+                breakX = lineStart
+            }
+            val textLine = line
+            val textX = x
+            // Below, the trailing icons end the line of the last chips (or of the text) when there is room after them
+            val buttonsLine = when {
+                !buttonsBelow -> 0
+                breakX + textMinWidth <= breakWidth - trailingRoom -> line
+                else -> line + 1
+            }
+            return Flow(chipPlaces, maxOf(line, buttonsLine), textLine, textX, buttonsLine)
         }
-        val textLine = line
-        val textX = x
+        val inLine = flow(buttonsBelow = false)
+        // Only when there are chips that don't all fit beside the trailing icons
+        val arranged = if (bounded && trailingWidth > 0 && inLine.chipPlaces.any { it != null && it.y > 0 }) flow(buttonsBelow = true) else inLine
+        val chipPlaces = arranged.chipPlaces
+        var line = arranged.lastLine
+        val textLine = arranged.textLine
+        val textX = arranged.textX
+        val buttonsLine = arranged.buttonsLine
+        fun endOf(line: Int) = if (line == buttonsLine) firstLineEnd else lineEnd
         val textPlaceable = textMeasurables.first().measure(
             when {
                 !showText -> Constraints.fixedWidth(0)
@@ -399,14 +448,25 @@ private fun ChipFieldLayout(
             if (rest.isEmpty()) {
                 listOf(first to textLine)
             } else {
-                val restWidth = (lineEnd - start).coerceAtLeast(0)
+                val restWidth = (endOf(textLine + 1) - start).coerceAtLeast(0)
                 val second = textMeasurer.measure(rest, textStyle, overflow = TextOverflow.Ellipsis, maxLines = 1, constraints = Constraints(maxWidth = restWidth))
                 listOf(first to textLine, second to textLine + 1)
             }
         } else {
             emptyList()
         }
-        if (textParts.size > 1) line = textLine + 1
+        if (textParts.size > 1) line = maxOf(line, textLine + 1)
+        // Where the parts of the text go, and the place they take together
+        val textPlaces = textParts.map { (text, onLine) ->
+            text to IntOffset(if (onLine == textLine) textX else start, topOf(onLine) + (lineSize - text.size.height) / 2)
+        }
+        val flowingLeft = textPlaces.minOfOrNull { it.second.x } ?: 0
+        val flowingTop = textPlaces.minOfOrNull { it.second.y } ?: 0
+        val flowingRight = textPlaces.maxOfOrNull { (text, offset) -> offset.x + text.size.width } ?: 0
+        val flowingBottom = textPlaces.maxOfOrNull { (text, offset) -> offset.y + text.size.height } ?: 0
+        val flowingPlaceable = flowingMeasurables.first().measure(
+            Constraints.fixed((flowingRight - flowingLeft).coerceAtLeast(0), (flowingBottom - flowingTop).coerceAtLeast(0)),
+        )
         val lines = line + 1
         val needed = if (lines == 1) lineHeight else topOf(lines - 1) + lineSize + top
         // Not when asked for its intrinsic width, laid out on one line
@@ -419,7 +479,30 @@ private fun ChipFieldLayout(
                 if (expanded) memory.openWidth = width else memory.collapsedWidth = width
             }
             leading?.place(iconOffset, (lineHeight - leading.height) / 2)
-            trailing?.place(layoutWidth - trailingWidth - iconOffset, (lineHeight - trailing.height) / 2)
+            if (trailing != null) {
+                // On the first line in the middle of it as in the Material field, or in the middle of a line below
+                val y = if (buttonsLine == 0) (lineHeight - trailing.height) / 2 else topOf(buttonsLine) + (lineSize - trailing.height) / 2
+                if (bounded) {
+                    val (lastLine, lastY) = buttons
+                    // From where they are now, moving there; made as the search closes, from where the buttons of
+                    // the open search were, as those fade out
+                    val from = when {
+                        lastLine >= 0 -> if (lastLine != buttonsLine) lastY + buttonsShift.value - y else null
+                        !expanded && closing() < 1f -> (memory.openButtonsTop + lineHeight / 2 - trailing.height / 2 - y).toFloat()
+                        else -> null
+                    }
+                    if (from != null && from != 0f) {
+                        scope.launch {
+                            buttonsShift.snapTo(from)
+                            buttonsShift.animateTo(0f, ButtonsMoveSpring)
+                        }
+                    }
+                    buttons[0] = buttonsLine
+                    buttons[1] = y
+                    if (expanded && !moving) memory.openButtonsTop = y + trailing.height / 2 - lineHeight / 2
+                }
+                trailing.place(layoutWidth - trailingWidth - iconOffset, y + buttonsShift.value.roundToInt())
+            }
             chips.forEachIndexed { i, chip ->
                 val id = entries[i].third
                 val place = chipPlaces[i]
@@ -433,9 +516,8 @@ private fun ChipFieldLayout(
                 }
             }
             textPlaceable.place(textX, topOf(textLine) + (lineSize - textPlaceable.height) / 2)
-            flowing = textParts.map { (text, onLine) ->
-                text to IntOffset(if (onLine == textLine) textX else start, topOf(onLine) + (lineSize - text.size.height) / 2)
-            }
+            flowingPlaceable.place(flowingLeft, flowingTop)
+            flowing = textPlaces.map { (text, offset) -> text to offset - IntOffset(flowingLeft, flowingTop) }
         }
     }
 }
@@ -593,3 +675,4 @@ private val ChipPresenceSpec = spring<Float>(stiffness = Spring.StiffnessMediumL
 private const val ChipHiddenScale = 0.6f
 private val ChipMoveSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset(1, 1))
 private val FieldHeightSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 1f)
+private val ButtonsMoveSpring = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 1f)

@@ -1066,4 +1066,12 @@
     <string name="anthology_sheet_failed">Could not find the favorites: %s</string>
     <string name="anthology_sheet_again">Find again</string>
     <string name="page_failed_servers">%1$s (servers tried: %2$s)</string>
+    <string name="search_site_wnacg">紳士漫畫</string>
+    <string name="search_site_waiting">Waiting</string>
+    <string name="search_site_page">Page %d…</string>
+    <string name="search_site_page_skipping">Page %d (skipping the favorited)…</string>
+    <string name="search_site_checking_titles">Checking titles…</string>
+    <string name="search_site_found">%d found</string>
+    <string name="search_site_blocked">Needs its check first</string>
+    <string name="search_site_failed">Failed</string>
 </resources>
