@@ -94,6 +94,7 @@ import com.ehviewer.core.ui.component.floatingGlass
 import com.hippo.ehviewer.anthology.AnthologyContents
 import com.hippo.ehviewer.anthology.AnthologyMatchState
 import com.hippo.ehviewer.anthology.AnthologyMatches
+import com.hippo.ehviewer.anthology.FavoriteFolders
 import com.hippo.ehviewer.anthology.TocEntry
 import com.hippo.ehviewer.chapters.ChapterBlock
 import com.hippo.ehviewer.chapters.ChapterBlocks
@@ -106,6 +107,8 @@ import com.hippo.ehviewer.chapters.UncomparedChapter
 import com.hippo.ehviewer.chapters.WholeFavorite
 import com.hippo.ehviewer.download.PageRange
 import com.hippo.ehviewer.download.PageRanges
+import com.hippo.ehviewer.sync.FavoritesIndexSync
+import com.hippo.ehviewer.todownload.ToDownload
 import com.hippo.ehviewer.ui.main.AnthologyMarks
 import com.hippo.ehviewer.ui.main.anthologyHints
 import com.hippo.ehviewer.ui.main.requestOf
@@ -370,13 +373,22 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
         ChapterCompare.start(detail)
     }
     val states by ChapterCompare.states.collectAsState()
-    when (val state = states[gid]) {
+    val state = states[gid]
+    val sourceGids = remember(state) {
+        when (state) {
+            is ChapterCompareState.Running -> state.progress.blocks.flatMap { b -> b.sources.map { it.gid } }
+            is ChapterCompareState.Done -> state.result.blocks.flatMap { b -> b.sources.map { it.gid } } + state.result.whole.map { it.source.gid }
+            else -> emptyList()
+        }.distinct()
+    }
+    val folders = rememberFavoriteFolders(sourceGids)
+    when (state) {
         is ChapterCompareState.Running -> {
             val progress = state.progress
             CompareProgressCard(progress)
             if (progress.blocks.isNotEmpty()) {
                 BlocksBar(pages, progress.blocks, picked, pending = true, onPick = onPick)
-                progress.blocks.filter { it.source != null }.forEach { BlockCard(detail, it, picked, onPick, onOpen) }
+                progress.blocks.filter { it.source != null }.forEach { BlockCard(detail, it, picked, onPick, onOpen, folders = folders) }
             }
             Text(
                 text = stringResource(R.string.chapter_compare_pending),
@@ -397,7 +409,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
             Text(text = summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (result.favoritedCount > 0) {
                 BlocksBar(pages, result.blocks, picked, pending = false, onPick = onPick)
-                result.blocks.forEach { BlockCard(detail, it, picked, onPick, onOpen) }
+                result.blocks.forEach { BlockCard(detail, it, picked, onPick, onOpen, folders = folders) }
             }
             if (result.whole.isNotEmpty()) {
                 Text(
@@ -408,7 +420,7 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
                 )
-                result.whole.forEach { WholeRow(it, onOpen) }
+                result.whole.forEach { WholeRow(it, onOpen, folders) }
             }
             // Often many (favorites gone from E-H): folded, last
             if (result.uncompared.isNotEmpty()) {
@@ -472,6 +484,29 @@ private fun ChapterSection(detail: GalleryDetail, picked: BooleanArray, onPick: 
  * block to tick, as the chapters of a tankoubon; the mind control one marked.
  */
 @Composable
+private fun rememberFavoriteFolders(gids: List<Long>): Map<Long, List<String>> {
+    val cloudVersion by FavoritesIndexSync.cloudVersion.collectAsState()
+    val toDownload by ToDownload.gids.collectAsState()
+    val folders by produceState<Map<Long, List<String>>>(emptyMap(), gids, cloudVersion, toDownload) {
+        value = if (gids.isEmpty()) emptyMap() else FavoriteFolders.lookup(gids)
+    }
+    return folders
+}
+
+private fun folderBadgeOf(sources: List<ChapterSource>, folders: Map<Long, List<String>>): String? {
+    val names = LinkedHashSet<String>()
+    sources.forEach { source ->
+        val live = folders[source.gid]
+        if (!live.isNullOrEmpty()) {
+            names += live
+        } else {
+            source.favoriteFolder?.split('、')?.map(String::trim)?.filter(String::isNotEmpty)?.let { names += it }
+        }
+    }
+    return names.takeIf { it.isNotEmpty() }?.joinToString("、")
+}
+
+@Composable
 private fun AnthologySection(detail: GalleryDetail, contents: AnthologyContents, picked: BooleanArray, onPick: (IntRange, Boolean) -> Unit, onOpen: (ChapterSource) -> Unit) {
     val gid = detail.gid
     val pages = detail.pages
@@ -479,7 +514,11 @@ private fun AnthologySection(detail: GalleryDetail, contents: AnthologyContents,
     val states by AnthologyMatches.states.collectAsState()
     val state = states[gid]
     val hints = remember(detail.comments) { anthologyHints(detail.comments.comments) }
-    val marks = remember(contents, state, hints) { AnthologyMarks(contents, state, hints) }
+    val sourceGids = remember(state) {
+        (state as? AnthologyMatchState.Done)?.result?.matches?.values?.flatten()?.map { it.gid }?.distinct().orEmpty()
+    }
+    val folders = rememberFavoriteFolders(sourceGids)
+    val marks = remember(gid, contents, state, hints, folders) { AnthologyMarks(gid, contents, state, hints, folders) }
     val blocks = remember(marks) { marks.entries.map { ChapterBlock(it.first, it.last, marks.favoritesOf(it)) } }
     val summary = when (state) {
         is AnthologyMatchState.Running -> stringResource(R.string.anthology_sheet_finding, blocks.size, state.done, state.total)
@@ -498,7 +537,7 @@ private fun AnthologySection(detail: GalleryDetail, contents: AnthologyContents,
         overflow = TextOverflow.Ellipsis,
     )
     if (pages > 0) BlocksBar(pages, blocks, picked, pending = state is AnthologyMatchState.Running, onPick = onPick)
-    blocks.forEachIndexed { i, block -> BlockCard(detail, block, picked, onPick, onOpen, entry = marks.entries[i], mindControl = i in marks.mindControl) }
+    blocks.forEachIndexed { i, block -> BlockCard(detail, block, picked, onPick, onOpen, entry = marks.entries[i], mindControl = i in marks.mindControl, folders = folders) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)) {
         SheetChip(onClick = { onPick(1..pages, false) }, label = stringResource(R.string.chapter_pick_clear))
         SheetChip(onClick = { AnthologyMatches.start(gid, contents, force = true) }, label = stringResource(R.string.anthology_sheet_again))
@@ -593,6 +632,7 @@ private fun BlockCard(
     // A work of an anthology: its artist and title in place of the title of the favorite, and whether it is mind control
     entry: TocEntry? = null,
     mindControl: Boolean = false,
+    folders: Map<Long, List<String>> = emptyMap(),
 ) {
     val on = isPicked(block, picked)
     val source = block.source
@@ -656,11 +696,13 @@ private fun BlockCard(
                     )
                 }
                 if (source != null) {
+                    val folderLabel = folderBadgeOf(block.sources, folders) ?: stringResource(R.string.chapter_block_favorited)
                     Text(
-                        text = stringResource(R.string.chapter_block_favorited),
+                        text = folderLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         softWrap = false,
                         modifier = Modifier.background(FavoritedBlue, RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
@@ -708,8 +750,9 @@ private fun BlockCard(
             }
             // The same chapter favorited again (in another language), a tap opening it
             block.sources.drop(1).forEach { other ->
+                val otherFolder = folderBadgeOf(listOf(other), folders)
                 Text(
-                    text = "· " + other.title,
+                    text = if (otherFolder != null) "· [$otherFolder] ${other.title}" else "· ${other.title}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -750,10 +793,11 @@ private fun PreviewThumb(preview: GalleryPreview, modifier: Modifier) {
 
 /** A favorite as long as most of the book, not compared: its cover, its title on up to three lines; a tap opens it. */
 @Composable
-private fun WholeRow(item: WholeFavorite, onOpen: (ChapterSource) -> Unit) {
+private fun WholeRow(item: WholeFavorite, onOpen: (ChapterSource) -> Unit, folders: Map<Long, List<String>> = emptyMap()) {
     val info = remember(item) {
         BaseGalleryInfo(gid = item.source.gid, token = item.source.token, title = item.source.title, thumbKey = item.thumbKey, pages = item.pages)
     }
+    val folderLabel = folderBadgeOf(listOf(item.source), folders)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onOpen(item.source) }.padding(vertical = 6.dp),
@@ -768,11 +812,13 @@ private fun WholeRow(item: WholeFavorite, onOpen: (ChapterSource) -> Unit) {
         }
         Column(modifier = Modifier.weight(1f).padding(start = if (item.thumbKey != null) 12.dp else 0.dp)) {
             Text(text = item.source.title, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            val meta = listOfNotNull(folderLabel, stringResource(R.string.chapter_whole_pages, item.pages)).joinToString(" · ")
             Text(
-                text = stringResource(R.string.chapter_whole_pages, item.pages),
+                text = meta,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }

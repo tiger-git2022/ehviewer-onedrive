@@ -1,5 +1,6 @@
 package com.hippo.ehviewer.ui.main
 
+import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -30,10 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import java.util.Date
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.FloatingGlass
 import com.ehviewer.core.ui.component.floatingGlass
@@ -114,10 +117,16 @@ fun OneDriveSyncIcon(onSynced: () -> Unit = {}) {
         lastSyncTime > 0 -> SyncIconState.SUCCEEDED
         else -> SyncIconState.NOT_SYNCED
     }
+    val ipBanUntil by OneDriveSyncState.cloudFavoritesIpBanUntil.collectAsState()
+    val context = LocalContext.current
     val runningText = when {
         syncing -> syncProgress?.let { syncProgressText(it) }
         working -> workProgress?.let { stepProgressText(it) }
         manualQueued -> stringResource(id = R.string.onedrive_sync_running)
+        ipBanUntil > System.currentTimeMillis() -> stringResource(
+            id = R.string.onedrive_sync_cloud_favorites_work_ip_banned,
+            DateFormat.getTimeFormat(context).format(Date(ipBanUntil)),
+        )
         else -> stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued)
     }
     val runningFraction = when {
@@ -178,6 +187,8 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
     val workProgress by FavoritesIndexSync.workProgress.collectAsState()
     val workInfo by remember { cloudFavoritesWorkInfo(appCtx) }.collectAsState(initial = CloudFavoritesWorkInfo())
     val export by OneDriveSyncState.exportFavoritesIndex.collectAsState()
+    val ipBanUntil by OneDriveSyncState.cloudFavoritesIpBanUntil.collectAsState()
+    val context = LocalContext.current
     val queued = export && workInfo.active
     val shown = OneDriveClient.isSupported && account != null && enabled && (syncing || working || queued)
     // A sync and the work at once: the sync is short, it shows first
@@ -185,6 +196,12 @@ fun OneDriveSyncProgressBanner(onHeightChanged: (Int) -> Unit, modifier: Modifie
     val text = when {
         syncing -> syncProgress?.let { syncProgressLine(it) } ?: SyncProgressLine(stringResource(id = R.string.onedrive_sync_running))
         working -> workProgress?.let { stepProgressLine(it) } ?: SyncProgressLine(stringResource(id = R.string.onedrive_sync_favorites_index_refreshing))
+        ipBanUntil > System.currentTimeMillis() -> SyncProgressLine(
+            stringResource(
+                id = R.string.onedrive_sync_cloud_favorites_work_ip_banned,
+                DateFormat.getTimeFormat(context).format(Date(ipBanUntil)),
+            ),
+        )
         else -> SyncProgressLine(stringResource(id = R.string.onedrive_sync_cloud_favorites_work_queued))
     }
     val fraction = when {

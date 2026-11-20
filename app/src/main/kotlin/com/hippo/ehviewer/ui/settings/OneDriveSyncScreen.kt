@@ -456,11 +456,20 @@ private fun cloudFavoritesStatusText(
     pandaRetryAt: Long,
 ): String {
     val context = LocalContext.current
+    val ipBanUntil by OneDriveSyncState.cloudFavoritesIpBanUntil.collectAsState()
     return buildList {
-        if (status.unfinished) add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_read, status.read, status.total))
+        if (status.verifyTotal > 0) {
+            add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_verified, status.verifyChecked, status.verifyTotal))
+        } else if (status.unfinished) {
+            add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_read, status.read, status.total))
+        }
         if (status.missingTitles > 0) add(stringResource(id = R.string.onedrive_sync_cloud_favorites_status_titles, status.missingTitles))
         add(
             when {
+                ipBanUntil > System.currentTimeMillis() -> stringResource(
+                    id = R.string.onedrive_sync_cloud_favorites_work_ip_banned,
+                    DateFormat.getTimeFormat(context).format(Date(ipBanUntil)),
+                )
                 workInfo.nextRunAt != null -> stringResource(
                     id = R.string.onedrive_sync_cloud_favorites_status_waiting_at,
                     DateFormat.getTimeFormat(context).format(Date(workInfo.nextRunAt)),

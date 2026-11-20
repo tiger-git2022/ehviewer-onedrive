@@ -21,6 +21,7 @@ import com.ehviewer.core.model.V2GalleryPreview
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.anthology.FavoriteFolders
 import com.hippo.ehviewer.client.EhEngine
 import com.hippo.ehviewer.client.EhUrl
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
@@ -30,7 +31,10 @@ import com.hippo.ehviewer.coil.BitmapImageWithExtraInfo
 import com.hippo.ehviewer.ktbuilder.execute
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.restore.PandaChaikaApi
+import com.hippo.ehviewer.sync.CLOUD_SLOT_COUNT
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.PandaChaika
+import com.hippo.ehviewer.todownload.ToDownload
 import com.hippo.ehviewer.wnacg.isWnacg
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -157,13 +161,14 @@ object ChapterCompare {
 
     /** The width a full page is read at, at least, to be hashed. */
     private const val PAGE_WIDTH = 256
-    private const val PREVIEW_PAGE_GAP = 500L
+    private const val PREVIEW_PAGE_GAP = 800L
+    private const val FAVORITES_PAGE_GAP = 800L
 
     /** The favorites read at once. */
-    private const val PARALLEL_GALLERIES = 5
+    private const val PARALLEL_GALLERIES = 2
 
     /** The preview pages fetched at once, of all the galleries: E-H bans an address loading pages too fast. */
-    private val previewGate = Semaphore(5)
+    private val previewGate = Semaphore(2)
     private const val MAX_WNACG_PAGES = 400
     private const val WNACG_REFERER = "https://www.wnacg.com/"
 
@@ -239,8 +244,8 @@ object ChapterCompare {
 
     private fun set(gid: Long, state: ChapterCompareState) = mutableStates.update { it + (gid to state) }
 
-    private class Candidate(val info: GalleryInfo) {
-        val source get() = ChapterSource(info.gid, info.token, info.title ?: info.titleJpn ?: info.gid.toString(), info.thumbKey)
+    private class Candidate(val info: GalleryInfo, val favoriteFolder: String?) {
+        val source get() = ChapterSource(info.gid, info.token, info.title ?: info.titleJpn ?: info.gid.toString(), info.thumbKey, favoriteFolder)
     }
 
     private suspend fun compare(detail: GalleryDetail): ChapterCompareResult = coroutineScope {
@@ -560,6 +565,7 @@ object ChapterCompare {
                     val builder = FavListUrlBuilder(FavListUrlBuilder.FAV_CAT_ALL, name)
                     repeat(MAX_FAVORITE_PAGES) {
                         val result = EhEngine.getFavorites(builder.build())
+                        delay(FAVORITES_PAGE_GAP)
                         result.galleryInfoList.forEach { found.putIfAbsent(it.gid, it) }
                         if (full()) return@runCatching
                         val next = result.next ?: return@runCatching
@@ -568,15 +574,43 @@ object ChapterCompare {
                 }.onFailure { logcat(TAG, it) }
             }
         }
+        val localGids = HashSet<Long>()
         runCatching {
             EhDB.getLocalFavoritesWithGallery().forEach { (_, info) ->
-                if (names.any { info.matches(it) }) found.putIfAbsent(info.gid, info)
+                if (names.any { info.matches(it) }) {
+                    localGids += info.gid
+                    found.putIfAbsent(info.gid, info)
+                }
             }
         }.onFailure { logcat(TAG, it) }
         found.remove(detail.gid)
         // Not an album of 紳士漫畫 in the local favorites: it has no previews on E-Hentai
         found.keys.removeAll { isWnacg(it) }
-        val list = found.values.map { BaseGalleryInfo(gid = it.gid, token = it.token, title = it.title, titleJpn = it.titleJpn, thumbKey = it.thumbKey, pages = it.pages) }
+        val cloud = if (Settings.hasSignedIn.value) runCatching { FavoritesIndexSync.cloudFavorites() }.getOrNull() else null
+        val cloudSlots = cloud?.galleries?.associate { it.gid to it.slot }.orEmpty()
+        val slotNames = cloud?.slotNames.orEmpty()
+        val toDownload = ToDownload.gids.value
+        val list = found.values.map {
+            BaseGalleryInfo(
+                gid = it.gid,
+                token = it.token,
+                title = it.title,
+                titleJpn = it.titleJpn,
+                thumbKey = it.thumbKey,
+                pages = it.pages,
+                favoriteSlot = it.favoriteSlot,
+                favoriteName = it.favoriteName,
+            )
+        }
+        fun folderOf(info: GalleryInfo): String? = FavoriteFolders.folderNamesOf(
+            gid = info.gid,
+            favoriteName = info.favoriteName,
+            favoriteSlot = info.favoriteSlot,
+            cloudSlot = cloudSlots[info.gid]?.takeIf { it in 0 until CLOUD_SLOT_COUNT },
+            isLocal = info.gid in localGids,
+            slotNames = slotNames,
+            toDownload = toDownload,
+        ).takeIf { it.isNotEmpty() }?.joinToString("、")
         // The page counts, and the covers of those gone, from the API
         val unknown = list.filter { it.pages <= 0 || it.thumbKey == null }
         if (unknown.isNotEmpty()) runCatching { EhEngine.fillGalleryListByApi(unknown, EhUrl.referer) }.onFailure { logcat(TAG, it) }
@@ -584,8 +618,8 @@ object ChapterCompare {
         val longest = detail.pages * CHAPTER_MAX_SHARE
         // The short ones first, as chapters are: kept when there are too many
         val (chapters, whole) = list.partition { detail.pages <= 0 || it.pages <= 0 || it.pages < longest }
-        return chapters.sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map(::Candidate) to
-            whole.sortedByDescending { it.pages }.map { WholeFavorite(Candidate(it).source, it.pages, it.thumbKey) }
+        return chapters.sortedBy { it.pages.takeIf { pages -> pages > 0 } ?: Int.MAX_VALUE }.take(MAX_CANDIDATES).map { Candidate(it, folderOf(it)) } to
+            whole.sortedByDescending { it.pages }.map { WholeFavorite(Candidate(it, folderOf(it)).source, it.pages, it.thumbKey) }
     }
 
     /**

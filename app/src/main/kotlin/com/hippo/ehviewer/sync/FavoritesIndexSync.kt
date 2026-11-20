@@ -8,7 +8,9 @@ import com.ehviewer.core.network.EhCookieStore
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.client.BackgroundEhRequest
 import com.hippo.ehviewer.client.EhEngine
+import com.hippo.ehviewer.client.EhTraffic
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.FavParserResult
@@ -75,7 +77,7 @@ object FavoritesIndexSync {
     // Fork: with auto download on, new favorites are looked for at every sync and when the app comes to the front (see
     // checkForAutoDownload), one page each; this only keeps the two from reading it twice in a row
     private const val AUTO_DOWNLOAD_CHECK_INTERVAL_MILLIS = 60_000L
-    private const val PAGE_INTERVAL_MILLIS = 1_000L
+    private const val PAGE_INTERVAL_MILLIS = 2_500L
 
     /** Pages of "all" (the newest favorites first) a count check reads at most for favorites added on the website. */
     private const val CHECK_MAX_PAGES = 10
@@ -102,9 +104,9 @@ object FavoritesIndexSync {
     /** [CloudFavoritesWork] uploads the index this often, so other apps see the favorites read so far. */
     private const val WORK_UPLOAD_INTERVAL_MILLIS = 10 * 60_000L
 
-    // One batch of EhEngine.fillGalleryListByApi (5 requests of 25 galleries) and its pause before the next batch
-    private const val TITLE_LOOKUP_CHUNK = 125
-    private const val TITLE_LOOKUP_INTERVAL_MILLIS = 5_000L
+    // One batch of EhEngine.fillGalleryListByApi (3 requests of 25 galleries) and its pause before the next batch
+    private const val TITLE_LOOKUP_CHUNK = 75
+    private const val TITLE_LOOKUP_INTERVAL_MILLIS = 6_000L
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
@@ -128,6 +130,14 @@ object FavoritesIndexSync {
 
     // Fork: the pages of each slot as last read, see SlotVerifier
     private val segmentStore by lazy { SegmentStore(File(appCtx.filesDir, "cloud_favorites_segments"), json) }
+
+    // Fork: saved mid-run verification progress per slot, see SlotVerifyCheckpoint
+    private val verifyCheckpointStore by lazy { VerifyCheckpointStore(File(appCtx.filesDir, "cloud_favorites_verify"), json) }
+
+    private val mutableCloudVersion = MutableStateFlow(0L)
+
+    /** Fork: increments whenever the cached cloud favorites change, so UI badges can refresh. */
+    val cloudVersion: StateFlow<Long> = mutableCloudVersion.asStateFlow()
 
     /** The single file of format 1 was deleted from the OneDrive account of this process, see [onCloudStateReset]. */
     @Volatile
@@ -322,6 +332,7 @@ object FavoritesIndexSync {
         cache = new
         // Fork: only the shards the change touches are written, see CloudFavoritesStore
         store.save(new)
+        mutableCloudVersion.value++
         AutoDownload.onCloudFavoritesSaved(new)
         return true
     }
@@ -374,6 +385,16 @@ object FavoritesIndexSync {
     /** The cloud favorites known for the signed in account, see [AutoDownload]. */
     suspend fun cloudFavorites(): CloudFavorites = current()
 
+    /** Fork: cloud favorite slot (0..9) for each gid in [gids] present in the cached cloud favorites. */
+    suspend fun cloudSlotsOf(gids: Collection<Long>): Map<Long, Int> {
+        if (gids.isEmpty() || !Settings.hasSignedIn.value) return emptyMap()
+        val wanted = gids.toHashSet()
+        val cloud = current()
+        val result = HashMap<Long, Int>()
+        cloud.galleries.forEach { if (it.gid in wanted && it.slot in 0 until CLOUD_SLOT_COUNT) result[it.gid] = it.slot }
+        return result
+    }
+
     /** A page of the cloud favorites requested with the E-Hentai account [user] was loaded in the favorites screen. */
     fun onPageLoaded(favCat: Int, result: FavParserResult, user: String?) = updateLater(user, transform = pageUpdate(favCat, result))
 
@@ -414,7 +435,7 @@ object FavoritesIndexSync {
      * The work of [CloudFavoritesWork]: reads the slots of the unfinished refresh page by page ([full]: all slots, a
      * partial refresh is widened to them), then looks up every missing Japanese title, uploading the index on the way.
      */
-    suspend fun runWork(full: Boolean): Unit = withContext(Dispatchers.IO) {
+    suspend fun runWork(full: Boolean): Unit = withContext(Dispatchers.IO + BackgroundEhRequest) {
         if (!Settings.hasSignedIn.value) return@withContext
         mutableWorking.value = true
         try {
@@ -511,34 +532,52 @@ object FavoritesIndexSync {
         var pageCount = 0
         logcat(TAG) { "Cloud favorites: reading slots ${resumed.slots} from slot $slot, $read of $total read" }
         mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
-        while (slot < CLOUD_SLOT_COUNT) {
-            if (slot !in slots || counts.getOrElse(slot) { 0 } <= 0) {
-                slot++
-                next = null
-                continue
+        try {
+            while (slot < CLOUD_SLOT_COUNT) {
+                if (slot !in slots || counts.getOrElse(slot) { 0 } <= 0) {
+                    slot++
+                    next = null
+                    continue
+                }
+                delay(PAGE_INTERVAL_MILLIS)
+                EhTraffic.waitForQuiet()
+                val cursor = next
+                val readSlot = slot
+                val url = FavListUrlBuilder(favCat = readSlot).apply { if (cursor != null) setIndex(cursor, isNext = true) }.build()
+                val page = EhEngine.getFavoritesPage(url)
+                clearIpBanIfSet()
+                if (userKey() != user) return@withLock false
+                page.galleryInfoList.mapTo(pages) { it.toIndexed(readSlot) }
+                // Fork: where the page was read from, see SlotSegments
+                marks += PageMark(readSlot, cursor, page.galleryInfoList.size)
+                read += page.galleryInfoList.size
+                mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
+                next = page.next
+                if (next == null) slot++
+                pageCount++
+                if (pageCount % CHECKPOINT_PAGES == 0 || next == null) {
+                    if (!saveRefreshPages(user, slot, next, pages, marks)) return@withLock false
+                    pages.clear()
+                    marks.clear()
+                    onSaved()
+                }
             }
-            delay(PAGE_INTERVAL_MILLIS)
-            val cursor = next
-            val readSlot = slot
-            val url = FavListUrlBuilder(favCat = readSlot).apply { if (cursor != null) setIndex(cursor, isNext = true) }.build()
-            val page = EhEngine.getFavoritesPage(url)
-            if (userKey() != user) return@withLock false
-            page.galleryInfoList.mapTo(pages) { it.toIndexed(readSlot) }
-            // Fork: where the page was read from, see SlotSegments
-            marks += PageMark(readSlot, cursor, page.galleryInfoList.size)
-            read += page.galleryInfoList.size
-            mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_read_cloud_favorites, read, total)
-            next = page.next
-            if (next == null) slot++
-            pageCount++
-            if (pageCount % CHECKPOINT_PAGES == 0 || next == null) {
-                if (!saveRefreshPages(user, slot, next, pages, marks)) return@withLock false
-                pages.clear()
-                marks.clear()
-                onSaved()
+        } catch (e: Throwable) {
+            if (pages.isNotEmpty()) {
+                runCatching { saveRefreshPages(user, slot, next, pages, marks) }.onFailure { logcat(TAG, it) }
             }
+            throw e
         }
         completeRefresh(user, slotNames)
+    }
+
+    private suspend fun clearIpBanIfSet() {
+        if (OneDriveSyncState.cloudFavoritesIpBanUntil.value != 0L || OneDriveSyncState.cloudFavoritesIpBanCount.value != 0) {
+            OneDriveSyncState.withMutableSnapshot {
+                it[OneDriveSyncState.cloudFavoritesIpBanUntil] = 0L
+                it[OneDriveSyncState.cloudFavoritesIpBanCount] = 0
+            }
+        }
     }
 
     /**
@@ -611,6 +650,7 @@ object FavoritesIndexSync {
             val difference = counts.getOrElse(slot) { 0 } - known.size
             if (difference == 0) {
                 // Counts match again (changed back, or by the app meanwhile)
+                withContext(Dispatchers.IO) { runCatching { verifyCheckpointStore.delete(slot) } }
                 done += slot
                 continue
             }
@@ -619,30 +659,51 @@ object FavoritesIndexSync {
                 update(user, userEdit = false) { cloud -> FavoritesIndexMerger.remove(cloud, known, now()) }
                 withContext(NonCancellable + Dispatchers.IO) {
                     runCatching { segmentStore.save(stored.copy(segments = listOf(Segment()))) }.onFailure { logcat(TAG, it) }
+                    runCatching { verifyCheckpointStore.delete(slot) }
                 }
                 done += slot
                 continue
             }
+            val now = now()
+            val resume = withContext(Dispatchers.IO) { runCatching { verifyCheckpointStore.load(slot) }.onFailure { logcat(TAG, it) }.getOrNull() }
+                ?.takeIf { it.userKey == user && it.segmentCount == stored.segments.size && now - it.startedAt in 0..CHECKPOINT_MAX_AGE_MILLIS }
             var otherAccount = false
             val result = SlotVerifier.verify(
                 segments = stored.segments,
                 known = known,
                 difference = difference,
                 onChecked = { checked, total -> mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_check_cloud_favorites, checked, total) },
+                resume = resume,
+                saveEvery = CHECKPOINT_PAGES,
+                expectedCount = counts.getOrElse(slot) { 0 },
+                userKey = user,
+                slot = slot,
+                now = now,
+                onCheckpoint = { cp ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { verifyCheckpointStore.save(cp) }.onFailure { logcat(TAG, it) }
+                    }
+                },
             ) { after ->
                 if (otherAccount) return@verify SlotVerifier.Page(emptyList(), null)
                 delay(PAGE_INTERVAL_MILLIS)
+                EhTraffic.waitForQuiet()
                 val url = FavListUrlBuilder(favCat = slot).apply { if (after != null) setIndex(after, isNext = true) }.build()
                 // Nothing after the cursor (the galleries after it all removed): an empty last page
                 val page = try {
                     EhEngine.getFavoritesPage(url)
                 } catch (_: NoHitsFoundException) {
+                    clearIpBanIfSet()
                     return@verify SlotVerifier.Page(emptyList(), null)
                 }
+                clearIpBanIfSet()
                 otherAccount = userKey() != user
                 SlotVerifier.Page(page.galleryInfoList.map { it.toIndexed(slot) }, page.next)
             }
             if (otherAccount || userKey() != user) return emptySet()
+            withContext(NonCancellable + Dispatchers.IO) {
+                runCatching { verifyCheckpointStore.delete(slot) }.onFailure { logcat(TAG, it) }
+            }
             if (result == null) {
                 logcat(TAG) { "Cloud favorites: slot $slot does not fit its segments, read page by page" }
                 continue
@@ -745,7 +806,7 @@ object FavoritesIndexSync {
     fun startEhCheck() {
         if (!enabled || !Settings.hasSignedIn.value) return
         if (ehCheckJob?.isActive == true) return
-        ehCheckJob = scope.launch {
+        ehCheckJob = scope.launch(BackgroundEhRequest) {
             val version = OneDriveSync.favoritesIndexVersion()
             runEhStep { checkCloudFavorites() }
             // Fork: what auto download could not do before is tried again with every sync
@@ -781,6 +842,9 @@ object FavoritesIndexSync {
         val readBefore: Boolean = false,
         val fullReadAt: Long = 0,
         val fullReadCount: Int = 0,
+        // Fork: mid-run SlotVerifier progress saved on disk when paused/interrupted
+        val verifyChecked: Int = 0,
+        val verifyTotal: Int = 0,
     )
 
     suspend fun status(): Status = withContext(Dispatchers.IO) {
@@ -789,6 +853,11 @@ object FavoritesIndexSync {
         val pending = mutex.withLock { loadCheckpointLocked()?.takeIf { it.userKey == user } }
         val missing = FavoritesIndexMerger.missingJapaneseTitles(currentIndex(), Int.MAX_VALUE, current().defaultTitles).size
         val cloud = current()
+        val now = now()
+        val verifyCp = pending?.takeUnless { it.full }?.slots?.firstNotNullOfOrNull { slot ->
+            runCatching { verifyCheckpointStore.load(slot) }.getOrNull()
+                ?.takeIf { it.userKey == user && it.checked.isNotEmpty() && now - it.startedAt in 0..CHECKPOINT_MAX_AGE_MILLIS }
+        }
         Status(
             readBefore = cloud.refreshedAt > 0L,
             fullReadAt = cloud.fullReadAt,
@@ -797,6 +866,8 @@ object FavoritesIndexSync {
             read = pending?.galleries?.size ?: 0,
             total = pending?.let { checkpoint -> checkpoint.slots.sumOf { checkpoint.counts.getOrElse(it) { 0 } } } ?: 0,
             missingTitles = missing,
+            verifyChecked = verifyCp?.checked?.size ?: 0,
+            verifyTotal = verifyCp?.segmentCount ?: 0,
         )
     }
 
@@ -832,6 +903,7 @@ object FavoritesIndexSync {
                 val chunk = FavoritesIndexMerger.stillMissing(all, current())
                 if (chunk.isEmpty()) continue
                 if (requested) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
+                EhTraffic.waitForQuiet()
                 requested = true
                 progress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size, part)
                 val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }

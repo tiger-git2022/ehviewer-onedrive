@@ -79,12 +79,21 @@ object CommentScript {
  * A comment of a few numbered points ("1. the art... 2. the story...") is no such list and is translated.
  */
 object CommentListing {
-    // "003 - ", "p.12 ", "12. ", "P45 "
-    private val pageRegex = Regex("""^(?:pp?\.?\s*)?(\d{1,4})\s*(?:[-–—~～:：.)）|]|\s)\s*\S""", RegexOption.IGNORE_CASE)
+    // "003 - ", "p.12 ", "12. ", "P45 "; not a decimal/date like "2026.11.14" or "1.5"
+    private val pageRegex = Regex("""^(?:pp?\.?\s*)?(\d{1,4})\s*(?:[-–—~～:：)）|]|\.(?!\d)|\s)\s*(\S.*)$""", RegexOption.IGNORE_CASE)
+
+    // Dates like "2026.11.14", "2026-11-14", "11/14/2026" are never contents entries
+    private val dateRegex = Regex("""^(?:\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}|\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})(?:\s|$)""")
+
+    // A line whose content is just a URL ("1: https://exhentai.org/g/...") is a series link list, not a page TOC
+    private val urlOnlyRegex = Regex("""^https?://\S+$""", RegexOption.IGNORE_CASE)
 
     // A long run of dots or the like between a name and a title, words on both sides; "そうか……" or "でも……好き" is
     // only punctuation
     private val leaderRegex = Regex("""\S\s*(?:\.{5,}|…{3,}|・{5,}|·{5,})\s*\S""")
+
+    // A line ending in leader dots, with the title on the line below ("628 - Artist / 作者 ......\n『Title』")
+    private val trailingLeaderRegex = Regex("""\S\s*(?:\.{5,}|…{3,}|・{5,}|·{5,})\s*$""")
 
     // The heading of the list: "Contents", "★Contents★", "目次", "収録作品:"
     private val headingRegex = Regex(
@@ -97,6 +106,13 @@ object CommentListing {
     // Under a heading, a short list of three is enough
     private const val MIN_ENTRIES_UNDER_HEADING = 3
 
+    private fun pageOf(line: String): Int? {
+        if (dateRegex.containsMatchIn(line)) return null
+        val match = pageRegex.find(line) ?: return null
+        if (urlOnlyRegex.matches(match.groupValues[2].trim())) return null
+        return match.groupValues[1].toInt()
+    }
+
     fun isListing(text: String): Boolean {
         val all = text.lines().map(String::trim).filter(String::isNotEmpty)
         // With a heading, the title, the cover artist and the like above it are not counted
@@ -106,16 +122,28 @@ object CommentListing {
         if (lines.size < minEntries) return false
         val pages = mutableListOf<Int>()
         var entries = 0
-        lines.forEach { line ->
-            val page = pageRegex.find(line)?.groupValues?.get(1)?.toInt()
+        var leaders = 0
+        var logicalLines = 0
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i]
+            logicalLines++
+            val page = pageOf(line)
+            val inlineLeader = leaderRegex.containsMatchIn(line)
+            val splitLeader = !inlineLeader && trailingLeaderRegex.containsMatchIn(line) &&
+                i + 1 < lines.size && pageOf(lines[i + 1]) == null && !headingRegex.matches(lines[i + 1])
             if (page != null) pages += page
-            if (page != null || leaderRegex.containsMatchIn(line)) entries++
+            if (inlineLeader || splitLeader) leaders++
+            if (page != null || inlineLeader || splitLeader) entries++
+            i += if (splitLeader) 2 else 1
         }
         // A header and credits around the list are fine, but most lines are entries
-        if (entries < minEntries || entries * 2 < lines.size) return false
-        val leaders = lines.count { leaderRegex.containsMatchIn(it) }
-        // Pages go up, and further than the points of a comment would
-        val paged = pages.size >= minEntries && pages.zipWithNext().all { (a, b) -> b >= a } && pages.last() >= 20
+        if (entries < minEntries || entries * 2 < logicalLines) return false
+        // Pages go up, allowing section resets (e.g. Color Comic at the back listed before Comic), and further than
+        // the points of a comment would
+        val drops = pages.zipWithNext().count { (a, b) -> b < a }
+        val ordered = drops == 0 || (drops <= 2 && pages.size >= 5 && drops * 3 < pages.size)
+        val paged = pages.size >= minEntries && ordered && pages.max() >= 20
         return leaders >= 3 || paged
     }
 }

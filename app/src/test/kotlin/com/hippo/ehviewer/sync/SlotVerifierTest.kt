@@ -183,4 +183,64 @@ class SlotVerifierTest {
         assertEquals(listOf(Segment(null, listOf(1L, 2L)), Segment("2-2", listOf(3L))), segments[0])
         assertEquals(listOf(Segment(null, listOf(4L, 5L))), segments[2])
     }
+
+    @Test
+    fun resumeFromCheckpointAfterIpBanSkipsAlreadyCheckedSegments() = runBlocking {
+        val site = site()
+        val segments = site.read()
+        val known = site.items.map { it.first }.toSet()
+        // Removal in segment 2 (5th checked in order 0, 9, 1, 8, 2)
+        site.items = site.items.filterNot { it.first == 23L }
+        var saved: SlotVerifyCheckpoint? = null
+        site.requests = 0
+        var threw = false
+        try {
+            SlotVerifier.verify(
+                segments = segments,
+                known = known,
+                difference = site.items.size - known.size,
+                saveEvery = 2,
+                expectedCount = site.items.size,
+                onCheckpoint = { saved = it },
+            ) { after ->
+                if (site.requests >= 3) throw IllegalStateException("IP banned")
+                site.fetch(after)
+            }
+        } catch (_: IllegalStateException) {
+            threw = true
+        }
+        assertTrue(threw)
+        val cp = assertNotNull(saved)
+        assertEquals(3, cp.checked.size)
+        // Resuming only fetches the remaining 2 segments (8 and 2), not 0, 9, 1 again
+        site.requests = 0
+        val result = assertNotNull(
+            SlotVerifier.verify(
+                segments = segments,
+                known = known,
+                difference = site.items.size - known.size,
+                resume = cp,
+                expectedCount = site.items.size,
+            ) { site.fetch(it) },
+        )
+        assertEquals(setOf(23L), result.removed)
+        assertEquals(5, result.checked)
+        assertEquals(2, site.requests)
+    }
+
+    @Test
+    fun ipBanPolicyParsesDurationsAndFallsBack() {
+        assertEquals(83 * 60_000L, IpBanPolicy.parseBanDurationMillis("The ban expires in 1 hours and 23 minutes"))
+        assertEquals(45 * 60_000L + 12_000L, IpBanPolicy.parseBanDurationMillis("Your IP is banned. The ban expires in 45 minutes and 12 seconds."))
+        assertEquals(30_000L, IpBanPolicy.parseBanDurationMillis("The ban expires in 30 seconds"))
+        assertNull(IpBanPolicy.parseBanDurationMillis("Sad Panda"))
+        // Cooldown adds 1m buffer and clamps min 5m
+        assertEquals(5 * 60_000L, IpBanPolicy.cooldownMillis("The ban expires in 30 seconds", 1))
+        assertEquals(84 * 60_000L, IpBanPolicy.cooldownMillis("The ban expires in 1 hours and 23 minutes", 1))
+        // Default backoff when no duration is stated: 15m -> 30m -> 60m -> 120m
+        assertEquals(15 * 60_000L, IpBanPolicy.cooldownMillis("IP banned", 1))
+        assertEquals(30 * 60_000L, IpBanPolicy.cooldownMillis("IP banned", 2))
+        assertEquals(60 * 60_000L, IpBanPolicy.cooldownMillis("IP banned", 3))
+        assertEquals(120 * 60_000L, IpBanPolicy.cooldownMillis("IP banned", 4))
+    }
 }

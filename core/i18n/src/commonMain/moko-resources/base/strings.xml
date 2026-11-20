@@ -757,7 +757,9 @@
     <string name="onedrive_sync_cloud_favorites_work">Updating the favorites shared with other apps</string>
     <string name="onedrive_sync_cloud_favorites_work_pause">Pause</string>
     <string name="onedrive_sync_cloud_favorites_work_queued">The shared favorites are read in the background, it goes on shortly</string>
+    <string name="onedrive_sync_cloud_favorites_work_ip_banned">IP limited; resumes at %s (progress saved)</string>
     <string name="onedrive_sync_cloud_favorites_status_read">Read %1$d of %2$d cloud favorites</string>
+    <string name="onedrive_sync_cloud_favorites_status_verified">Checked %1$d of %2$d cloud favorite pages</string>
     <string name="onedrive_sync_cloud_favorites_status_titles">%d titles to look up</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting_at">The background work goes on at about %s</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting">The background work waits to go on</string>
@@ -1056,6 +1058,7 @@
     <string name="anthology_hint_read">Read</string>
     <string name="anthology_menu_title">Page %1$d · %2$s</string>
     <string name="anthology_menu_open_favorite">♥ Open the favorite: %s</string>
+    <string name="anthology_menu_open_favorite_folder">♥ Open favorite (%1$s): %2$s</string>
     <string name="anthology_menu_search_tag">Search %s</string>
     <string name="anthology_menu_search_name">Search “%s”</string>
     <string name="anthology_menu_search_work">Search “%s” (artist and title, for this work alone)</string>

@@ -31,6 +31,7 @@ import androidx.work.workDataOf
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.util.logcat
 import com.ehviewer.core.util.withIOContext
+import com.hippo.ehviewer.client.exception.IpBannedException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -193,10 +194,27 @@ class CloudFavoritesWork(context: Context, workerParams: WorkerParameters) : Cor
                 // The input only on the first attempt: a retry (the final upload failed) must not read every slot again
                 val full = OneDriveSyncState.cloudFavoritesFullRequested.value || runAttemptCount == 0 && inputData.getBoolean(KEY_FULL, false)
                 FavoritesIndexSync.runWork(full)
-                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesWorkError] = null }
+                OneDriveSyncState.withMutableSnapshot {
+                    it[OneDriveSyncState.cloudFavoritesWorkError] = null
+                    it[OneDriveSyncState.cloudFavoritesIpBanUntil] = 0L
+                    it[OneDriveSyncState.cloudFavoritesIpBanCount] = 0
+                }
                 Result.success()
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: IpBannedException) {
+                // Fork: pause until the ban expires (keeping saved checkpoint progress) instead of burning retries
+                logcat(CLOUD_FAVORITES_WORK_NAME, e)
+                val count = OneDriveSyncState.cloudFavoritesIpBanCount.value + 1
+                val waitMs = IpBanPolicy.cooldownMillis(e.message, count)
+                val resumeAt = System.currentTimeMillis() + waitMs
+                OneDriveSyncState.withMutableSnapshot {
+                    it[OneDriveSyncState.cloudFavoritesWorkError] = e.message ?: e.toString()
+                    it[OneDriveSyncState.cloudFavoritesIpBanUntil] = resumeAt
+                    it[OneDriveSyncState.cloudFavoritesIpBanCount] = count
+                }
+                enqueueCloudFavoritesWork(applicationContext, policy = ExistingWorkPolicy.APPEND_OR_REPLACE, delayMillis = waitMs)
+                Result.success()
             } catch (e: Throwable) {
                 // E-Hentai or the network failed: the checkpoint keeps what was read, the settings show why
                 logcat(CLOUD_FAVORITES_WORK_NAME, e)
@@ -311,22 +329,32 @@ fun cloudFavoritesWorkInfo(context: Context): Flow<CloudFavoritesWorkInfo> = Wor
 suspend fun resumeCloudFavoritesWork(context: Context) {
     if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn) return
     if (cloudFavoritesWorkInfo(context).first().running) return
+    // User explicitly asked to resume (e.g. after switching proxy/IP): clear any IP ban cooldown
+    if (OneDriveSyncState.cloudFavoritesIpBanUntil.value != 0L || OneDriveSyncState.cloudFavoritesIpBanCount.value != 0) {
+        OneDriveSyncState.withMutableSnapshot {
+            it[OneDriveSyncState.cloudFavoritesIpBanUntil] = 0L
+            it[OneDriveSyncState.cloudFavoritesIpBanCount] = 0
+        }
+    }
     enqueueCloudFavoritesWork(context, policy = ExistingWorkPolicy.REPLACE)
 }
 
-/** The app came to the foreground: work waiting to go on starts now, see [resumeCloudFavoritesWork]. */
+/** The app came to the foreground: work waiting to go on starts now, unless paused for an E-Hentai IP ban. */
 suspend fun resumeWaitingCloudFavoritesWork(context: Context) {
+    val banUntil = OneDriveSyncState.cloudFavoritesIpBanUntil.value
+    if (banUntil > System.currentTimeMillis()) return
     if (cloudFavoritesWorkInfo(context).first().waiting) resumeCloudFavoritesWork(context)
 }
 
 /**
  * Starts [CloudFavoritesWork] unless it runs already, whatever the automatic sync options. [full] reads all slots
- * again, also when the work runs (it starts over from the checkpoint).
+ * again, also when the work runs (it starts over from the checkpoint). [delayMillis] defers start (e.g. IP ban wait).
  */
 fun enqueueCloudFavoritesWork(
     context: Context,
     full: Boolean = false,
     policy: ExistingWorkPolicy = if (full) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+    delayMillis: Long = 0L,
 ) {
     // Kept until the work has widened its refresh, also through a replaced or retried work
     if (full) OneDriveSyncState.cloudFavoritesFullRequested.value = true
@@ -334,6 +362,7 @@ fun enqueueCloudFavoritesWork(
         .setConstraints(syncConstraints())
         .setInputData(workDataOf(KEY_FULL to full))
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+        .apply { if (delayMillis > 0L) setInitialDelay(delayMillis, TimeUnit.MILLISECONDS) }
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(CLOUD_FAVORITES_WORK_NAME, policy, request)
 }

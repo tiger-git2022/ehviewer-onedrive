@@ -170,6 +170,27 @@ data class SlotSegments(
 @Serializable
 data class Segment(val after: String? = null, val gids: List<Long> = emptyList())
 
+/**
+ * Fork: saved mid-run progress of [SlotVerifier.verify] for [slot], kept in
+ * `files/cloud_favorites_verify/slot-<n>.json.gz`, so an IP ban or interruption resumes where it left off instead of
+ * starting over from segment 0.
+ */
+@Serializable
+data class SlotVerifyCheckpoint(
+    @EncodeDefault
+    val version: Int = FAVORITES_INDEX_VERSION,
+    val userKey: String? = null,
+    val slot: Int = 0,
+    val startedAt: Long = 0,
+    val segmentCount: Int = 0,
+    val expectedCount: Int = 0,
+    val checked: List<Int> = emptyList(),
+    val updated: Map<Int, List<Segment>> = emptyMap(),
+    val added: List<IndexedGallery> = emptyList(),
+    val removed: Set<Long> = emptySet(),
+    val extraSeen: Set<Long> = emptySet(),
+)
+
 /** Fork: format version of the sharded export in `ehviewer/export/favorites/`, see [FavoritesManifest]. */
 const val FAVORITES_EXPORT_VERSION = 2
 

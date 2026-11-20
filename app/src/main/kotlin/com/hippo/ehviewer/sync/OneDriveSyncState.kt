@@ -46,6 +46,12 @@ object OneDriveSyncState : DataStorePreferences("onedrive_sync") {
     /** Why CloudFavoritesWork stopped last time, null when it ended well. */
     val cloudFavoritesWorkError = stringOrNullPref("cloud_favorites_work_error")
 
+    /** Fork: epoch ms until which CloudFavoritesWork pauses after an E-Hentai IP ban; 0 when not banned. */
+    val cloudFavoritesIpBanUntil = longPref("cloud_favorites_ip_ban_until", 0)
+
+    /** Fork: consecutive E-Hentai IP bans hit by CloudFavoritesWork without a successful page in between. */
+    val cloudFavoritesIpBanCount = intPref("cloud_favorites_ip_ban_count", 0)
+
     /** Fork: panda.chaika.moe failed (unreachable, too slow), not asked again before this time, see FavoritesIndexSync. */
     val pandaRetryAt = longPref("panda_retry_at", 0)
 

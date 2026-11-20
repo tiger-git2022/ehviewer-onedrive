@@ -19,7 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
@@ -33,17 +36,22 @@ import com.ehviewer.core.model.TagNamespace
 import com.hippo.ehviewer.anthology.AnthologyContents
 import com.hippo.ehviewer.anthology.AnthologyMatchState
 import com.hippo.ehviewer.anthology.AnthologyMatches
+import com.hippo.ehviewer.anthology.AnthologyToc
+import com.hippo.ehviewer.anthology.FavoriteFolders
 import com.hippo.ehviewer.anthology.MindControlHints
 import com.hippo.ehviewer.anthology.TocEntry
 import com.hippo.ehviewer.chapters.ChapterSource
 import com.hippo.ehviewer.client.EhTagDatabase
 import com.hippo.ehviewer.client.data.ListUrlBuilder
+import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.sync.MihonSearch
+import com.hippo.ehviewer.todownload.ToDownload
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.screen.asDst
 import com.hippo.ehviewer.ui.screen.asGalleryLinkDst
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.awaitSelectItem
+import com.hippo.ehviewer.util.FavouriteStatusRouter
 import com.hippo.ehviewer.util.addTextToClipboard
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
@@ -57,15 +65,37 @@ const val ANTHOLOGY_LINK = "ehv-anthology://"
  * gives, the favorites found for its entries, and the pages comments say the mind control (催眠) work is at.
  */
 class AnthologyMarks(
+    val gid: Long,
     val contents: AnthologyContents?,
     val state: AnthologyMatchState?,
     /** The pages said, by the comment saying them. */
     val hints: Map<Long, List<IntRange>>,
+    /** Fork: live favorite folder names for linked & matched galleries, by gid. */
+    val folders: Map<Long, List<String>> = emptyMap(),
 ) {
     val entries get() = contents?.entries.orEmpty()
     private val matches = (state as? AnthologyMatchState.Done)?.result?.matches.orEmpty()
 
     fun favoritesOf(entry: TocEntry): List<ChapterSource> = matches[entry.key].orEmpty()
+
+    /** Favorite folder label for a single [source], preferring live lookup. */
+    fun folderLabelOf(source: ChapterSource): String? =
+        folders[source.gid]?.takeIf { it.isNotEmpty() }?.joinToString("、")
+            ?: source.favoriteFolder?.takeIf { it.isNotBlank() }
+
+    /** Combined distinct favorite folder label for [sources]. */
+    fun folderLabelOf(sources: List<ChapterSource>): String? {
+        val names = LinkedHashSet<String>()
+        sources.forEach { source ->
+            val live = folders[source.gid]
+            if (!live.isNullOrEmpty()) {
+                names += live
+            } else {
+                source.favoriteFolder?.split('、')?.map(String::trim)?.filter(String::isNotEmpty)?.let { names += it }
+            }
+        }
+        return names.takeIf { it.isNotEmpty() }?.joinToString("、")
+    }
 
     /** The entries over [pages]. */
     fun entriesAt(pages: IntRange) = entries.indices.filter { i -> entries[i].first <= pages.last && entries[i].last >= pages.first }
@@ -78,7 +108,7 @@ class AnthologyMarks(
     val favoritedCount get() = entries.count { favoritesOf(it).isNotEmpty() }
 }
 
-/** Fork: the marks of the [comments] of the gallery [gid] of [pages] pages; finds the favorites of its contents. */
+/** Fork: the marks of the [comments] of the gallery [gid] of [pages] pages; finds the favorites of its contents and links. */
 @Composable
 fun rememberAnthologyMarks(gid: Long, pages: Int, comments: List<GalleryComment>): AnthologyMarks {
     val contents = remember(gid, pages, comments) { AnthologyMatches.contentsOf(gid, pages, comments) }
@@ -86,7 +116,27 @@ fun rememberAnthologyMarks(gid: Long, pages: Int, comments: List<GalleryComment>
     val states by AnthologyMatches.states.collectAsState()
     val state = states[gid]
     val hints = remember(comments) { anthologyHints(comments) }
-    return remember(contents, state, hints) { AnthologyMarks(contents, state, hints) }
+    val cloudVersion by FavoritesIndexSync.cloudVersion.collectAsState()
+    val toDownload by ToDownload.gids.collectAsState()
+    var favRevision by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        FavouriteStatusRouter.globalFlow.collect { favRevision++ }
+    }
+    val gidsToCheck = remember(gid, comments, state) {
+        buildSet {
+            comments.forEach { c ->
+                val (text, links) = AnthologyMatches.textOf(c)
+                AnthologyToc.findGalleryLinks(text, links).forEach { if (it.gid != gid) add(it.gid) }
+            }
+            (state as? AnthologyMatchState.Done)?.result?.matches?.values?.forEach { list ->
+                list.forEach { add(it.gid) }
+            }
+        }
+    }
+    val folders by produceState<Map<Long, List<String>>>(emptyMap(), gidsToCheck, cloudVersion, toDownload, favRevision) {
+        value = if (gidsToCheck.isEmpty()) emptyMap() else FavoriteFolders.lookup(gidsToCheck)
+    }
+    return remember(gid, contents, state, hints, folders) { AnthologyMarks(gid, contents, state, hints, folders) }
 }
 
 /** Fork: the pages of the mind control work said by [comments], by the comment saying them. */
@@ -109,7 +159,11 @@ fun AnthologyMarks.decorate(text: CharSequence, comment: GalleryComment, origina
     val contents = contents
     val pages = hints[comment.id]
     val isContents = contents != null && contents.commentId == comment.id && original
-    if (!isContents && pages == null) return text
+    val textStr = text.toString()
+    val textLinks = (text as? Spanned)?.let { AnthologyMatches.textOf(it).second }.orEmpty()
+    val linkedFavs = AnthologyToc.findGalleryLinks(textStr, textLinks)
+        .filter { it.gid != gid && !folders[it.gid].isNullOrEmpty() }
+    if (!isContents && pages == null && linkedFavs.isEmpty()) return text
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val favorite = if (dark) MarkColors(0xFF2A4677.toInt(), 0xFFD6E3FF.toInt()) else MarkColors(0xFFD6E3FF.toInt(), 0xFF16336B.toInt())
     val mind = if (dark) MarkColors(0xFF5C2238.toInt(), 0xFFFFD9E3.toInt()) else MarkColors(0xFFFFD9E3.toInt(), 0xFF7B2949.toInt())
@@ -129,17 +183,35 @@ fun AnthologyMarks.decorate(text: CharSequence, comment: GalleryComment, origina
     val readText = stringResource(R.string.anthology_hint_read)
 
     val builder = SpannableStringBuilder(text)
+    val insertions = ArrayList<Pair<Int, List<Mark>>>()
+    val tocSpans = ArrayList<IntRange>()
+    val validContents = isContents && entries.all { e -> e.lineEnd <= text.length && e.names.all { text.substring(it.start, it.end) == it.text } }
     // The contents as parsed must still be the text shown: the names where they were
-    if (isContents && entries.all { e -> e.lineEnd <= text.length && e.names.all { text.substring(it.start, it.end) == it.text } }) {
-        for (i in entries.indices.reversed()) {
-            val entry = entries[i]
+    if (validContents) {
+        entries.forEachIndexed { i, entry ->
+            tocSpans += entry.lineStart..entry.lineEnd
+            val favs = favoritesOf(entry)
             val marks = buildList {
-                if (favoritesOf(entry).isNotEmpty()) add(Mark(favoritedText, favorite, "${ANTHOLOGY_LINK}favorite/$i"))
+                if (favs.isNotEmpty()) {
+                    val label = folderLabelOf(favs)?.let { "♥ $it" } ?: favoritedText
+                    add(Mark(label, favorite, "${ANTHOLOGY_LINK}favorite/$i"))
+                }
                 if (i in mindControl) add(Mark(mindText, mind))
             }
-            builder.insertMarks(entry.lineEnd, marks, density, leading = true)
+            if (marks.isNotEmpty()) insertions += entry.lineEnd to marks
             entry.names.forEachIndexed { n, name -> builder.setSpan(URLSpan("${ANTHOLOGY_LINK}author/$i/$n"), name.start, name.end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
+    }
+    // Any E-Hentai/ExHentai gallery links in the comment (outside TOC entries already badged) show their favorite folder
+    linkedFavs.forEach { ref ->
+        if (tocSpans.any { ref.start >= it.first && ref.end <= it.last }) return@forEach
+        val label = folders[ref.gid]?.joinToString("、") ?: return@forEach
+        insertions += ref.end to listOf(Mark("♥ $label", favorite, ref.url))
+    }
+    insertions.sortedByDescending { it.first }.forEach { (at, marks) ->
+        builder.insertMarks(at, marks, density, leading = true)
+    }
+    if (validContents) {
         val summary = buildList {
             add(Mark(countText, grey))
             if (favoritedCount > 0) add(Mark(favoritedCountText, favorite))
@@ -300,7 +372,13 @@ private suspend fun AnthologyMarks.authorMenu(entry: TocEntry, nameIndex: Int, c
     }
     val actions = ArrayList<Pair<String, suspend () -> Unit>>()
     favoritesOf(entry).forEach { source ->
-        actions += context.getString(R.string.anthology_menu_open_favorite, source.title) to { openFavorite(source) }
+        val folder = folderLabelOf(source)
+        val label = if (folder != null) {
+            context.getString(R.string.anthology_menu_open_favorite_folder, folder, source.title)
+        } else {
+            context.getString(R.string.anthology_menu_open_favorite, source.title)
+        }
+        actions += label to { openFavorite(source) }
     }
     tag?.let { actions += context.getString(R.string.anthology_menu_search_tag, it) to { navigate(ListUrlBuilder(mode = ListUrlBuilder.MODE_TAG, keyword = it).asGalleryLinkDst()) } }
     names.forEach { name ->

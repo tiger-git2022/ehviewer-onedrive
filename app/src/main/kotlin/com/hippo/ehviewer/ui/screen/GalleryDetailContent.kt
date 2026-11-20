@@ -613,8 +613,6 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 val keyword = similarTitleQuery(galleryDetail.title, galleryDetail.titleJpn)
                 val artistTag = galleryDetail.tagGroups.artistTag()
                 if (null != keyword) {
-                    // Fork: the title flies into the search bar of the list, see TagFlight
-                    TagFlight.startQuery(keyword, detailPageEntry)
                     navigate(
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_NORMAL,
@@ -912,7 +910,7 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                 val end = (up + getLimit(params, key) - 1).coerceAtMost(pages - 1)
                 runSuspendCatching {
                     (up..end).filterNot { it in previewPagesMap }.map { it / pageSize }.toSet()
-                        .parMap(concurrency = Settings.multiThreadDownload.value) { page ->
+                        .parMap(concurrency = minOf(Settings.multiThreadDownload.value, 2)) { page ->
                             // Fork: those of an album of 紳士漫畫 from its pages, see wnacg/
                             if (isWnacg(gid)) return@parMap wnacgPreviewPage(gid, page, pageSize)
                             val url = EhUrl.getGalleryDetailUrl(gid, token, page)
