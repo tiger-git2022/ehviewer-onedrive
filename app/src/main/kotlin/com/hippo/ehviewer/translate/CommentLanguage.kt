@@ -81,6 +81,7 @@ object CommentScript {
 object CommentListing {
     // "003 - ", "p.12 ", "12. ", "P45 "; not a decimal/date like "2026.11.14" or "1.5"
     private val pageRegex = Regex("""^(?:pp?\.?\s*)?(\d{1,4})\s*(?:[-–—~～:：)）|]|\.(?!\d)|\s)\s*(\S.*)$""", RegexOption.IGNORE_CASE)
+    private val coverRegex = Regex("""^(?:cover|表紙|カバー)\s*[-–—:：|]+\s*\S""", RegexOption.IGNORE_CASE)
 
     // Dates like "2026.11.14", "2026-11-14", "11/14/2026" are never contents entries
     private val dateRegex = Regex("""^(?:\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}|\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})(?:\s|$)""")
@@ -129,12 +130,14 @@ object CommentListing {
             val line = lines[i]
             logicalLines++
             val page = pageOf(line)
-            val inlineLeader = leaderRegex.containsMatchIn(line)
-            val splitLeader = !inlineLeader && trailingLeaderRegex.containsMatchIn(line) &&
+            val isCover = page == null && coverRegex.containsMatchIn(line)
+            val hasTrailingLeader = trailingLeaderRegex.containsMatchIn(line)
+            val inlineLeader = !hasTrailingLeader && leaderRegex.containsMatchIn(line)
+            val splitLeader = hasTrailingLeader &&
                 i + 1 < lines.size && pageOf(lines[i + 1]) == null && !headingRegex.matches(lines[i + 1])
             if (page != null) pages += page
             if (inlineLeader || splitLeader) leaders++
-            if (page != null || inlineLeader || splitLeader) entries++
+            if (page != null || isCover || inlineLeader || splitLeader) entries++
             i += if (splitLeader) 2 else 1
         }
         // A header and credits around the list are fine, but most lines are entries

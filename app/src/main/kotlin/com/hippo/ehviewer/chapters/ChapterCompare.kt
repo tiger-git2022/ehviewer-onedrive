@@ -161,14 +161,14 @@ object ChapterCompare {
 
     /** The width a full page is read at, at least, to be hashed. */
     private const val PAGE_WIDTH = 256
-    private const val PREVIEW_PAGE_GAP = 800L
-    private const val FAVORITES_PAGE_GAP = 800L
+    private const val PREVIEW_PAGE_GAP = 500L
+    private const val FAVORITES_PAGE_GAP = 500L
 
     /** The favorites read at once. */
-    private const val PARALLEL_GALLERIES = 2
+    private const val PARALLEL_GALLERIES = 3
 
     /** The preview pages fetched at once, of all the galleries: E-H bans an address loading pages too fast. */
-    private val previewGate = Semaphore(2)
+    private val previewGate = Semaphore(3)
     private const val MAX_WNACG_PAGES = 400
     private const val WNACG_REFERER = "https://www.wnacg.com/"
 

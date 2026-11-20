@@ -97,8 +97,8 @@ import splitties.init.appCtx
 
 // https://ehwiki.org/wiki/API#Basics
 private const val MAX_REQUEST_SIZE = 25
-private const val MAX_SEQUENTIAL_REQUESTS = 3
-private const val API_CONCURRENCY = 2
+private const val MAX_SEQUENTIAL_REQUESTS = 5
+private const val API_CONCURRENCY = 3
 private const val REQUEST_INTERVAL = 5000L
 
 private val Url.isLogin get() = segments.firstOrNull() == "bounce_login.php"

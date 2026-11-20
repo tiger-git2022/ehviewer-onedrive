@@ -74,7 +74,7 @@ object AnthologyMatches {
     private const val MAX_FAVORITE_PAGES = 3
 
     /** Between two searches, not to be taken for a crawler. */
-    private const val SEARCH_GAP = 1_000L
+    private const val SEARCH_GAP = 500L
 
     /** Found again after a day: favorites are added since. */
     private const val KEEP_MS = 24 * 60 * 60 * 1000L

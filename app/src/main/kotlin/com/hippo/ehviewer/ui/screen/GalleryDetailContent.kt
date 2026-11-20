@@ -910,7 +910,7 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                 val end = (up + getLimit(params, key) - 1).coerceAtMost(pages - 1)
                 runSuspendCatching {
                     (up..end).filterNot { it in previewPagesMap }.map { it / pageSize }.toSet()
-                        .parMap(concurrency = minOf(Settings.multiThreadDownload.value, 2)) { page ->
+                        .parMap(concurrency = Settings.multiThreadDownload.value) { page ->
                             // Fork: those of an album of 紳士漫畫 from its pages, see wnacg/
                             if (isWnacg(gid)) return@parMap wnacgPreviewPage(gid, page, pageSize)
                             val url = EhUrl.getGalleryDetailUrl(gid, token, page)

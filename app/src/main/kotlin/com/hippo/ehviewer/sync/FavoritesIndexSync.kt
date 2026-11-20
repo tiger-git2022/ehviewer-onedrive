@@ -77,7 +77,7 @@ object FavoritesIndexSync {
     // Fork: with auto download on, new favorites are looked for at every sync and when the app comes to the front (see
     // checkForAutoDownload), one page each; this only keeps the two from reading it twice in a row
     private const val AUTO_DOWNLOAD_CHECK_INTERVAL_MILLIS = 60_000L
-    private const val PAGE_INTERVAL_MILLIS = 2_500L
+    private const val PAGE_INTERVAL_MILLIS = 1_000L
 
     /** Pages of "all" (the newest favorites first) a count check reads at most for favorites added on the website. */
     private const val CHECK_MAX_PAGES = 10
@@ -104,9 +104,9 @@ object FavoritesIndexSync {
     /** [CloudFavoritesWork] uploads the index this often, so other apps see the favorites read so far. */
     private const val WORK_UPLOAD_INTERVAL_MILLIS = 10 * 60_000L
 
-    // One batch of EhEngine.fillGalleryListByApi (3 requests of 25 galleries) and its pause before the next batch
-    private const val TITLE_LOOKUP_CHUNK = 75
-    private const val TITLE_LOOKUP_INTERVAL_MILLIS = 6_000L
+    // One batch of EhEngine.fillGalleryListByApi (5 requests of 25 galleries) and its pause before the next batch
+    private const val TITLE_LOOKUP_CHUNK = 125
+    private const val TITLE_LOOKUP_INTERVAL_MILLIS = 5_000L
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
