@@ -65,6 +65,32 @@ class CommentTranslateTest {
         assertFalse(CommentListing.isListing("そうか……\nでも……\nうーん……\nまあ……好きだけど……"))
         assertFalse(CommentListing.isListing("한글판도 올렸습니다.\n항상 응원해 주셔서 감사합니다!"))
         assertFalse(CommentListing.isListing("Page 12 is the best...\nAnd 30 too\nLove it\nThanks for uploading\nMore please"))
+        // Link list + date at the bottom is not a magazine TOC
+        assertFalse(
+            CommentListing.isListing(
+                "图源：https://exhentai.org/g/1/a/\n1：https://exhentai.org/g/2/b/\n2：https://exhentai.org/g/3/c/\n3：https://exhentai.org/g/4/d/\n4：本书\n2026.11.14",
+            ),
+        )
+        // Two-line magazine TOC with Color Comic pages before Comic pages
+        assertTrue(
+            CommentListing.isListing(
+                """
+                Cover - Shiokonbu / しおこんぶ
+                Color Comic
+                628 - Tamazatou / 玉砂糖 ......................
+                『ふしぎカノジョラブ契約中 第3話』
+                641 - Chiri / ちり ............................
+                『僕と彼女の搾精性活8』
+                Comic
+                003 - Tohyama Eight / 東山エイト ..............
+                『キミは俺の本指名(推し)！ 1話』
+                040 - Takota Konu / 蛸田こぬ ..................
+                『年上彼女の落とし方。2』
+                063 - Cucchiore / くっきおーれ ................
+                『エール』
+                """.trimIndent(),
+            ),
+        )
     }
 
     @Test

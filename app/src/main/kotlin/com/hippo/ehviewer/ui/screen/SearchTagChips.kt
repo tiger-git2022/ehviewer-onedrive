@@ -77,7 +77,6 @@ import androidx.compose.ui.unit.round
 import com.ehviewer.core.i18n.R
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
-import com.hippo.ehviewer.ui.main.queryFlight
 import com.hippo.ehviewer.ui.main.tagFlight
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -325,12 +324,10 @@ private fun ChipFieldLayout(
             },
             // The chips at the size they are going to: measured for the lines, never shown
             { tags.forEachIndexed { index, tag -> key(chipKey(tag)) { chip(index, tag, ChipRole.Measure, Modifier) } } },
-            // Collapsed, the text searched in its lines, over the place they take. Fork: the title of a gallery searched
-            // (its similar galleries) flies here, and back, see TagFlight
+            // Collapsed, the text searched in its lines, over the place they take
             {
-                val flight = if (flowingText != null) Modifier.queryFlight(flowingText, claim = true) else Modifier
                 Box(
-                    flight.drawBehind {
+                    Modifier.drawBehind {
                         flowing.forEach { (text, offset) -> drawText(text, topLeft = Offset(offset.x.toFloat(), offset.y.toFloat()), alpha = textAlpha()) }
                     },
                 )

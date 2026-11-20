@@ -10,6 +10,8 @@ data class ChapterSource(
     val title: String,
     /** Its cover, to show it; null when not known. */
     val thumbKey: String? = null,
+    /** Fork: favorite folder name(s) (cloud slot name / 本地收藏 / 待下载), null when unknown. */
+    val favoriteFolder: String? = null,
 )
 
 /**

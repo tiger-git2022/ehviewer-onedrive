@@ -739,7 +739,9 @@
     <string name="onedrive_sync_cloud_favorites_work">正在更新共享给其他应用的收藏</string>
     <string name="onedrive_sync_cloud_favorites_work_pause">暂停</string>
     <string name="onedrive_sync_cloud_favorites_work_queued">共享收藏正在后台读取，稍后会接着进行</string>
+    <string name="onedrive_sync_cloud_favorites_work_ip_banned">IP 受限，将于 %s 自动继续（已保留进度）</string>
     <string name="onedrive_sync_cloud_favorites_status_read">已读 %1$d/%2$d 本云端收藏</string>
+    <string name="onedrive_sync_cloud_favorites_status_verified">已核对 %1$d/%2$d 页云端收藏</string>
     <string name="onedrive_sync_cloud_favorites_status_titles">还有 %d 本没查标题</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting_at">后台任务等待继续，约 %s</string>
     <string name="onedrive_sync_cloud_favorites_status_waiting">后台任务等待继续</string>
@@ -1038,6 +1040,7 @@
     <string name="anthology_hint_read">去看</string>
     <string name="anthology_menu_title">第 %1$d 页 · %2$s</string>
     <string name="anthology_menu_open_favorite">♥ 打开已收藏的：%s</string>
+    <string name="anthology_menu_open_favorite_folder">♥ 打开已收藏（%1$s）：%2$s</string>
     <string name="anthology_menu_search_tag">搜索 %s</string>
     <string name="anthology_menu_search_name">搜索「%s」</string>
     <string name="anthology_menu_search_work">搜索「%s」（作者＋作品名，找这篇的单篇）</string>

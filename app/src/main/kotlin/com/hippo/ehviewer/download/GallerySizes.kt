@@ -35,7 +35,7 @@ import splitties.init.appCtx
  */
 object GallerySizes {
     private const val TAG = "GallerySizes"
-    private const val REQUEST_DELAY_MILLIS = 300L
+    private const val REQUEST_DELAY_MILLIS = 500L
     private const val CIFS_DOCUMENTS_AUTHORITY = "com.wa2c.android.cifsdocumentsprovider.documents"
     private val file get() = File(appCtx.filesDir, "gallery_sizes.json")
     private val serializer = MapSerializer(Long.serializer(), Long.serializer())

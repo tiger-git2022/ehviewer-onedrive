@@ -94,6 +94,83 @@ class AnthologyTocTest {
         assertNull(AnthologyToc.parse("Thoughts:\n1. The art is great\n2. The story drags\n3. Too short\n4. Still worth it", emptyList(), gid, 100))
     }
 
+    // Series link list with a trailing date ("2026.11.14") must NOT be misparsed as an anthology TOC,
+    // and all gallery links in it are extracted for per-link favorite folder badges
+    @Test
+    fun seriesLinksWithDateNotTocAndLinksExtracted() {
+        val comment = """
+            图源：https://exhentai.org/g/3378935/d9db8fdb27/
+
+            1：https://exhentai.org/g/3113227/4e2faa61f0/
+            2：https://exhentai.org/g/3115032/765c30fc9c/
+            3：https://exhentai.org/g/3210792/5ead577971/
+            4：https://exhentai.org/g/4326020/cadc2a4086/
+            5：本书
+            6：https://exhentai.org/g/4332940/818bc0fdfd/
+
+            既然能闻到味道，那你这道具不和棍木没区别吗
+
+            B_Meow
+            2026.11.14
+        """.trimIndent()
+        assertNull(AnthologyToc.parse(comment, emptyList(), gid, 30))
+        val refs = AnthologyToc.findGalleryLinks(comment, emptyList())
+        assertEquals(listOf(3378935L, 3113227L, 3115032L, 3210792L, 4326020L, 4332940L), refs.map { it.gid })
+        refs.forEach { ref ->
+            assertEquals(ref.url, comment.substring(ref.start, ref.end))
+        }
+    }
+
+    // Two-line magazine TOC with Color Comic / Pinup pages from the back listed before Comic, and 『title』 on the next line
+    @Test
+    fun twoLineSectionsOutOfOrder() {
+        val comment = """
+            Cover - Shiokonbu / しおこんぶ
+
+            Color Comic
+            628 - Tamazatou / 玉砂糖 ..........................................
+            『ふしぎカノジョラブ契約中 第3話』
+            641 - Chiri / ちり ................................................
+            『僕と彼女の搾精性活8』
+
+            Pinup -DO NOT TAG-
+            645 - Minamoto / 源 ...............................................
+            『バベルPin-Up Girls 296』
+            646 - Mebura / めぶら .............................................
+            『バベルPin-Up Girls 297』
+            647 - Nurumayu / ぬるまゆ .........................................
+            『バベルPin-Up Girls 298』
+
+            Comic
+            003 - Tohyama Eight / 東山エイト ..................................
+            『キミは俺の本指名(推し)！ 1話』
+            040 - Takota Konu / 蛸田こぬ ......................................
+            『年上彼女の落とし方。2』
+            063 - Cucchiore / くっきおーれ ....................................
+            『エール』
+        """.trimIndent()
+        val entries = assertNotNull(AnthologyToc.parse(comment, emptyList(), gid, 650))
+        assertEquals(listOf("Cover", "628", "641", "645", "646", "647", "003", "040", "063"), entries.map { it.label })
+        val colorFirst = entries[1]
+        assertEquals(listOf("Tamazatou", "玉砂糖"), colorFirst.names.map { it.text })
+        assertEquals("ふしぎカノジョラブ契約中 第3話", colorFirst.title)
+        assertEquals(628..640, colorFirst.pages)
+        assertEquals("『ふしぎカノジョラブ契約中 第3話』", comment.substring(colorFirst.lineEnd - "『ふしぎカノジョラブ契約中 第3話』".length, colorFirst.lineEnd))
+        val comicFirst = entries[6]
+        assertEquals(listOf("Tohyama Eight", "東山エイト"), comicFirst.names.map { it.text })
+        assertEquals("キミは俺の本指名(推し)！ 1話", comicFirst.title)
+        assertEquals(3..39, comicFirst.pages)
+        assertEquals(1..2, entries[0].pages)
+        assertEquals(63..627, entries.last().pages)
+        assertEquals(647..650, entries[5].pages)
+        // Artist name offsets match exact substrings in original comment text
+        entries.forEach { entry ->
+            entry.names.forEach { name ->
+                assertEquals(name.text, comment.substring(name.start, name.end))
+            }
+        }
+    }
+
     @Test
     fun titles() {
         assertTrue(AnthologyTitles.matches("乳辱エージェント", "[松沢夢丹] 乳辱エージェント (COMIC 真激 2025年1月号) [中国翻訳] [DL版]"))

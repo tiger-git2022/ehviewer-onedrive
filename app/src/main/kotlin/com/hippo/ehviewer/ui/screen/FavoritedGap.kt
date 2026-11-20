@@ -24,7 +24,7 @@ private const val GAP_MIN_PAGES = 2
 
 /** Pages asked at most to skip a run, and the time between them. */
 private const val JUMP_MAX_PAGES = 40
-private const val JUMP_INTERVAL_MILLIS = 300L
+private const val JUMP_INTERVAL_MILLIS = 500L
 
 /** The list paused after [days] days in [pages] pages of favorites only, down to [reached] (the posted date). */
 class FavoritedGapPause(

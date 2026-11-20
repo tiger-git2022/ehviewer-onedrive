@@ -69,7 +69,10 @@ suspend inline fun ehRequest(
 ) = ktorClient.prepareRequest(url) {
     applyEhConfig(referer, origin)
     apply(builder)
-}.also { if (verbose) logcat("EhRequest") { url } }
+}.also {
+    EhTraffic.recordIfForeground()
+    if (verbose) logcat("EhRequest") { url }
+}
 
 suspend inline fun noRedirectEhRequest(
     url: String,

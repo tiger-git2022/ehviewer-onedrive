@@ -613,8 +613,6 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 val keyword = similarTitleQuery(galleryDetail.title, galleryDetail.titleJpn)
                 val artistTag = galleryDetail.tagGroups.artistTag()
                 if (null != keyword) {
-                    // Fork: the title flies into the search bar of the list, see TagFlight
-                    TagFlight.startQuery(keyword, detailPageEntry)
                     navigate(
                         ListUrlBuilder(
                             mode = ListUrlBuilder.MODE_NORMAL,
