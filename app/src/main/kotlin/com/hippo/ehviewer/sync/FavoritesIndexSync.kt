@@ -8,9 +8,7 @@ import com.ehviewer.core.network.EhCookieStore
 import com.ehviewer.core.util.logcat
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
-import com.hippo.ehviewer.client.BackgroundEhRequest
 import com.hippo.ehviewer.client.EhEngine
-import com.hippo.ehviewer.client.EhTraffic
 import com.hippo.ehviewer.client.data.FavListUrlBuilder
 import com.hippo.ehviewer.client.exception.NoHitsFoundException
 import com.hippo.ehviewer.client.parser.FavParserResult
@@ -435,7 +433,7 @@ object FavoritesIndexSync {
      * The work of [CloudFavoritesWork]: reads the slots of the unfinished refresh page by page ([full]: all slots, a
      * partial refresh is widened to them), then looks up every missing Japanese title, uploading the index on the way.
      */
-    suspend fun runWork(full: Boolean): Unit = withContext(Dispatchers.IO + BackgroundEhRequest) {
+    suspend fun runWork(full: Boolean): Unit = withContext(Dispatchers.IO) {
         if (!Settings.hasSignedIn.value) return@withContext
         mutableWorking.value = true
         try {
@@ -540,7 +538,6 @@ object FavoritesIndexSync {
                     continue
                 }
                 delay(PAGE_INTERVAL_MILLIS)
-                EhTraffic.waitForQuiet()
                 val cursor = next
                 val readSlot = slot
                 val url = FavListUrlBuilder(favCat = readSlot).apply { if (cursor != null) setIndex(cursor, isNext = true) }.build()
@@ -687,7 +684,6 @@ object FavoritesIndexSync {
             ) { after ->
                 if (otherAccount) return@verify SlotVerifier.Page(emptyList(), null)
                 delay(PAGE_INTERVAL_MILLIS)
-                EhTraffic.waitForQuiet()
                 val url = FavListUrlBuilder(favCat = slot).apply { if (after != null) setIndex(after, isNext = true) }.build()
                 // Nothing after the cursor (the galleries after it all removed): an empty last page
                 val page = try {
@@ -806,7 +802,7 @@ object FavoritesIndexSync {
     fun startEhCheck() {
         if (!enabled || !Settings.hasSignedIn.value) return
         if (ehCheckJob?.isActive == true) return
-        ehCheckJob = scope.launch(BackgroundEhRequest) {
+        ehCheckJob = scope.launch {
             val version = OneDriveSync.favoritesIndexVersion()
             runEhStep { checkCloudFavorites() }
             // Fork: what auto download could not do before is tried again with every sync
@@ -903,7 +899,6 @@ object FavoritesIndexSync {
                 val chunk = FavoritesIndexMerger.stillMissing(all, current())
                 if (chunk.isEmpty()) continue
                 if (requested) delay(TITLE_LOOKUP_INTERVAL_MILLIS)
-                EhTraffic.waitForQuiet()
                 requested = true
                 progress.value = StepProgress(R.string.onedrive_sync_step_japanese_titles, i * TITLE_LOOKUP_CHUNK, missing.size, part)
                 val infos = chunk.map { BaseGalleryInfo(gid = it.gid, token = it.token) }
