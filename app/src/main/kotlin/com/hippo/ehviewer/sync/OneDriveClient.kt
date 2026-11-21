@@ -171,8 +171,7 @@ object OneDriveClient {
         buildRequest: () -> Request.Builder,
         handle: (Response) -> T,
     ): T = withContext(Dispatchers.IO) {
-        var attempt = 0
-        while (true) {
+        for (attempt in 0..OneDriveRetryPolicy.MAX_RETRIES) {
             val request = buildRequest().apply {
                 if (authorized) header("Authorization", "Bearer ${accessToken()}")
             }.build()
@@ -195,8 +194,8 @@ object OneDriveClient {
                 wait
             }
             delay(retryDelayMs)
-            attempt++
         }
+        error("Unreachable")
     }
 
     /** Lists a folder of the app folder, an absent folder is empty. */
