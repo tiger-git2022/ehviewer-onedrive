@@ -132,12 +132,21 @@ object CommentTranslations {
         try {
             val pending = todo.mapNotNull { (key, comment) ->
                 val text = plainText(comment.comment)
-                val (needed, language) = detect(text, target)
-                if (needed) {
-                    states[key] = CommentTranslation.Pending(language)
-                    ToTranslate(key, text, language)
+                val segments = CommentSegments.split(text, target)
+                // Detect only on non-target segments so target-language lines (e.g. Chinese) never mask foreign ones
+                val toSend = ArrayList<Pair<Int, String>>()
+                var detectedLanguage: String? = null
+                segments.forEachIndexed { segIndex, seg ->
+                    if (!seg.translate) return@forEachIndexed
+                    val (needed, language) = detect(seg.text, target)
+                    if (detectedLanguage == null && language != null) detectedLanguage = language
+                    if (needed) toSend += segIndex to seg.text
+                }
+                if (toSend.isNotEmpty()) {
+                    states[key] = CommentTranslation.Pending(detectedLanguage)
+                    ToTranslate(key, text, segments, toSend, detectedLanguage)
                 } else {
-                    states[key] = CommentTranslation.NotNeeded(language)
+                    states[key] = CommentTranslation.NotNeeded(detectedLanguage ?: target.primary)
                     null
                 }
             }
@@ -148,33 +157,73 @@ object CommentTranslations {
         }
     }
 
-    private class ToTranslate(val key: String, val text: String, val language: String?)
+    private class ToTranslate(
+        val key: String,
+        val text: String,
+        val segments: List<CommentSegments.Segment>,
+        val parts: List<Pair<Int, String>>,
+        val language: String?,
+    ) {
+        val sendChars: Int get() = parts.sumOf { it.second.length }
+
+        fun assemble(translatedByPartIndex: Map<Int, String>): String = buildString {
+            val bySegment = HashMap<Int, String>()
+            parts.forEachIndexed { partIndex, (segIndex, _) ->
+                translatedByPartIndex[partIndex]?.let { bySegment[segIndex] = it }
+            }
+            segments.forEachIndexed { segIndex, seg ->
+                append(bySegment[segIndex] ?: seg.text)
+            }
+        }
+    }
 
     private fun chunks(pending: List<ToTranslate>): List<List<ToTranslate>> {
         val result = mutableListOf<List<ToTranslate>>()
         var current = mutableListOf<ToTranslate>()
+        var itemCount = 0
         var chars = 0
         pending.forEach { item ->
-            if (current.isNotEmpty() && (current.size >= MAX_ITEMS_PER_REQUEST || chars + item.text.length > MAX_CHARS_PER_REQUEST)) {
+            if (current.isNotEmpty() && (itemCount + item.parts.size > MAX_ITEMS_PER_REQUEST || chars + item.sendChars > MAX_CHARS_PER_REQUEST)) {
                 result += current
                 current = mutableListOf()
+                itemCount = 0
                 chars = 0
             }
             current += item
-            chars += item.text.length
+            itemCount += item.parts.size
+            chars += item.sendChars
         }
         if (current.isNotEmpty()) result += current
         return result
     }
 
     private suspend fun translateChunk(chunk: List<ToTranslate>, config: TranslateConfig, target: TargetLanguage, cache: LinkedHashMap<String, CachedTranslation>) {
-        val items = chunk.mapIndexed { index, item -> CommentTranslateApi.Item(index + 1, item.text) }
+        // Flatten each comment's translatable segments into sequential API items, mapping item id -> (comment, partIndex)
+        val items = ArrayList<CommentTranslateApi.Item>()
+        val mapping = ArrayList<Pair<ToTranslate, Int>>()
+        val itemIdsByComment = HashMap<ToTranslate, List<Int>>()
+        chunk.forEach { comment ->
+            val ids = ArrayList<Int>(comment.parts.size)
+            comment.parts.forEachIndexed { partIndex, (_, partText) ->
+                val id = items.size + 1
+                items += CommentTranslateApi.Item(id, partText)
+                mapping += comment to partIndex
+                ids += id
+            }
+            itemIdsByComment[comment] = ids
+        }
         val result = try {
             CommentTranslateApi.translate(config, items, target) { partial ->
-                // Streamed: the translations so far show as they come in
+                // Streamed: reassemble each comment's segments as translations come in
+                val grouped = HashMap<ToTranslate, MutableMap<Int, String>>()
                 partial.forEach { (id, text) ->
-                    val item = chunk.getOrNull(id - 1) ?: return@forEach
-                    if (states[item.key] is CommentTranslation.Pending) states[item.key] = CommentTranslation.Pending(item.language, text)
+                    val (comment, partIndex) = mapping.getOrNull(id - 1) ?: return@forEach
+                    grouped.getOrPut(comment) { HashMap() }[partIndex] = text
+                }
+                grouped.forEach { (comment, byPart) ->
+                    if (states[comment.key] is CommentTranslation.Pending) {
+                        states[comment.key] = CommentTranslation.Pending(comment.language, comment.assemble(byPart))
+                    }
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -185,16 +234,27 @@ object CommentTranslations {
             chunk.forEach { states[it.key] = CommentTranslation.Failed(it.language, message) }
             return
         }
-        chunk.forEachIndexed { index, item ->
-            val text = result[index + 1]?.trim()
-            if (text.isNullOrEmpty()) {
-                states[item.key] = CommentTranslation.Failed(item.language, "No translation in the reply")
-            } else if (!isTranslationInto(text, item.text, target)) {
-                logcat(TAG) { "Not a translation into ${target.code}: $text" }
-                states[item.key] = CommentTranslation.Failed(item.language, "Reply not in ${target.displayName}: ${text.take(40)}")
+        chunk.forEach { comment ->
+            val ids = itemIdsByComment.getValue(comment)
+            val translatedParts = HashMap<Int, String>()
+            var error: String? = null
+            comment.parts.forEachIndexed { partIndex, (_, sourcePart) ->
+                val partText = result[ids[partIndex]]?.trim()
+                when {
+                    partText.isNullOrEmpty() -> error = "No translation in the reply"
+                    !isTranslationInto(partText, sourcePart, target) -> {
+                        logcat(TAG) { "Not a translation into ${target.code}: $partText" }
+                        error = "Reply not in ${target.displayName}: ${partText.take(40)}"
+                    }
+                    else -> translatedParts[partIndex] = partText
+                }
+            }
+            if (error != null) {
+                states[comment.key] = CommentTranslation.Failed(comment.language, error!!)
             } else {
-                states[item.key] = CommentTranslation.Done(item.language, text)
-                synchronized(cache) { cache[item.key] = CachedTranslation(item.language, text) }
+                val assembled = comment.assemble(translatedParts)
+                states[comment.key] = CommentTranslation.Done(comment.language, assembled)
+                synchronized(cache) { cache[comment.key] = CachedTranslation(comment.language, assembled) }
             }
         }
         saveCache()

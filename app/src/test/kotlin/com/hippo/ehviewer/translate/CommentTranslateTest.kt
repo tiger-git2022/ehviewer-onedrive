@@ -236,6 +236,47 @@ class CommentTranslateTest {
         assertFalse(isTranslationInto("会有后续吗？please translate the next one too, it is so good", "Will there be more? please translate the next one too, it is so good", zh))
         // Capitalized words not in the comment count
         assertFalse(isTranslationInto("Got It, Noted. I Will Do That", "Page 9 was water damaged", zh))
+        // An untranslated English sentence returned verbatim must fail
+        val enNotice = "For one week following the timestamp of this file's upload to E-Hentai, it is strictly prohibited to use it for any AI-based processes."
+        assertFalse(isTranslationInto(enNotice, enNotice, zh))
+        // A bilingual Chinese+English comment whose English paragraph was left untranslated must also fail
+        val bilingual = """
+            Raw: https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_833544/
+            请帮忙添加Tag和修改Main Gallery Title
+
+            此档在上传到e站时间戳开始的一周内禁止用于任何未经人工改正的AI嵌字，AI翻译，AI涂色等行为并再次上传到e站，违者全家得胰腺癌暴毙！！！
+
+            $enNotice
+        """.trimIndent()
+        assertFalse(isTranslationInto(bilingual, bilingual, zh))
+    }
+
+    @Test
+    fun segmentsExcludeTargetLanguageLines() {
+        val zh = TargetLanguage.SimplifiedChinese
+        val enPara = "For one week following the timestamp of this file's upload to E-Hentai, it is strictly prohibited to use it for any AI-based processes."
+        val bilingual = """
+            Raw: https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_833544/
+            请帮忙添加Tag和修改Main Gallery Title
+
+            此档在上传到e站时间戳开始的一周内禁止用于任何未经人工改正的AI嵌字，AI翻译，AI涂色等行为并再次上传到e站，违者全家得胰腺癌暴毙！！！
+
+            $enPara
+        """.trimIndent()
+        val segments = CommentSegments.split(bilingual, zh)
+        assertEquals(bilingual, segments.joinToString("") { it.text })
+        val toTranslate = segments.filter { it.translate }
+        assertEquals(1, toTranslate.size)
+        assertEquals(enPara, toTranslate[0].text)
+        // Pure Chinese with English terms needs no translation
+        val pureZh = "Raw: https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_833544/\n请帮忙添加Tag和修改Main Gallery Title"
+        assertTrue(CommentSegments.split(pureZh, zh).none { it.translate })
+        // Pure multi-paragraph English stays a single translatable segment
+        val multiEn = "First paragraph in English.\n\nSecond paragraph in English."
+        val enSegments = CommentSegments.split(multiEn, zh)
+        assertEquals(1, enSegments.size)
+        assertTrue(enSegments[0].translate)
+        assertEquals(multiEn, enSegments[0].text)
     }
 
     @Test

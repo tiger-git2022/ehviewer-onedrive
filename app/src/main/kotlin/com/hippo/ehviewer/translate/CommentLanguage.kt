@@ -311,6 +311,108 @@ object CommentSeries {
 }
 
 /**
+ * Fork: splits a comment into verbatim segments (already in [target], links-only lines, blank lines) and segments that
+ * still need language detection / translation. Excludes target-language paragraphs (e.g. Chinese notices above an
+ * English paragraph) from both detection and the translation prompt so the model only translates the foreign parts.
+ */
+object CommentSegments {
+    data class Segment(val text: String, val translate: Boolean)
+
+    private val lowerLatinWordRegex = Regex("""\b[a-z]{2,}\b""")
+
+    /** True when [guess] already matches [target]'s script. */
+    internal fun matchesTarget(guess: String, target: TargetLanguage): Boolean = when (target.primary) {
+        CommentScript.JAPANESE -> guess == CommentScript.JAPANESE || guess == CommentScript.CHINESE
+        CommentScript.CHINESE, CommentScript.KOREAN -> guess == target.primary
+        else -> guess == CommentScript.OTHER
+    }
+
+    // A single line mixing Chinese with an actual foreign sentence ("禁止AI翻译。For one week following the timestamp...")
+    // rather than short terms ("请帮忙添加Tag和修改Main Gallery Title") still needs translation
+    private fun hasEmbeddedForeignSentence(line: String, target: TargetLanguage): Boolean {
+        if (target.primary !in setOf(CommentScript.CHINESE, CommentScript.JAPANESE, CommentScript.KOREAN)) return false
+        val stripped = keptUrlRegex.replace(bracketRegex.replace(line, " "), " ")
+        var words = 0
+        var letters = 0
+        lowerLatinWordRegex.findAll(stripped).forEach {
+            words++
+            letters += it.value.length
+        }
+        return words >= 4 && letters >= 20
+    }
+
+    private fun lineNeedsTranslation(line: String, target: TargetLanguage): Boolean {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || CommentLinks.isLinksOnly(trimmed)) return false
+        val guess = CommentScript.guess(trimmed) ?: return false
+        return when (target.primary) {
+            CommentScript.CHINESE -> guess != CommentScript.CHINESE || hasEmbeddedForeignSentence(trimmed, target)
+            CommentScript.JAPANESE -> guess != CommentScript.JAPANESE || hasEmbeddedForeignSentence(trimmed, target)
+            CommentScript.KOREAN -> guess != CommentScript.KOREAN || hasEmbeddedForeignSentence(trimmed, target)
+            // Latin targets (e.g. English) need ML Kit to tell English apart from Spanish/French/etc.
+            else -> true
+        }
+    }
+
+    /**
+     * Splits [text] into alternating verbatim (`translate = false`) and translatable (`translate = true`) segments
+     * whose concatenation equals [text] exactly. Blank lines between two translatable lines stay inside the same
+     * translatable block so multi-paragraph foreign comments stay a single request item.
+     */
+    fun split(text: String, target: TargetLanguage): List<Segment> {
+        val lines = text.split('\n')
+        val needs = BooleanArray(lines.size) { i -> lineNeedsTranslation(lines[i], target) }
+        if (needs.none { it }) return listOf(Segment(text, translate = false))
+        // Keep blank lines bridging two translatable lines inside the same translatable segment
+        val inTranslate = needs.copyOf()
+        var i = 0
+        while (i < lines.size) {
+            if (lines[i].isBlank()) {
+                var j = i
+                while (j < lines.size && lines[j].isBlank()) j++
+                if (i > 0 && j < lines.size && needs[i - 1] && needs[j]) {
+                    for (k in i until j) inTranslate[k] = true
+                }
+                i = j
+            } else {
+                i++
+            }
+        }
+        val result = ArrayList<Segment>()
+        var start = 0
+        while (start < lines.size) {
+            val flag = inTranslate[start]
+            var end = start + 1
+            while (end < lines.size && inTranslate[end] == flag) end++
+            val sb = StringBuilder()
+            for (k in start until end) {
+                sb.append(lines[k])
+                if (k < lines.lastIndex) sb.append('\n')
+            }
+            // Move a trailing newline at the end of a translatable segment onto the following verbatim segment so the
+            // model receives clean text without a trailing blank newline
+            if (flag && end < lines.size && sb.endsWith("\n")) {
+                sb.setLength(sb.length - 1)
+                result += Segment(sb.toString(), translate = true)
+                val nextSb = StringBuilder("\n")
+                var nextEnd = end
+                while (nextEnd < lines.size && !inTranslate[nextEnd]) {
+                    nextSb.append(lines[nextEnd])
+                    if (nextEnd < lines.lastIndex) nextSb.append('\n')
+                    nextEnd++
+                }
+                result += Segment(nextSb.toString(), translate = false)
+                start = nextEnd
+            } else {
+                result += Segment(sb.toString(), translate = flag)
+                start = end
+            }
+        }
+        return result
+    }
+}
+
+/**
  * Fork: whether [result], the reply of the model for [source], reads as a translation into [target], by its scripts. A
  * model sometimes answers a comment instead ("Got it — noted..."), in the language of the comment; that is no
  * translation, it is neither shown nor kept. A reply as the comment was (a name) or without letters passes.
@@ -321,16 +423,26 @@ object CommentSeries {
  * in kana or hangul. Lower case words taken over are counted, an untranslated sentence is no translation.
  */
 fun isTranslationInto(result: String, source: String, target: TargetLanguage): Boolean {
-    if (result.trim() == source.trim()) return true
+    if (result.trim() == source.trim()) {
+        val stripped = keptUrlRegex.replace(result, " ").trim()
+        if (CommentScript.guess(stripped) == null) return true
+        val tokens = tokenRegex.findAll(stripped).map { it.value }.toList()
+        if (tokens.size <= 3 && tokens.all { !hasCjk(it) && isNameLike(it) }) return true
+    }
+    // Check per translatable block too: a bilingual comment whose Chinese half stayed while its English paragraph was
+    // left completely untranslated must NOT pass
+    val segments = CommentSegments.split(result, target)
+    if (segments.any { seg ->
+            if (!seg.translate) return@any false
+            val check = CommentScript.guess(withoutKeptNames(seg.text, source)) ?: return@any false
+            !CommentSegments.matchesTarget(check, target)
+        }
+    ) {
+        return false
+    }
     // A reply all taken over from the comment is judged as a whole: a Korean comment left as it was is no translation
     val guess = CommentScript.guess(withoutKeptNames(result, source)) ?: CommentScript.guess(result) ?: return true
-    return when (target.primary) {
-        // Japanese all in kanji ("最高") reads as Chinese by its script
-        CommentScript.JAPANESE -> guess == CommentScript.JAPANESE || guess == CommentScript.CHINESE
-        CommentScript.CHINESE, CommentScript.KOREAN -> guess == target.primary
-        // Latin or any other script, not Chinese, Japanese or Korean
-        else -> guess == CommentScript.OTHER
-    }
+    return CommentSegments.matchesTarget(guess, target)
 }
 
 private val keptUrlRegex = Regex("""(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
