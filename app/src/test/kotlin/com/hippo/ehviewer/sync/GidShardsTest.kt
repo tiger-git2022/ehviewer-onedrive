@@ -169,4 +169,36 @@ class GidShardsTest {
         assertEquals(listOf(true, false, true, true), first.shards.zip(second.shards).map { (a, b) -> a.hash == b.hash })
         assertEquals(index.galleries, cache.index(first).galleries)
     }
+
+    @Test
+    fun exportDedupsKeepingFirstAndSortsByGid() {
+        val cache = FavoritesExportCache(File(dir, "export-dedup"), json)
+        val first2 = gallery(2L, slot = 1, title = "First 2")
+        val dup2 = gallery(2L, slot = 5, title = "Second 2")
+        val g1 = gallery(1L, slot = 0, title = "One")
+        val g3 = gallery(3L, slot = 2, title = "Three")
+        val manifest = cache.build(FavoritesIndex(updatedAt = 1, deviceId = "d", galleries = listOf(g3, first2, g1, dup2)))
+        assertEquals(3, manifest.count)
+        assertEquals(listOf(g1, first2, g3), cache.index(manifest).galleries)
+    }
+
+    @Test
+    fun exportRebuildsEmptyCachedShardAndCleansTempFiles() {
+        val exportDir = File(dir, "export-corrupt")
+        val cache = FavoritesExportCache(exportDir, json)
+        val index = FavoritesIndex(updatedAt = 1, deviceId = "d", galleries = listOf(gallery(1L), gallery(2L)))
+        val first = cache.build(index)
+        val shardFile = cache.shardFile(first.shards.single().hash)
+        // Truncate cached shard to simulate an interrupted write
+        shardFile.writeBytes(ByteArray(0))
+        assertEquals(0L, shardFile.length())
+        val rebuilt = cache.build(index)
+        assertTrue(cache.shardFile(rebuilt.shards.single().hash).length() > 0L)
+        assertEquals(index.galleries, cache.index(rebuilt).galleries)
+        val strayTmp = File(exportDir, "shard-abc.tmp").apply { writeText("x") }
+        val strayDownload = File(exportDir, "shard-abc.json.gz.download").apply { writeText("x") }
+        cache.cleanUp(setOf(rebuilt.shards.single().hash))
+        assertTrue(!strayTmp.exists())
+        assertTrue(!strayDownload.exists())
+    }
 }

@@ -33,7 +33,19 @@ class FavoritesExportCache(private val dir: File, private val json: Json) {
      * writing only the shards whose content is not in a file yet.
      */
     fun build(index: FavoritesIndex): FavoritesManifest {
-        val sorted = index.galleries.distinctBy { it.gid }.sortedBy { it.gid }
+        // Fork: stable sort + in-place dedup avoids a HashSet<Long> and extra list copy on large collections
+        val sorted = ArrayList(index.galleries).apply {
+            sortBy { it.gid }
+            var write = 0
+            for (read in indices) {
+                val item = this[read]
+                if (write == 0 || this[write - 1].gid != item.gid) {
+                    if (write != read) this[write] = item
+                    write++
+                }
+            }
+            if (write < size) subList(write, size).clear()
+        }
         val gids = LongArray(sorted.size) { sorted[it].gid }
         val ranges = GidShards.split(gids, manifest()?.shards?.map { it.minGid }.orEmpty())
         val fingerprints = fingerprints()
@@ -44,7 +56,7 @@ class FavoritesExportCache(private val dir: File, private val json: Json) {
                 add(galleries.size)
                 galleries.forEach { add(it) }
             }.value
-            val known = byFingerprint[fingerprint]?.takeIf { shardFile(it).exists() }
+            val known = byFingerprint[fingerprint]?.takeIf { shardFile(it).let { f -> f.exists() && f.length() > 0L } }
             val hash: String
             val size: Long
             if (known != null) {
@@ -59,7 +71,7 @@ class FavoritesExportCache(private val dir: File, private val json: Json) {
             ManifestShard(hash = hash, minGid = range.minGid, count = galleries.size, size = size)
         }.filter { it.count > 0 }
         val listed = shards.mapTo(HashSet()) { it.hash }
-        fingerprints.keys.retainAll { it in listed || shardFile(it).exists() }
+        fingerprints.keys.retainAll { it in listed || shardFile(it).let { f -> f.exists() && f.length() > 0L } }
         GidShards.writeAtomically(fingerprintsFile, json.encodeToString(fingerprintsSerializer, fingerprints))
         return FavoritesManifest(
             updatedAt = index.updatedAt,
@@ -75,7 +87,7 @@ class FavoritesExportCache(private val dir: File, private val json: Json) {
     }
 
     /** The index of a [manifest] whose shards are all in files here. */
-    fun index(manifest: FavoritesManifest) = FavoritesIndex(
+    fun index(manifest: FavoritesManifest, galleries: List<IndexedGallery> = manifest.shards.flatMap { readShard(it.hash) }) = FavoritesIndex(
         updatedAt = manifest.updatedAt,
         deviceId = manifest.deviceId,
         deviceName = manifest.deviceName,
@@ -83,14 +95,14 @@ class FavoritesExportCache(private val dir: File, private val json: Json) {
         cloudUpdatedAt = manifest.cloudUpdatedAt,
         cloudRefreshedAt = manifest.cloudRefreshedAt,
         slotNames = manifest.slotNames,
-        galleries = manifest.shards.flatMap { readShard(it.hash) },
+        galleries = galleries,
     )
 
-    /** Deletes the shard files of hashes not in [keep]. */
+    /** Deletes the shard files of hashes not in [keep], and files left by an interrupted write. */
     fun cleanUp(keep: Set<String>) {
         dir.listFiles()?.forEach { file ->
-            val hash = file.name.removePrefix(SHARD_PREFIX).removeSuffix(".json.gz")
-            if (file.name.startsWith(SHARD_PREFIX) && file.name.endsWith(".json.gz") && hash !in keep) file.delete()
+            val hash = hashOf(file.name)
+            if (hash != null && hash !in keep || file.name.endsWith(".tmp") || file.name.endsWith(".download")) file.delete()
         }
         val fingerprints = fingerprints()
         if (fingerprints.keys.retainAll { it in keep }) {

@@ -185,7 +185,7 @@ object GidShards {
             }
             val hash = digest.hex()
             val dest = File(dir, fileName(prefix, hash))
-            if (!dest.exists() && !temp.renameTo(dest)) temp.copyTo(dest, overwrite = true)
+            if ((!dest.exists() || dest.length() == 0L) && !temp.renameTo(dest)) temp.copyTo(dest, overwrite = true)
             return Hashed(hash, dest.length())
         } finally {
             temp.delete()
