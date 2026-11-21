@@ -37,6 +37,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import splitties.init.appCtx
@@ -459,9 +460,20 @@ object FavoritesIndexSync {
             } while (hasUnfinishedRefresh(userKey()) && ++rounds < 3)
             lookUpPandaTitles(onBatch = uploadIfDue)
             mutableWorkProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index)
-            OneDriveSync.uploadFavoritesIndex()
-            // The upload failed (no network, OneDrive unreachable): the work tries again, whatever the auto sync options
-            check(!enabled || !OneDriveSyncState.favoritesIndexDirty.value) { appCtx.getString(R.string.onedrive_sync_favorites_index_upload_failed) }
+            var uploadError = OneDriveSync.uploadFavoritesIndex()
+            // Fork: a favorite may have changed while the upload ran; one more pass catches it without failing the work
+            if (uploadError == null && enabled && OneDriveSyncState.favoritesIndexDirty.value) {
+                uploadError = OneDriveSync.uploadFavoritesIndex()
+            }
+            if (uploadError != null) {
+                throw IllegalStateException(
+                    appCtx.getString(R.string.onedrive_sync_favorites_index_upload_failed, OneDriveSync.errorMessage(uploadError)),
+                    uploadError,
+                )
+            }
+            if (enabled && OneDriveSyncState.favoritesIndexDirty.value) {
+                OneDriveSync.scheduleFavoritesIndexSync()
+            }
         } finally {
             mutableWorking.value = false
             mutableWorkProgress.value = null
@@ -1028,28 +1040,28 @@ object FavoritesIndexSync {
             removeLegacyIndex()
             return cleanVersion
         }
-        var version = 0L
-        val build = suspend {
+        val cache = exportCache
+        // Fork: build the index and write its shards inside one scope so the large FavoritesIndex is eligible for GC
+        // before network uploads or a precondition retry's adoptLatest run
+        val buildManifest: suspend (Boolean) -> Pair<Long, FavoritesManifest> = { prune ->
             // Before reading: the changes up to this version are in the index built now, a later one keeps it waiting
-            version = OneDriveSync.favoritesIndexVersion()
+            val v = OneDriveSync.favoritesIndexVersion()
             val local = EhDB.getLocalFavoritesWithGallery().map { (_, gallery) -> gallery.toIndexed(NO_CLOUD_SLOT) }
             // Without an E-Hentai account the cloud favorites are unknown, the names of the slots too
             val cloud = if (signedIn) current() else CloudFavorites()
-            FavoritesIndexMerger.buildIndex(local, cloud, deviceId, deviceName, now())
-        }
-        var index = build()
-        if (signedIn) {
-            val listed = index
-            // Titles of galleries the index no longer lists: nothing to upload
-            update(markChanged = false) { cloud -> FavoritesIndexMerger.pruneTitles(cloud, listed) }
+            val built = FavoritesIndexMerger.buildIndex(local, cloud, deviceId, deviceName, now())
+            if (prune && signedIn) {
+                // Titles of galleries the index no longer lists: nothing to upload
+                update(markChanged = false) { currentCloud -> FavoritesIndexMerger.pruneTitles(currentCloud, built) }
+            }
+            v to withContext(Dispatchers.IO) { cache.build(built) }
         }
 
-        mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.UPLOAD)
-        val cache = exportCache
         for (attempt in 0 until MAX_ATTEMPTS) {
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.BUILD)
             val last = withContext(Dispatchers.IO) { cache.manifest() }
-            val built = index
-            val manifest = withContext(Dispatchers.IO) { cache.build(built) }
+            val (version, manifest) = buildManifest(attempt == 0)
+            mutableProgress.value = StepProgress(R.string.onedrive_sync_step_upload_index, part = StepProgress.UPLOAD)
             val storedETag = OneDriveSyncState.favoritesIndexETag.value
             val uploaded = listing.keys.mapNotNullTo(HashSet()) { FavoritesExportCache.hashOf(it) }
             if (remote != null && remote.eTag == storedETag && last != null && last.sameContent(manifest) && manifest.shards.all { it.hash in uploaded }) {
@@ -1070,6 +1082,7 @@ object FavoritesIndexSync {
                 }
             }
             val output = File(syncDir, "favorites_manifest.upload")
+            output.parentFile?.mkdirs()
             output.writeText(json.encodeToString(FavoritesManifest.serializer(), manifest))
             val eTag = try {
                 OneDriveClient.upload(MANIFEST_PATH, output, remote?.eTag)
@@ -1078,7 +1091,6 @@ object FavoritesIndexSync {
                 // Another device wrote its index meanwhile: take its newer cloud part, then write again
                 listing = adoptLatest(OneDriveClient.list(SHARDS_FOLDER))
                 remote = listing[FavoritesExportCache.MANIFEST_FILE]
-                index = build()
                 continue
             } finally {
                 output.delete()
@@ -1196,16 +1208,40 @@ object FavoritesIndexSync {
         val download = File(syncDir, "favorites_manifest.download")
         try {
             if (!OneDriveClient.download(MANIFEST_PATH, download)) return false
-            val manifest = json.decodeFromString(FavoritesManifest.serializer(), download.readText())
+            val manifest = try {
+                json.decodeFromString(FavoritesManifest.serializer(), download.readText())
+            } catch (e: SerializationException) {
+                logcat(TAG, e)
+                return false
+            } catch (e: IllegalArgumentException) {
+                logcat(TAG, e)
+                return false
+            }
             if (manifest.version > FAVORITES_EXPORT_VERSION) throw SyncVersionException(manifest.version)
             // The hashes name files here: a manifest with anything else is not taken
             if (!manifest.shards.all { FavoritesExportCache.isValidHash(it.hash) }) {
                 logcat(TAG) { "Index with invalid shard names" }
                 return false
             }
+            val galleries = ArrayList<IndexedGallery>(manifest.count.coerceAtLeast(0))
             for (shard in manifest.shards) {
                 val file = cache.shardFile(shard.hash)
-                if (file.exists()) continue
+                val cached = if (file.exists()) {
+                    runCatching { withContext(Dispatchers.IO) { cache.readShard(shard.hash) } }
+                        .onFailure {
+                            if (it is CancellationException || it is Error) throw it
+                            logcat(TAG, it)
+                            // Corrupt local cached shard: delete and re-download from OneDrive
+                            file.delete()
+                        }
+                        .getOrNull()
+                } else {
+                    null
+                }
+                if (cached != null) {
+                    galleries += cached
+                    continue
+                }
                 val temp = File(file.parentFile, "${file.name}.download")
                 if (!OneDriveClient.download("$SHARDS_FOLDER/${file.name}", temp)) {
                     temp.delete()
@@ -1216,8 +1252,19 @@ object FavoritesIndexSync {
                     temp.copyTo(file, overwrite = true)
                     temp.delete()
                 }
+                val downloaded = try {
+                    withContext(Dispatchers.IO) { cache.readShard(shard.hash) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    if (e is Error) throw e
+                    logcat(TAG, e)
+                    file.delete()
+                    return false
+                }
+                galleries += downloaded
             }
-            val index = withContext(Dispatchers.IO) { cache.index(manifest) }
+            val index = cache.index(manifest, galleries)
             update { cloud -> FavoritesIndexMerger.withRemoteTitles(FavoritesIndexMerger.adopt(cloud, index), index) }
             // Its shard ranges are kept by the next write
             withContext(Dispatchers.IO) { cache.saveManifest(manifest) }

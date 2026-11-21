@@ -18,7 +18,9 @@ import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -163,10 +165,38 @@ object OneDriveClient {
 
     private fun itemUrl(path: String) = "$GRAPH_ROOT:/$path"
 
-    private suspend fun execute(request: Request.Builder, authorized: Boolean = true): Response {
-        if (authorized) request.header("Authorization", "Bearer ${accessToken()}")
-        val call = httpClient.newCall(request.build())
-        return withContext(Dispatchers.IO) { call.execute() }
+    private suspend fun <T> executeWithRetry(
+        operation: String,
+        authorized: Boolean = true,
+        buildRequest: () -> Request.Builder,
+        handle: (Response) -> T,
+    ): T = withContext(Dispatchers.IO) {
+        var attempt = 0
+        while (true) {
+            val request = buildRequest().apply {
+                if (authorized) header("Authorization", "Bearer ${accessToken()}")
+            }.build()
+            val retryDelayMs: Long = try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (OneDriveRetryPolicy.isRetryableStatus(response.code) && attempt < OneDriveRetryPolicy.MAX_RETRIES) {
+                        val wait = OneDriveRetryPolicy.retryDelayMillis(attempt, response.header("Retry-After"))
+                        logcat(TAG) { "$operation: HTTP ${response.code}, retrying in ${wait}ms (attempt ${attempt + 1}/${OneDriveRetryPolicy.MAX_RETRIES})" }
+                        wait
+                    } else {
+                        return@withContext handle(response)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                if (!OneDriveRetryPolicy.isRetryableException(e) || attempt >= OneDriveRetryPolicy.MAX_RETRIES) throw e
+                val wait = OneDriveRetryPolicy.retryDelayMillis(attempt, retryAfterHeader = null)
+                logcat(TAG) { "$operation: ${e.javaClass.simpleName} (${e.message}), retrying in ${wait}ms (attempt ${attempt + 1}/${OneDriveRetryPolicy.MAX_RETRIES})" }
+                wait
+            }
+            delay(retryDelayMs)
+            attempt++
+        }
     }
 
     /** Lists a folder of the app folder, an absent folder is empty. */
@@ -174,13 +204,14 @@ object OneDriveClient {
         val items = mutableMapOf<String, RemoteItem>()
         var url: String? = "${itemUrl(folder)}:/children?\$select=name,eTag,size,lastModifiedDateTime&\$top=200"
         while (url != null) {
-            val page = execute(Request.Builder().url(url).get()).use { response ->
+            val pageUrl = url
+            val page = executeWithRetry("list $folder", buildRequest = { Request.Builder().url(pageUrl).get() }) { response ->
                 when {
-                    response.code == 404 -> return@withContext items
+                    response.code == 404 -> null
                     !response.isSuccessful -> throw response.toGraphException("list $folder")
                     else -> json.decodeFromString<ChildrenPage>(response.body.string())
                 }
-            }
+            } ?: return@withContext items
             page.value.forEach { items[it.name] = RemoteItem(it.name, it.eTag, it.size, it.lastModifiedDateTime) }
             url = page.nextLink
         }
@@ -188,30 +219,31 @@ object OneDriveClient {
     }
 
     /** Downloads a file into [dest]. Returns false when the file does not exist. */
-    suspend fun download(path: String, dest: File, onProgress: TransferProgress? = null): Boolean = withContext(Dispatchers.IO) {
-        execute(Request.Builder().url("${itemUrl(path)}:/content").get()).use { response ->
-            when {
-                response.code == 404 -> false
-                !response.isSuccessful -> throw response.toGraphException("download $path")
-                else -> {
-                    dest.parentFile?.mkdirs()
-                    val size = response.body.contentLength()
-                    dest.outputStream().use { out ->
-                        response.body.byteStream().use { input ->
-                            val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
-                            var done = 0L
-                            onProgress?.invoke(0, size)
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                out.write(buffer, 0, count)
-                                done += count
-                                onProgress?.invoke(done, size)
-                            }
+    suspend fun download(path: String, dest: File, onProgress: TransferProgress? = null): Boolean = executeWithRetry(
+        operation = "download $path",
+        buildRequest = { Request.Builder().url("${itemUrl(path)}:/content").get() },
+    ) { response ->
+        when {
+            response.code == 404 -> false
+            !response.isSuccessful -> throw response.toGraphException("download $path")
+            else -> {
+                dest.parentFile?.mkdirs()
+                val size = response.body.contentLength()
+                dest.outputStream().use { out ->
+                    response.body.byteStream().use { input ->
+                        val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
+                        var done = 0L
+                        onProgress?.invoke(0, size)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            out.write(buffer, 0, count)
+                            done += count
+                            onProgress?.invoke(done, size)
                         }
                     }
-                    true
                 }
+                true
             }
         }
     }
@@ -250,11 +282,15 @@ object OneDriveClient {
                 }
             }
         }
-        val request = Request.Builder()
-            .url("${itemUrl(path)}:/content$conflict")
-            .conditional(eTag)
-            .put(body)
-        execute(request).use { response ->
+        executeWithRetry(
+            operation = "upload $path",
+            buildRequest = {
+                Request.Builder()
+                    .url("${itemUrl(path)}:/content$conflict")
+                    .conditional(eTag)
+                    .put(body)
+            },
+        ) { response ->
             response.ensureUploaded(path)
             json.decodeFromString<DriveItem>(response.body.string()).eTag
         }
@@ -263,7 +299,10 @@ object OneDriveClient {
     private suspend fun uploadLarge(path: String, file: File, eTag: String?, onProgress: TransferProgress?): String? {
         val behavior = if (eTag == null) "fail" else "replace"
         val body = """{"item":{"@microsoft.graph.conflictBehavior":"$behavior"}}""".toRequestBody(jsonMediaType)
-        val session = execute(Request.Builder().url("${itemUrl(path)}:/createUploadSession").conditional(eTag).post(body)).use { response ->
+        val session = executeWithRetry(
+            operation = "createUploadSession $path",
+            buildRequest = { Request.Builder().url("${itemUrl(path)}:/createUploadSession").conditional(eTag).post(body) },
+        ) { response ->
             response.ensureUploaded(path)
             json.decodeFromString<UploadSession>(response.body.string())
         }
@@ -275,17 +314,25 @@ object OneDriveClient {
                 val length = minOf(UPLOAD_CHUNK_SIZE.toLong(), total - offset).toInt()
                 raf.seek(offset)
                 raf.readFully(buffer, 0, length)
-                val request = Request.Builder()
-                    .url(session.uploadUrl)
-                    .header("Content-Range", "bytes $offset-${offset + length - 1}/$total")
-                    .put(buffer.toRequestBody(octetStream, 0, length))
+                val rangeHeader = "bytes $offset-${offset + length - 1}/$total"
+                val chunkBody = buffer.toRequestBody(octetStream, 0, length)
                 // The upload URL is pre-authenticated, it must not get the bearer token
-                execute(request, authorized = false).use { response ->
+                val eTagResult = executeWithRetry(
+                    operation = "upload $path ($rangeHeader)",
+                    authorized = false,
+                    buildRequest = {
+                        Request.Builder()
+                            .url(session.uploadUrl)
+                            .header("Content-Range", rangeHeader)
+                            .put(chunkBody)
+                    },
+                ) { response ->
                     response.ensureUploaded(path)
-                    offset += length
-                    onProgress?.invoke(offset, total)
-                    if (offset >= total) return json.decodeFromString<DriveItem>(response.body.string()).eTag
+                    if (offset + length >= total) json.decodeFromString<DriveItem>(response.body.string()).eTag else null
                 }
+                offset += length
+                onProgress?.invoke(offset, total)
+                if (offset >= total) return eTagResult
             }
         }
         return null
@@ -293,7 +340,7 @@ object OneDriveClient {
 
     /** Deletes a file or a folder, an absent one counts as deleted. */
     suspend fun delete(path: String) {
-        execute(Request.Builder().url(itemUrl(path)).delete()).use { response ->
+        executeWithRetry("delete $path", buildRequest = { Request.Builder().url(itemUrl(path)).delete() }) { response ->
             if (!response.isSuccessful && response.code != 404) throw response.toGraphException("delete $path")
         }
     }

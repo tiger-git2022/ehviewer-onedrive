@@ -719,12 +719,12 @@ object OneDriveSync {
     }
 
     /**
-     * Uploads the favorites index alone, for [CloudFavoritesWork] while it reads the cloud favorites. A failure is
-     * left to the next sync, which uploads the index too.
+     * Uploads the favorites index alone, for [CloudFavoritesWork] while it reads the cloud favorites.
+     * Fork: returns the failure instead of swallowing it so the final upload can surface the real error.
      */
-    suspend fun uploadFavoritesIndex() {
-        if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn || !OneDriveSyncState.exportFavoritesIndex.value) return
-        try {
+    suspend fun uploadFavoritesIndex(): Throwable? {
+        if (!OneDriveClient.isSupported || !OneDriveSyncState.isSignedIn || !OneDriveSyncState.exportFavoritesIndex.value) return null
+        return try {
             withContext(Dispatchers.IO) {
                 mutex.withLock {
                     val account = OneDriveClient.currentAccount() ?: throw OneDriveAuthException(appCtx.getString(R.string.onedrive_sync_not_signed_in))
@@ -732,10 +732,12 @@ object OneDriveSync {
                     FavoritesIndexSync.sync(ensureDeviceId(), deviceName)
                 }
             }
+            null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
             logcat(TAG, e)
+            e
         }
     }
 
@@ -1306,8 +1308,15 @@ object OneDriveSync {
 
     fun summaryOf(result: Result<SyncReport>): String = result.fold(::summarize) { it.syncMessage() }
 
+    /** Fork: readable error text for UI, turning OutOfMemoryError into words instead of heap numbers. */
+    fun errorMessage(e: Throwable): String = e.syncMessage()
+
     /** Fork: an out of memory error says so in words, its own message is the numbers of the heap. */
-    private fun Throwable.syncMessage(): String = if (this is OutOfMemoryError) appCtx.getString(R.string.onedrive_sync_out_of_memory) else message ?: toString()
+    private fun Throwable.syncMessage(): String = when {
+        this is OutOfMemoryError -> appCtx.getString(R.string.onedrive_sync_out_of_memory)
+        !message.isNullOrBlank() -> message!!
+        else -> toString()
+    }
 
     fun categoryTitle(category: SyncCategory) = when (category) {
         SyncCategory.SETTINGS -> R.string.onedrive_sync_category_settings

@@ -218,8 +218,10 @@ class CloudFavoritesWork(context: Context, workerParams: WorkerParameters) : Cor
             } catch (e: Throwable) {
                 // E-Hentai or the network failed: the checkpoint keeps what was read, the settings show why
                 logcat(CLOUD_FAVORITES_WORK_NAME, e)
-                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesWorkError] = e.message ?: e.toString() }
-                if (runAttemptCount < MAX_CLOUD_FAVORITES_ATTEMPTS) Result.retry() else Result.failure()
+                OneDriveSyncState.withMutableSnapshot { it[OneDriveSyncState.cloudFavoritesWorkError] = OneDriveSync.errorMessage(e) }
+                // Signing in again needs the user, retrying cannot help
+                val authError = e is OneDriveAuthException || e.cause is OneDriveAuthException
+                if (!authError && runAttemptCount < MAX_CLOUD_FAVORITES_ATTEMPTS) Result.retry() else Result.failure()
             } finally {
                 notification.cancel()
             }

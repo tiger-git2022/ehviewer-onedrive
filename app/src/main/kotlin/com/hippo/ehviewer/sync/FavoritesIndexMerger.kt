@@ -259,24 +259,25 @@ object FavoritesIndexMerger {
      * come from the gallery or from the titles looked up; titles of galleries no longer listed are dropped.
      */
     fun buildIndex(local: List<IndexedGallery>, cloud: CloudFavorites, deviceId: String, deviceName: String, now: Long): FavoritesIndex {
+        fun IndexedGallery.withTitles(): IndexedGallery {
+            val withJpn = if (titleJpn.isNullOrEmpty()) copy(titleJpn = cloud.japaneseTitles[gid] ?: titleJpn) else this
+            val default = cloud.defaultTitles[gid] ?: return withJpn
+            if (default.isNotEmpty()) return withDefaultTitle(withJpn, default).copy(titlesLookedUp = true)
+            // None from the API (removed galleries, a few): the one of its archived raw copy, if found. The empty
+            // Japanese title only says the API had nothing, the list title stays as the Japanese one
+            val panda = cloud.pandaTitles[gid]?.takeIf { it.isNotEmpty() } ?: return withJpn
+            return withDefaultTitle(withJpn.copy(titleJpn = withJpn.titleJpn?.ifEmpty { null }), panda)
+        }
         val cloudByGid = cloud.galleries.associateBy { it.gid }
-        val localGids = HashSet<Long>()
-        val galleries = buildList {
+        val localGids = HashSet<Long>(local.size * 2)
+        val galleries = ArrayList<IndexedGallery>(local.size + cloud.galleries.size).apply {
             local.forEach { gallery ->
                 if (!localGids.add(gallery.gid)) return@forEach
                 val inCloud = cloudByGid[gallery.gid]
                 val merged = inCloud?.updatedWith(gallery)?.copy(slot = inCloud.slot) ?: gallery.copy(slot = NO_CLOUD_SLOT)
-                add(merged.copy(local = true))
+                add(merged.copy(local = true).withTitles())
             }
-            cloud.galleries.forEach { if (it.gid !in localGids) add(it.copy(local = false)) }
-        }.map { gallery ->
-            val withJpn = if (gallery.titleJpn.isNullOrEmpty()) gallery.copy(titleJpn = cloud.japaneseTitles[gallery.gid] ?: gallery.titleJpn) else gallery
-            val default = cloud.defaultTitles[gallery.gid] ?: return@map withJpn
-            if (default.isNotEmpty()) return@map withDefaultTitle(withJpn, default).copy(titlesLookedUp = true)
-            // None from the API (removed galleries, a few): the one of its archived raw copy, if found. The empty
-            // Japanese title only says the API had nothing, the list title stays as the Japanese one
-            val panda = cloud.pandaTitles[gallery.gid]?.takeIf { it.isNotEmpty() } ?: return@map withJpn
-            withDefaultTitle(withJpn.copy(titleJpn = withJpn.titleJpn?.ifEmpty { null }), panda)
+            cloud.galleries.forEach { if (it.gid !in localGids) add(it.copy(local = false).withTitles()) }
         }
         return FavoritesIndex(
             updatedAt = now,
