@@ -50,7 +50,6 @@ import com.ehviewer.core.i18n.R
 import com.ehviewer.core.ui.component.CrystalCard
 import com.ehviewer.core.ui.component.RatingWidgetReuse
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
-import com.ehviewer.core.ui.util.listThumbGenerator
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.download.DownloadManager
@@ -70,27 +69,37 @@ fun DownloadCard(
     showProgress: Boolean,
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-) = CrystalCard(modifier = modifier, onClick = onClick, onLongClick = onLongClick, interactionSource = interactionSource) {
-    Row {
-        val thumb = remember {
-            movableContentOf<DownloadInfo> {
-                with(listThumbGenerator) {
+) {
+    val pageEntry = currentPageEntry()
+    CrystalCard(
+        modifier = modifier.cardFlightSource(info.gid),
+        onClick = onClick,
+        onLongClick = onLongClick,
+        interactionSource = interactionSource,
+    ) {
+        Row {
+            val thumb = remember {
+                movableContentOf<DownloadInfo> {
                     EhAsyncCropThumb(
                         key = it,
                         modifier = Modifier.aspectRatio(DEFAULT_RATIO).fillMaxSize(),
                     )
                 }
             }
-        }
-        if (selectMode) {
-            Card {
-                thumb(info)
+            if (selectMode) {
+                Card {
+                    thumb(info)
+                }
+            } else {
+                Card(
+                    onClick = {
+                        CardFlight.start(info.gid, pageEntry)
+                        onThumbClick()
+                    },
+                ) {
+                    thumb(info)
+                }
             }
-        } else {
-            Card(onClick = onThumbClick) {
-                thumb(info)
-            }
-        }
         val stateFailed = stringResource(R.string.download_state_failed)
         val stateFailed2 = stringResource(R.string.download_state_failed_2, info.legacy)
         val downloadState by DownloadManager.collectDownloadState(info.gid)
@@ -201,4 +210,5 @@ fun DownloadCard(
             }
         }
     }
+}
 }

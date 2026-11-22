@@ -5,6 +5,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavBackStackEntry
 import com.ehviewer.core.ui.util.ProvideVectorPainterCache
+import com.hippo.ehviewer.ui.destinations.GalleryDetailScreenDestination
+import com.hippo.ehviewer.ui.main.CardFlight
+import com.hippo.ehviewer.ui.main.CardFlightDurationMillis
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.LocalGlobalDialogState
@@ -53,12 +59,37 @@ private typealias Ty = AnimatedContentTransitionScope<NavBackStackEntry>
 @Composable
 fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
     val slideDistance = rememberSlideDistance()
-    return remember(slideDistance) {
+    val detailRoute = GalleryDetailScreenDestination.route
+    return remember(slideDistance, detailRoute) {
         object : NavHostAnimatedDestinationStyle() {
-            override val enterTransition: Ty.() -> EnterTransition = { materialSharedAxisXIn(true, slideDistance) }
-            override val exitTransition: Ty.() -> ExitTransition = { materialSharedAxisXOut(true, slideDistance) }
-            override val popEnterTransition: Ty.() -> EnterTransition = { materialSharedAxisXIn(false, slideDistance) }
-            override val popExitTransition: Ty.() -> ExitTransition = { materialSharedAxisXOut(false, slideDistance) }
+            override val enterTransition: Ty.() -> EnterTransition = {
+                if (targetState.destination.route == detailRoute && CardFlight.isCardTransition(initialState.id, targetState.id)) {
+                    fadeIn(tween(CardFlightDurationMillis))
+                } else {
+                    materialSharedAxisXIn(true, slideDistance)
+                }
+            }
+            override val exitTransition: Ty.() -> ExitTransition = {
+                if (targetState.destination.route == detailRoute && CardFlight.isCardTransition(initialState.id, targetState.id)) {
+                    fadeOut(tween(CardFlightDurationMillis))
+                } else {
+                    materialSharedAxisXOut(true, slideDistance)
+                }
+            }
+            override val popEnterTransition: Ty.() -> EnterTransition = {
+                if (initialState.destination.route == detailRoute && CardFlight.isCardTransition(targetState.id, initialState.id)) {
+                    fadeIn(tween(CardFlightDurationMillis))
+                } else {
+                    materialSharedAxisXIn(false, slideDistance)
+                }
+            }
+            override val popExitTransition: Ty.() -> ExitTransition = {
+                if (initialState.destination.route == detailRoute && CardFlight.isCardTransition(targetState.id, initialState.id)) {
+                    fadeOut(tween(CardFlightDurationMillis))
+                } else {
+                    materialSharedAxisXOut(false, slideDistance)
+                }
+            }
         }
     }
 }

@@ -174,7 +174,7 @@ fun AnimatedVisibilityScope.GalleryListScreen(
     val searchFieldState = rememberTextFieldState()
     var urlBuilder by viewModel.urlBuilder
     var searchBarExpanded by rememberSaveable { mutableStateOf(false) }
-    var searchBarOffsetY by remember { mutableIntStateOf(0) }
+    var searchBarOffsetY by rememberSaveable { mutableIntStateOf(0) }
     var fabExpanded by remember { mutableStateOf(false) }
     var fabHidden by remember { mutableStateOf(false) }
 
@@ -624,9 +624,9 @@ fun AnimatedVisibilityScope.GalleryListScreen(
         val height by collectListThumbSizeAsState()
         val showPages by Settings.showGalleryPages.collectAsState()
         val showProgress by Settings.showReadingProgress.collectAsState()
+        val topPaddingPx by rememberUpdatedState(with(density) { contentPadding.calculateTopPadding().roundToPx() })
         val searchBarConnection = remember {
             val slop = ViewConfiguration.get(contextOf<Context>()).scaledTouchSlop
-            val topPaddingPx = with(density) { contentPadding.calculateTopPadding().roundToPx() }
             object : NestedScrollConnection {
                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                     val dy = -consumed.y

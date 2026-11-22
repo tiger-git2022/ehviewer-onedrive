@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -380,13 +381,15 @@ fun SearchBarScreen(
         }
     }
 
-    // Fork: height of the sync progress below the search bar, the content leaves room for it
-    var syncProgressHeight by remember { mutableIntStateOf(0) }
+    // Fork: height of the sync progress below the search bar, the content leaves room for it; saveable so returning
+    // from detail keeps the exact top padding on frame 1 instead of shifting LazyGrid upward on each round-trip
+    var syncProgressHeight by rememberSaveable { mutableIntStateOf(0) }
     // Fork: the height of the field, for the glass growing out of it and shrinking into it and for the cards below it:
     // with a larger font it is taller than InputFieldHeight, and the glass jumped to it at the end of the animations
-    var fieldHeight by remember { mutableIntStateOf(0) }
-    // Fork: the height of the collapsed field, taller when its tags take more lines: the list starts below it
-    var collapsedFieldHeight by remember { mutableIntStateOf(0) }
+    var fieldHeight by rememberSaveable { mutableIntStateOf(0) }
+    // Fork: the height of the collapsed field, taller when its tags/title take more lines: saveable so returning from
+    // detail restores the same top padding on frame 1 (otherwise LazyGrid adds the height delta to scrollOffset each time)
+    var collapsedFieldHeight by rememberSaveable { mutableIntStateOf(0) }
     val collapsedFieldHeightDp = with(LocalDensity.current) { collapsedFieldHeight.toDp().coerceAtLeast(SearchBarDefaults.InputFieldHeight) }
     // Fork: liquid glass refracting the list, see LiquidGlass.kt
     val backdrop = LocalPageBackdrop.current

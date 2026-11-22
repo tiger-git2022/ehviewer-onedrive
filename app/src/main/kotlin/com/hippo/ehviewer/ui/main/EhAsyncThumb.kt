@@ -1,8 +1,8 @@
 package com.hippo.ehviewer.ui.main
 
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Card
 import androidx.compose.material3.ShapeDefaults
@@ -15,18 +15,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import com.ehviewer.core.model.GalleryInfo
-import com.ehviewer.core.ui.util.SETNodeGenerator
-import com.ehviewer.core.ui.util.SharedElementBox
-import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.ehviewer.core.ui.util.thenIf
 import com.hippo.ehviewer.ktbuilder.imageRequest
 import com.hippo.ehviewer.restore.RestoredBadge
 import com.hippo.ehviewer.ui.tools.shouldCrop
+import java.util.concurrent.ConcurrentHashMap
+
+// Fork: remembers each gallery's resolved crop decision so recomposing on back navigation never flashes Fit -> Crop
+private val thumbCropCache = ConcurrentHashMap<Long, Boolean>()
+
+private fun initialContentScale(key: GalleryInfo): ContentScale {
+    val crop = thumbCropCache[key.gid] ?: key.shouldCrop
+    return if (crop) ContentScale.Crop else ContentScale.Fit
+}
+
+private fun recordThumbCrop(gid: Long, crop: Boolean) {
+    if (thumbCropCache.size > 1024) thumbCropCache.clear()
+    thumbCropCache[gid] = crop
+}
 
 @Composable
 @NonRestartableComposable
@@ -35,21 +47,20 @@ fun requestOf(model: GalleryInfo) = with(LocalContext.current) {
 }
 
 @Composable
-context(_: SharedTransitionScope, _: TransitionsVisibilityScope, _: SETNodeGenerator)
 fun EhAsyncCropThumb(
     key: GalleryInfo,
     modifier: Modifier = Modifier,
-) = SharedElementBox(key = "${key.gid}", shape = ShapeDefaults.Medium) {
-    var contentScale by remember(key) { mutableStateOf(ContentScale.Fit) }
+) = Box(modifier = Modifier.clip(ShapeDefaults.Medium)) {
+    var contentScale by remember(key.gid) { mutableStateOf(initialContentScale(key)) }
     val request = requestOf(key)
     Image(
         // https://github.com/coil-kt/coil/issues/2959
         painter = rememberAsyncImagePainter(
             model = request,
             onSuccess = {
-                if (it.result.image.shouldCrop) {
-                    contentScale = ContentScale.Crop
-                }
+                val crop = it.result.image.shouldCrop
+                recordThumbCrop(key.gid, crop)
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit
             },
         ),
         contentDescription = null,
@@ -61,20 +72,19 @@ fun EhAsyncCropThumb(
 }
 
 @Composable
-context(_: SharedTransitionScope, _: TransitionsVisibilityScope, _: SETNodeGenerator)
 fun EhThumbCard(
     key: GalleryInfo,
     modifier: Modifier = Modifier,
 ) = Card(modifier = modifier) {
-    SharedElementBox(key = "${key.gid}", shape = ShapeDefaults.Medium) {
-        var contentScale by remember(key) { mutableStateOf(ContentScale.Fit) }
+    Box(modifier = Modifier.clip(ShapeDefaults.Medium)) {
+        var contentScale by remember(key.gid) { mutableStateOf(initialContentScale(key)) }
         val request = requestOf(key)
         val painter = rememberAsyncImagePainter(
             model = request,
             onSuccess = {
-                if (it.result.image.shouldCrop) {
-                    contentScale = ContentScale.Crop
-                }
+                val crop = it.result.image.shouldCrop
+                recordThumbCrop(key.gid, crop)
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit
             },
         )
         val state by painter.state.collectAsState()

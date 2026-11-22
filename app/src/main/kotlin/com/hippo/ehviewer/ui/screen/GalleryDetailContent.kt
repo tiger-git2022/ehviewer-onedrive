@@ -441,12 +441,26 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         icon: ImageVector,
         text: String,
         onClick: () -> Unit,
+        buttonModifier: Modifier = Modifier,
     ) = Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        FilledTertiaryIconButton(onClick = onClick) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-            )
+        if (buttonModifier === Modifier) {
+            FilledTertiaryIconButton(onClick = onClick) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                )
+            }
+        } else {
+            Box(modifier = buttonModifier, contentAlignment = Alignment.Center) {
+                Box(Modifier.wrapContentSize(unbounded = true)) {
+                    FilledTertiaryIconButton(onClick = onClick) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                        )
+                    }
+                }
+            }
         }
         Text(text = text)
     }
@@ -611,45 +625,42 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val similarQuery = remember(galleryDetail.title, galleryDetail.titleJpn) {
             similarTitleQuery(galleryDetail.title, galleryDetail.titleJpn)
         }
-        // Fork: the similar-gallery button itself morphs inside a rounded capsule into the 1- or 2-line title in the
-        // search bar, and morphs back into the button on return; unbounded inner wrap keeps the icon/label undistorted
+        // Fork: only the circular search icon button morphs inside a rounded capsule into the 1- or 2-line title in
+        // the search bar, and morphs back into the icon button on return; the "相似画廊" label stays in place
         val similarFlight = if (similarQuery != null) Modifier.queryFlight(similarQuery) else Modifier
-        Box(modifier = similarFlight, contentAlignment = Alignment.Center) {
-            Box(Modifier.wrapContentSize(unbounded = true)) {
-                EhIconButton(
-                    icon = Icons.Default.Search,
-                    text = stringResource(id = R.string.similar_gallery),
-                    onClick = {
-                        val artistTag = galleryDetail.tagGroups.artistTag()
-                        if (null != similarQuery) {
-                            TagFlight.startQuery(similarQuery, detailPageEntry)
-                            navigate(
-                                ListUrlBuilder(
-                                    mode = ListUrlBuilder.MODE_NORMAL,
-                                    keyword = similarQuery,
-                                ).asGalleryLinkDst(),
-                            )
-                        } else if (artistTag != null) {
-                            // Fork: the artist tag flies, when shown, see TagFlight
-                            TagFlight.start(artistTag, detailPageEntry)
-                            navigate(
-                                ListUrlBuilder(
-                                    mode = ListUrlBuilder.MODE_TAG,
-                                    keyword = artistTag,
-                                ).asGalleryLinkDst(),
-                            )
-                        } else if (null != galleryDetail.uploader) {
-                            navigate(
-                                ListUrlBuilder(
-                                    mode = ListUrlBuilder.MODE_UPLOADER,
-                                    keyword = galleryDetail.uploader,
-                                ).asGalleryLinkDst(),
-                            )
-                        }
-                    },
-                )
-            }
-        }
+        EhIconButton(
+            icon = Icons.Default.Search,
+            text = stringResource(id = R.string.similar_gallery),
+            buttonModifier = similarFlight,
+            onClick = {
+                val artistTag = galleryDetail.tagGroups.artistTag()
+                if (null != similarQuery) {
+                    TagFlight.startQuery(similarQuery, detailPageEntry)
+                    navigate(
+                        ListUrlBuilder(
+                            mode = ListUrlBuilder.MODE_NORMAL,
+                            keyword = similarQuery,
+                        ).asGalleryLinkDst(),
+                    )
+                } else if (artistTag != null) {
+                    // Fork: the artist tag flies, when shown, see TagFlight
+                    TagFlight.start(artistTag, detailPageEntry)
+                    navigate(
+                        ListUrlBuilder(
+                            mode = ListUrlBuilder.MODE_TAG,
+                            keyword = artistTag,
+                        ).asGalleryLinkDst(),
+                    )
+                } else if (null != galleryDetail.uploader) {
+                    navigate(
+                        ListUrlBuilder(
+                            mode = ListUrlBuilder.MODE_UPLOADER,
+                            keyword = galleryDetail.uploader,
+                        ).asGalleryLinkDst(),
+                    )
+                }
+            },
+        )
         val signInFirst = stringResource(R.string.sign_in_first)
         val noArchive = stringResource(R.string.no_archives)
         val downloadStarted = stringResource(R.string.download_archive_started)
