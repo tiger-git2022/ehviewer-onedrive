@@ -99,6 +99,7 @@ import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.cardFlightTarget
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -283,6 +284,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     }
     val refreshPreviews = stringResource(id = R.string.refresh_previews)
     Scaffold(
+        modifier = Modifier.cardFlightTarget(gid),
         topBar = {
             MediumFlexibleTopAppBar(
                 // Fork: only its bottom edge shows, the top and the sides melt into the screen

@@ -38,7 +38,6 @@ import com.ehviewer.core.model.GalleryInfo
 import com.ehviewer.core.ui.icons.EhIcons
 import com.ehviewer.core.ui.icons.big.SadAndroid
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
-import com.ehviewer.core.ui.util.detailThumbGenerator
 import com.hippo.ehviewer.client.EhUtils
 
 @Composable
@@ -87,15 +86,13 @@ fun GalleryDetailHeaderCard(
     modifier: Modifier = Modifier,
 ) = ElevatedCard(modifier = modifier) {
     Row {
-        with(detailThumbGenerator) {
-            EhThumbCard(
-                key = remember(info.gid) { info },
-                modifier = Modifier.size(
-                    dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_width),
-                    dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_height),
-                ),
-            )
-        }
+        EhThumbCard(
+            key = remember(info.gid) { info },
+            modifier = Modifier.size(
+                dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_width),
+                dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_height),
+            ),
+        )
         Spacer(modifier = Modifier.weight(0.5F))
         Column(
             modifier = Modifier.height(dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_height)),

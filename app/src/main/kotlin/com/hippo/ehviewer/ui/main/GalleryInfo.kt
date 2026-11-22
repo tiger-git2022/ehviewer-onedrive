@@ -44,9 +44,7 @@ import com.ehviewer.core.model.GalleryInfo.Companion.NOT_FAVORITED
 import com.ehviewer.core.ui.component.CrystalCard
 import com.ehviewer.core.ui.component.ElevatedCard
 import com.ehviewer.core.ui.component.RatingWidgetReuse
-import com.ehviewer.core.ui.util.SharedElementBox
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
-import com.ehviewer.core.ui.util.listThumbGenerator
 import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.download.DownloadManager
@@ -65,20 +63,23 @@ fun GalleryInfoListItem(
     modifier: Modifier = Modifier,
     isInFavScene: Boolean = false,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-) = CrystalCard(
-    modifier = modifier,
-    onClick = onClick,
-    onLongClick = onLongClick,
-    interactionSource = interactionSource,
 ) {
-    Row {
-        with(listThumbGenerator) {
+    val pageEntry = currentPageEntry()
+    CrystalCard(
+        modifier = modifier.cardFlightSource(info.gid),
+        onClick = {
+            CardFlight.start(info.gid, pageEntry)
+            onClick()
+        },
+        onLongClick = onLongClick,
+        interactionSource = interactionSource,
+    ) {
+        Row {
             EhThumbCard(
                 key = info,
                 modifier = Modifier.aspectRatio(DEFAULT_RATIO),
             )
-        }
-        Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
+            Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
             // Fork: the title takes up to three lines and the space left; the rating, the uploader, the favorite, the
             // language and the pages share one smaller line pinned to the bottom with the category and the date
             Text(
@@ -203,6 +204,7 @@ fun GalleryInfoListItem(
         }
     }
 }
+}
 
 @Composable
 context(_: SharedTransitionScope, _: TransitionsVisibilityScope)
@@ -218,15 +220,22 @@ fun GalleryInfoGridItem(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     // Fork: a download shows the pages in its CBZ, see rememberDownloadPages
     pages: Int = info.pages,
-) = ElevatedCard(
-    modifier = modifier,
-    onClick = onClick,
-    onLongClick = onLongClick,
-    interactionSource = interactionSource,
 ) {
-    Box {
-        with(listThumbGenerator) {
-            SharedElementBox(key = "${info.gid}", shape = ShapeDefaults.Medium) {
+    val pageEntry = currentPageEntry()
+    ElevatedCard(
+        modifier = modifier.cardFlightSource(info.gid),
+        onClick = {
+            CardFlight.start(info.gid, pageEntry)
+            onClick()
+        },
+        onLongClick = {
+            CardFlight.start(info.gid, pageEntry)
+            onLongClick()
+        },
+        interactionSource = interactionSource,
+    ) {
+        Box {
+            Box(modifier = Modifier.clip(ShapeDefaults.Medium)) {
                 var ratio by remember(info) {
                     val ratio = if (info.thumbHeight != 0) {
                         (info.thumbWidth.toFloat() / info.thumbHeight).coerceIn(MIN_RATIO, MAX_RATIO)
@@ -244,40 +253,40 @@ fun GalleryInfoGridItem(
                     },
                 )
             }
-        }
-        // Fork: a gallery restored from PandaChika, on the top start corner: the category is on the other
-        RestoredBadge(info.gid, Modifier.align(Alignment.TopStart), atEnd = false)
-        val categoryColor = EhUtils.getCategoryColor(info.category)
-        Badge(
-            modifier = Modifier.align(Alignment.TopEnd).widthIn(min = 32.dp).height(24.dp),
-            containerColor = categoryColor,
-            contentColor = EhUtils.getCategoryTextColor(categoryColor),
-        ) {
-            val shouldShowLanguage = showLanguage && info.simpleLanguage != null
-            if (showPages && pages > 0) {
-                val readProgress = if (showProgress) {
-                    remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
-                } else {
-                    0
+            // Fork: a gallery restored from PandaChika, on the top start corner: the category is on the other
+            RestoredBadge(info.gid, Modifier.align(Alignment.TopStart), atEnd = false)
+            val categoryColor = EhUtils.getCategoryColor(info.category)
+            Badge(
+                modifier = Modifier.align(Alignment.TopEnd).widthIn(min = 32.dp).height(24.dp),
+                containerColor = categoryColor,
+                contentColor = EhUtils.getCategoryTextColor(categoryColor),
+            ) {
+                val shouldShowLanguage = showLanguage && info.simpleLanguage != null
+                if (showPages && pages > 0) {
+                    val readProgress = if (showProgress) {
+                        remember { EhDB.getReadProgressFlow(info.gid) }.collectAsState(0).value
+                    } else {
+                        0
+                    }
+                    Text(text = if (readProgress > 0) "${readProgress + 1}/$pages" else "$pages")
+                    if (shouldShowLanguage) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                 }
-                Text(text = if (readProgress > 0) "${readProgress + 1}/$pages" else "$pages")
                 if (shouldShowLanguage) {
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = info.simpleLanguage.orEmpty())
                 }
             }
-            if (shouldShowLanguage) {
-                Text(text = info.simpleLanguage.orEmpty())
-            }
-        }
-        if (showFavoriteStatus) {
-            val isFavorited by FavouriteStatusRouter.collectAsState(info) { it != NOT_FAVORITED }
-            if (isFavorited) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp),
-                    tint = EhUtils.favoriteIconColor,
-                )
+            if (showFavoriteStatus) {
+                val isFavorited by FavouriteStatusRouter.collectAsState(info) { it != NOT_FAVORITED }
+                if (isFavorited) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp),
+                        tint = EhUtils.favoriteIconColor,
+                    )
+                }
             }
         }
     }
