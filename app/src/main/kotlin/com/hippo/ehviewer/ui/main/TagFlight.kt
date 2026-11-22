@@ -153,7 +153,7 @@ fun Modifier.queryFlight(query: String, claim: Boolean = false): Modifier {
                     ),
                 ),
                 boundsTransform = QueryFlightBoundsTransform,
-                resizeMode = SharedTransitionScope.ResizeMode.remeasureToBounds,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
                 clipInOverlayDuringTransition = OverlayClip(QueryFlightShape),
             )
             .drawBehind {
