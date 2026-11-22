@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -289,10 +290,9 @@ private fun ChipFieldLayout(
     }
     // Where each chip was last placed, for one going away to stay there
     val places = remember { HashMap<String, IntOffset>() }
-    // Collapsed, the text searched: line 0 (flies cleanly as a single line) and any overflow line 1 below it
+    // Collapsed, the full (1- or 2-line) text searched drawn together inside one flight container
     val textMeasurer = rememberTextMeasurer()
-    var flowingFirst by remember { mutableStateOf<TextLayoutResult?>(null) }
-    var flowingRest by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var flowingDraw by remember { mutableStateOf<FlowingTextDraw?>(null) }
     // The line of the trailing icons and how far down they were placed, and how far they still are from where they're
     // going, moving to another line
     val scope = rememberCoroutineScope()
@@ -328,30 +328,24 @@ private fun ChipFieldLayout(
             },
             // The chips at the size they are going to: measured for the lines, never shown
             { tags.forEachIndexed { index, tag -> key(chipKey(tag)) { chip(index, tag, ChipRole.Measure, Modifier) } } },
-            // Collapsed, line 0 of the text searched; flies smoothly between the similar-gallery button and here
+            // Collapsed, the full (1- or 2-line) text searched; morphs together with the similar-gallery button
             {
                 val flight = if (flowingText != null) Modifier.queryFlight(flowingText, claim = true) else Modifier
                 Box(
                     flight.drawBehind {
-                        flowingFirst?.let { drawText(it, alpha = textAlpha()) }
-                    },
-                )
-            },
-            // Collapsed, any overflow line 1 of the text searched (fades in place without bloating the flight)
-            {
-                Box(
-                    Modifier.drawBehind {
-                        flowingRest?.let { drawText(it, alpha = textAlpha()) }
+                        val draw = flowingDraw ?: return@drawBehind
+                        val alpha = textAlpha()
+                        drawText(draw.first, topLeft = draw.firstOffset, alpha = alpha)
+                        draw.rest?.let { drawText(it, topLeft = draw.restOffset, alpha = alpha) }
                     },
                 )
             },
         ),
         modifier = Modifier.clipToBounds(),
     ) { measurables, constraints ->
-        // Lists have no sixth/seventh component
+        // Lists have no sixth component
         val (leadingMeasurables, trailingMeasurables, textMeasurables, chipMeasurables, measureMeasurables) = measurables
-        val flowingFirstMeasurables = measurables[5]
-        val flowingRestMeasurables = measurables[6]
+        val flowingMeasurables = measurables[5]
         val lineHeight = SearchBarDefaults.InputFieldHeight.roundToPx()
         val iconOffset = IconOffset.roundToPx()
         val padding = TextPadding.roundToPx()
@@ -478,18 +472,53 @@ private fun ChipFieldLayout(
             emptyList()
         }
         if (textParts.size > 1) line = maxOf(line, textLine + 1)
+        val lines = line + 1
+        val needed = if (lines == 1) lineHeight else topOf(lines - 1) + lineSize + top
         val firstPart = textParts.getOrNull(0)
         val restPart = textParts.getOrNull(1)
         val firstOffset = firstPart?.let { (t, onLine) -> IntOffset(textX, topOf(onLine) + (lineSize - t.size.height) / 2) } ?: IntOffset.Zero
         val restOffset = restPart?.let { (t, onLine) -> IntOffset(start, topOf(onLine) + (lineSize - t.size.height) / 2) } ?: IntOffset.Zero
-        val flowingFirstPlaceable = flowingFirstMeasurables.first().measure(
-            Constraints.fixed(firstPart?.first?.size?.width ?: 0, firstPart?.first?.size?.height ?: 0),
-        )
-        val flowingRestPlaceable = flowingRestMeasurables.first().measure(
-            Constraints.fixed(restPart?.first?.size?.width ?: 0, restPart?.first?.size?.height ?: 0),
-        )
-        val lines = line + 1
-        val needed = if (lines == 1) lineHeight else topOf(lines - 1) + lineSize + top
+        val pillPadH = QueryFlightPillPadH.roundToPx()
+        val pillPadV = QueryFlightPillPadV.roundToPx()
+        val flowingLeft: Int
+        val flowingTop: Int
+        val flowingWidth: Int
+        val flowingHeight: Int
+        val nextFlowingDraw: FlowingTextDraw?
+        if (firstPart != null) {
+            val rawLeft = if (restPart != null) minOf(firstOffset.x, restOffset.x) else firstOffset.x
+            val rawTop = firstOffset.y
+            val rawRight = maxOf(
+                firstOffset.x + firstPart.first.size.width,
+                restPart?.let { restOffset.x + it.first.size.width } ?: 0,
+            )
+            val rawBottom = restPart?.let { restOffset.y + it.first.size.height } ?: (firstOffset.y + firstPart.first.size.height)
+            val padLeft = minOf(pillPadH, rawLeft)
+            val padTop = minOf(pillPadV, rawTop)
+            val padRight = minOf(pillPadH, (width - rawRight).coerceAtLeast(0))
+            val padBottom = minOf(pillPadV, (needed - rawBottom).coerceAtLeast(0))
+            flowingLeft = rawLeft - padLeft
+            flowingTop = rawTop - padTop
+            flowingWidth = rawRight - rawLeft + padLeft + padRight
+            flowingHeight = rawBottom - rawTop + padTop + padBottom
+            nextFlowingDraw = FlowingTextDraw(
+                first = firstPart.first,
+                firstOffset = Offset((firstOffset.x - flowingLeft).toFloat(), (firstOffset.y - flowingTop).toFloat()),
+                rest = restPart?.first,
+                restOffset = if (restPart != null) {
+                    Offset((restOffset.x - flowingLeft).toFloat(), (restOffset.y - flowingTop).toFloat())
+                } else {
+                    Offset.Zero
+                },
+            )
+        } else {
+            flowingLeft = 0
+            flowingTop = 0
+            flowingWidth = 0
+            flowingHeight = 0
+            nextFlowingDraw = null
+        }
+        val flowingPlaceable = flowingMeasurables.first().measure(Constraints.fixed(flowingWidth, flowingHeight))
         // Not when asked for its intrinsic width, laid out on one line
         if (bounded) targetHeight = needed
         val shown = if (height.value < 0f) needed else height.value.roundToInt()
@@ -537,10 +566,8 @@ private fun ChipFieldLayout(
                 }
             }
             textPlaceable.place(textX, topOf(textLine) + (lineSize - textPlaceable.height) / 2)
-            flowingFirstPlaceable.place(firstOffset)
-            flowingRestPlaceable.place(restOffset)
-            flowingFirst = firstPart?.first
-            flowingRest = restPart?.first
+            flowingPlaceable.place(flowingLeft, flowingTop)
+            flowingDraw = nextFlowingDraw
         }
     }
 }
@@ -668,6 +695,16 @@ private fun SearchTagChip(
         }
     }
 }
+
+private class FlowingTextDraw(
+    val first: TextLayoutResult,
+    val firstOffset: Offset,
+    val rest: TextLayoutResult?,
+    val restOffset: Offset,
+)
+
+private val QueryFlightPillPadH = 8.dp
+private val QueryFlightPillPadV = 4.dp
 
 private val ChipHeight = 32.dp
 private val ChipMaxTextWidth = 180.dp

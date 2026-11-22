@@ -4,9 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.StringRes
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -54,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.platform.LocalContext
@@ -144,7 +140,6 @@ import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.GalleryDetailHeaderCard
 import com.hippo.ehviewer.ui.main.GalleryTags
-import com.hippo.ehviewer.ui.main.LocalPageVisibility
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
@@ -616,60 +611,44 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val similarQuery = remember(galleryDetail.title, galleryDetail.titleJpn) {
             similarTitleQuery(galleryDetail.title, galleryDetail.titleJpn)
         }
-        Box(contentAlignment = Alignment.Center) {
-            // Fork: compact single-line title flight anchor centered on the similar-gallery button; invisible at rest,
-            // launches the exact searched title into line 0 of the search bar and glides it smoothly back on return
-            if (similarQuery != null) {
-                val visibility = LocalPageVisibility.current
-                val flightAlpha = visibility?.transition?.animateFloat(label = "queryFlightAlpha") { state ->
-                    if (state == EnterExitState.Visible) 0f else 1f
-                }?.value ?: 0f
-                Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = similarQuery,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .wrapContentSize(unbounded = true)
-                            .widthIn(max = 260.dp)
-                            .queryFlight(similarQuery)
-                            .graphicsLayer { alpha = flightAlpha },
-                    )
-                }
+        // Fork: the similar-gallery button itself morphs inside a rounded capsule into the 1- or 2-line title in the
+        // search bar, and morphs back into the button on return; unbounded inner wrap keeps the icon/label undistorted
+        val similarFlight = if (similarQuery != null) Modifier.queryFlight(similarQuery) else Modifier
+        Box(modifier = similarFlight, contentAlignment = Alignment.Center) {
+            Box(Modifier.wrapContentSize(unbounded = true)) {
+                EhIconButton(
+                    icon = Icons.Default.Search,
+                    text = stringResource(id = R.string.similar_gallery),
+                    onClick = {
+                        val artistTag = galleryDetail.tagGroups.artistTag()
+                        if (null != similarQuery) {
+                            TagFlight.startQuery(similarQuery, detailPageEntry)
+                            navigate(
+                                ListUrlBuilder(
+                                    mode = ListUrlBuilder.MODE_NORMAL,
+                                    keyword = similarQuery,
+                                ).asGalleryLinkDst(),
+                            )
+                        } else if (artistTag != null) {
+                            // Fork: the artist tag flies, when shown, see TagFlight
+                            TagFlight.start(artistTag, detailPageEntry)
+                            navigate(
+                                ListUrlBuilder(
+                                    mode = ListUrlBuilder.MODE_TAG,
+                                    keyword = artistTag,
+                                ).asGalleryLinkDst(),
+                            )
+                        } else if (null != galleryDetail.uploader) {
+                            navigate(
+                                ListUrlBuilder(
+                                    mode = ListUrlBuilder.MODE_UPLOADER,
+                                    keyword = galleryDetail.uploader,
+                                ).asGalleryLinkDst(),
+                            )
+                        }
+                    },
+                )
             }
-            EhIconButton(
-                icon = Icons.Default.Search,
-                text = stringResource(id = R.string.similar_gallery),
-                onClick = {
-                    val artistTag = galleryDetail.tagGroups.artistTag()
-                    if (null != similarQuery) {
-                        TagFlight.startQuery(similarQuery, detailPageEntry)
-                        navigate(
-                            ListUrlBuilder(
-                                mode = ListUrlBuilder.MODE_NORMAL,
-                                keyword = similarQuery,
-                            ).asGalleryLinkDst(),
-                        )
-                    } else if (artistTag != null) {
-                        // Fork: the artist tag flies, when shown, see TagFlight
-                        TagFlight.start(artistTag, detailPageEntry)
-                        navigate(
-                            ListUrlBuilder(
-                                mode = ListUrlBuilder.MODE_TAG,
-                                keyword = artistTag,
-                            ).asGalleryLinkDst(),
-                        )
-                    } else if (null != galleryDetail.uploader) {
-                        navigate(
-                            ListUrlBuilder(
-                                mode = ListUrlBuilder.MODE_UPLOADER,
-                                keyword = galleryDetail.uploader,
-                            ).asGalleryLinkDst(),
-                        )
-                    }
-                },
-            )
         }
         val signInFirst = stringResource(R.string.sign_in_first)
         val noArchive = stringResource(R.string.no_archives)
