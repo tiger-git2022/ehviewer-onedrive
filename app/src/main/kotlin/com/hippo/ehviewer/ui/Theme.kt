@@ -64,28 +64,32 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
         object : NavHostAnimatedDestinationStyle() {
             override val enterTransition: Ty.() -> EnterTransition = {
                 if (targetState.destination.route == detailRoute && CardFlight.isCardTransition(initialState.id, targetState.id)) {
-                    fadeIn(tween(CardFlightDurationMillis))
+                    // Let CardFlight's sharedBounds own the fade/morph without NavHost double-fading Detail
+                    fadeIn(tween(durationMillis = 1))
                 } else {
                     materialSharedAxisXIn(true, slideDistance)
                 }
             }
             override val exitTransition: Ty.() -> ExitTransition = {
                 if (targetState.destination.route == detailRoute && CardFlight.isCardTransition(initialState.id, targetState.id)) {
-                    fadeOut(tween(CardFlightDurationMillis))
+                    // Keep the list solidly visible behind the expanding card (gently dimmed to 85%)
+                    fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.85f)
                 } else {
                     materialSharedAxisXOut(true, slideDistance)
                 }
             }
             override val popEnterTransition: Ty.() -> EnterTransition = {
                 if (initialState.destination.route == detailRoute && CardFlight.isCardTransition(targetState.id, initialState.id)) {
-                    fadeIn(tween(CardFlightDurationMillis))
+                    // List is immediately visible underneath so the shrinking detail visibly lands back into its card
+                    fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.85f)
                 } else {
                     materialSharedAxisXIn(false, slideDistance)
                 }
             }
             override val popExitTransition: Ty.() -> ExitTransition = {
                 if (initialState.destination.route == detailRoute && CardFlight.isCardTransition(targetState.id, initialState.id)) {
-                    fadeOut(tween(CardFlightDurationMillis))
+                    // Keep Detail mounted through the full sharedBounds shrink back into the card
+                    fadeOut(tween(durationMillis = 1, delayMillis = CardFlightDurationMillis))
                 } else {
                     materialSharedAxisXOut(false, slideDistance)
                 }

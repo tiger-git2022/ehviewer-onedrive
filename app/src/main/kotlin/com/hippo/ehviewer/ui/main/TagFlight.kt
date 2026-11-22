@@ -3,6 +3,8 @@ package com.hippo.ehviewer.ui.main
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -193,12 +195,12 @@ object CardFlight {
         while (entries.size > MAX_ENTRIES) entries.removeAt(0)
     }
 
-    /** Returns the shared key for card [gid] on list page [entry], or null if this card isn't flying from [entry]. */
-    fun sourceKey(gid: Long, entry: String?): String? {
-        if (entry == null) return null
-        val match = entries.lastOrNull { it.from == entry && it.gid == gid } ?: return null
-        return keyOf(match.from, match.gid)
-    }
+    /**
+     * Always returns the page-scoped key for card [gid] on list page [entry] so visible cards already have their
+     * lookahead bounds measured before click (preventing frame-0 origin jumps). Only the card whose [GalleryDetailScreen]
+     * claims the same key via [targetKey] matches and animates.
+     */
+    fun sourceKey(gid: Long, entry: String?): String? = entry?.let { keyOf(it, gid) }
 
     /** Claims/returns the shared key for [GalleryDetailScreen] of [gid] on page [entry], or null if opened elsewhere. */
     fun targetKey(gid: Long, entry: String?): String? {
@@ -212,7 +214,7 @@ object CardFlight {
 
     /**
      * Whether navigation between list page [fromId] and detail page [toId] is a card container transform (used by
-     * [com.hippo.ehviewer.ui.rememberEhNavAnim] to replace the horizontal slide with fade in/out).
+     * [com.hippo.ehviewer.ui.rememberEhNavAnim] to keep the list solid underneath instead of sliding/fading away).
      */
     fun isCardTransition(fromId: String, toId: String): Boolean {
         val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) } ?: return false
@@ -242,24 +244,15 @@ private fun Modifier.cardFlightBounds(key: String): Modifier {
     val visibility = LocalPageVisibility.current ?: return this
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
     return with(shared) {
+        val sharedState = rememberSharedContentState(key)
+        val matched = sharedState.isMatchFound
         this@cardFlightBounds.sharedBounds(
-            sharedContentState = rememberSharedContentState(key),
+            sharedContentState = sharedState,
             animatedVisibilityScope = visibility,
-            enter = fadeIn(
-                tween(
-                    durationMillis = CardFlightEnterFadeMillis,
-                    delayMillis = CardFlightEnterDelayMillis,
-                    easing = LinearOutSlowInEasing,
-                ),
-            ),
-            exit = fadeOut(
-                tween(
-                    durationMillis = CardFlightExitFadeMillis,
-                    easing = FastOutLinearInEasing,
-                ),
-            ),
+            enter = if (matched) CardFlightEnter else EnterTransition.None,
+            exit = if (matched) CardFlightExit else ExitTransition.None,
             boundsTransform = CardFlightBoundsTransform,
-            resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.TopCenter),
+            resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.Crop, Alignment.Center),
             clipInOverlayDuringTransition = OverlayClip(CardFlightShape),
         )
     }
@@ -281,11 +274,24 @@ private val QueryFlightBoundsTransform = BoundsTransform { _, _ ->
     tween(durationMillis = QueryFlightDurationMillis, easing = FastOutSlowInEasing)
 }
 
-const val CardFlightDurationMillis = 380
-private const val CardFlightExitFadeMillis = 160
+const val CardFlightDurationMillis = 360
+private const val CardFlightExitFadeMillis = 110
 private const val CardFlightEnterDelayMillis = 70
-private const val CardFlightEnterFadeMillis = 220
-private val CardFlightShape = RoundedCornerShape(16.dp)
+private const val CardFlightEnterFadeMillis = 180
+private val CardFlightEnter = fadeIn(
+    tween(
+        durationMillis = CardFlightEnterFadeMillis,
+        delayMillis = CardFlightEnterDelayMillis,
+        easing = LinearOutSlowInEasing,
+    ),
+)
+private val CardFlightExit = fadeOut(
+    tween(
+        durationMillis = CardFlightExitFadeMillis,
+        easing = FastOutLinearInEasing,
+    ),
+)
+private val CardFlightShape = RoundedCornerShape(24.dp)
 private val CardFlightBoundsTransform = BoundsTransform { _, _ ->
     tween(durationMillis = CardFlightDurationMillis, easing = FastOutSlowInEasing)
 }
