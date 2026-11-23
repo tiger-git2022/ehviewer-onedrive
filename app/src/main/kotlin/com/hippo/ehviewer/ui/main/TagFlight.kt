@@ -410,10 +410,13 @@ fun CardFlightScrolledHeaderAnchor(
     modifier: Modifier = Modifier,
 ) {
     if (!active) return
+    val visibility = LocalPageVisibility.current ?: return
     val detailEntry = currentPageEntry()
     val flightActive = CardFlight.isActiveDetail(info.gid, detailEntry)
+    val exiting = visibility.transition.targetState != EnterExitState.Visible
+    val showAnchor = flightActive && exiting
     Box(
-        modifier = modifier.graphicsLayer { alpha = if (flightActive) 1f else 0f },
+        modifier = modifier.graphicsLayer { alpha = if (showAnchor) 1f else 0f },
     ) {
         ElevatedCard(
             modifier = Modifier
