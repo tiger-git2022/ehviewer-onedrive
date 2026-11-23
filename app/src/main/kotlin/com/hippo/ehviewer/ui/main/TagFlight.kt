@@ -542,6 +542,13 @@ fun Modifier.commentFlightCardSource(gid: Long): Modifier {
     }
 }
 
+/** Keeps the preview comments inside the detail comments [CrystalCard] at their final lookahead size to prevent text reflow jitter. */
+@Composable
+fun Modifier.commentFlightCardContent(): Modifier {
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    return with(shared) { this@commentFlightCardContent.skipToLookaheadSize() }
+}
+
 /**
  * Elevates the detail screen's top app bar above the returning comments card during Comments -> Detail pop so a
  * comment card partially tucked under the top bar settles smoothly underneath it instead of popping behind the bar

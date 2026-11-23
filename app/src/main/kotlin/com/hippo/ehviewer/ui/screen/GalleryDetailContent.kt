@@ -146,6 +146,7 @@ import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
 import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
+import com.hippo.ehviewer.ui.main.commentFlightCardContent
 import com.hippo.ehviewer.ui.main.commentFlightCardSource
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
@@ -503,6 +504,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val originalLabel = stringResource(R.string.comment_original)
         val translationLabel = stringResource(R.string.select_text_translation)
         CrystalCard(modifier = Modifier.commentFlightCardSource(galleryDetail.gid)) {
+            Column(modifier = Modifier.commentFlightCardContent()) {
             shownComments.forEach { item ->
                 GalleryCommentCard(
                     modifier = Modifier.padding(vertical = 4.dp),
@@ -552,6 +554,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(commentText)
+            }
             }
         }
     }
