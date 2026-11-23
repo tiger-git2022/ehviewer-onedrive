@@ -259,6 +259,13 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                     )
                 }
             }
+            // Fork: choose between comment-card expand and button-to-top-bar glass capsule transition
+            SimpleMenuPreferenceInt(
+                title = stringResource(id = R.string.comment_transition_mode),
+                entry = com.hippo.ehviewer.R.array.comment_transition_mode_entries,
+                entryValueRes = com.hippo.ehviewer.R.array.comment_transition_mode_values,
+                state = Settings.commentTransitionMode.asMutableState(),
+            )
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.settings_eh_launch_page),
                 entry = com.hippo.ehviewer.R.array.launch_page_entries,

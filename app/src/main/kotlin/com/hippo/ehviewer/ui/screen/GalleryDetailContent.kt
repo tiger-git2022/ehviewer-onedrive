@@ -135,6 +135,7 @@ import com.hippo.ehviewer.ui.getFavoriteIcon
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
 import com.hippo.ehviewer.ui.main.ArchiveList
+import com.hippo.ehviewer.ui.main.CommentFlight
 import com.hippo.ehviewer.ui.main.EhPreviewItem
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
@@ -145,6 +146,8 @@ import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
 import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
+import com.hippo.ehviewer.ui.main.commentFlightButtonSource
+import com.hippo.ehviewer.ui.main.commentFlightCardSource
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
@@ -477,7 +480,9 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             commentsList.size <= maxShowCount -> stringResource(R.string.no_more_comments)
             else -> stringResource(R.string.more_comment)
         }
+        val commentPageEntry = currentPageEntry()
         fun navigateToCommentScreen() {
+            CommentFlight.start(galleryDetail.gid, commentPageEntry)
             navigate(GalleryCommentsScreenDestination(galleryDetail.gid))
         }
         // Fork: translated like on the comments page, if set to, see translate/CommentTranslations.kt
@@ -498,7 +503,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val mihonMissing = stringResource(R.string.mihon_not_installed)
         val originalLabel = stringResource(R.string.comment_original)
         val translationLabel = stringResource(R.string.select_text_translation)
-        CrystalCard {
+        CrystalCard(modifier = Modifier.commentFlightCardSource(galleryDetail.gid)) {
             shownComments.forEach { item ->
                 GalleryCommentCard(
                     modifier = Modifier.padding(vertical = 4.dp),
@@ -543,6 +548,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v))
+                    .commentFlightButtonSource(galleryDetail.gid)
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(onClick = ::navigateToCommentScreen),
                 contentAlignment = Alignment.Center,

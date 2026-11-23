@@ -19,11 +19,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavBackStackEntry
 import com.ehviewer.core.ui.util.ProvideVectorPainterCache
+import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.ui.destinations.GalleryCommentsScreenDestination
 import com.hippo.ehviewer.ui.destinations.GalleryDetailScreenDestination
 import com.hippo.ehviewer.ui.main.CardFlight
 import com.hippo.ehviewer.ui.main.CardFlightDetailFadeInMillis
 import com.hippo.ehviewer.ui.main.CardFlightDetailPopFadeEasing
 import com.hippo.ehviewer.ui.main.CardFlightDurationMillis
+import com.hippo.ehviewer.ui.main.CommentFlight
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.LocalGlobalDialogState
@@ -63,50 +66,61 @@ private typealias Ty = AnimatedContentTransitionScope<NavBackStackEntry>
 fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
     val slideDistance = rememberSlideDistance()
     val detailRoute = GalleryDetailScreenDestination.route
-    return remember(slideDistance, detailRoute) {
+    val commentsRoute = GalleryCommentsScreenDestination.route
+    return remember(slideDistance, detailRoute, commentsRoute) {
         object : NavHostAnimatedDestinationStyle() {
             override val enterTransition: Ty.() -> EnterTransition = {
                 val isCard = targetState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(initialState.id, targetState.id, forward = true)
+                val isComment = !isCard && targetState.destination.route == commentsRoute &&
+                    CommentFlight.prepareTransition(initialState.id, targetState.id)
                 if (!isCard) CardFlight.clearActiveTransition()
-                if (isCard) {
-                    // Fade Detail body in place so the morphing card follows a pure arc without horizontal page slide
-                    fadeIn(tween(durationMillis = CardFlightDetailFadeInMillis, easing = LinearOutSlowInEasing))
-                } else {
-                    materialSharedAxisXIn(true, slideDistance)
+                if (!isComment) CommentFlight.clearActiveTransition()
+                when {
+                    isCard -> fadeIn(tween(durationMillis = CardFlightDetailFadeInMillis, easing = LinearOutSlowInEasing))
+                    isComment -> fadeIn(tween(durationMillis = 1))
+                    else -> materialSharedAxisXIn(true, slideDistance)
                 }
             }
             override val exitTransition: Ty.() -> ExitTransition = {
                 val isCard = targetState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(initialState.id, targetState.id, forward = true)
+                val isComment = !isCard && targetState.destination.route == commentsRoute &&
+                    CommentFlight.prepareTransition(initialState.id, targetState.id)
                 if (!isCard) CardFlight.clearActiveTransition()
-                if (isCard) {
-                    // Keep the list steady in place behind the rising card
-                    fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.88f)
-                } else {
-                    materialSharedAxisXOut(true, slideDistance)
+                if (!isComment) CommentFlight.clearActiveTransition()
+                when {
+                    isCard -> fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.88f)
+                    isComment -> fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.85f)
+                    else -> materialSharedAxisXOut(true, slideDistance)
                 }
             }
             override val popEnterTransition: Ty.() -> EnterTransition = {
                 val isCard = initialState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(targetState.id, initialState.id, forward = false)
+                val isComment = !isCard && initialState.destination.route == commentsRoute &&
+                    CommentFlight.prepareTransition(targetState.id, initialState.id)
                 if (!isCard) CardFlight.clearActiveTransition()
-                if (isCard) {
-                    // List is immediately visible in place so the returning card or top-bar capsule lands cleanly
-                    fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.88f)
-                } else {
-                    materialSharedAxisXIn(false, slideDistance)
+                if (!isComment) CommentFlight.clearActiveTransition()
+                when {
+                    isCard -> fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.88f)
+                    isComment -> fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.85f)
+                    else -> materialSharedAxisXIn(false, slideDistance)
                 }
             }
             override val popExitTransition: Ty.() -> ExitTransition = {
                 val isCard = initialState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(targetState.id, initialState.id, forward = false)
+                val isComment = !isCard && initialState.destination.route == commentsRoute &&
+                    CommentFlight.prepareTransition(targetState.id, initialState.id)
                 if (!isCard) CardFlight.clearActiveTransition()
-                if (isCard) {
-                    // Front-loaded fade clears Detail content quickly while keeping it mounted for the full 380ms flight
-                    fadeOut(tween(durationMillis = CardFlightDurationMillis, easing = CardFlightDetailPopFadeEasing))
-                } else {
-                    materialSharedAxisXOut(false, slideDistance)
+                if (!isComment) CommentFlight.clearActiveTransition()
+                when {
+                    isCard -> fadeOut(tween(durationMillis = CardFlightDurationMillis, easing = CardFlightDetailPopFadeEasing))
+                    isComment && CommentFlight.usesTopBarReturn(targetState.id, initialState.id, Settings.commentTransitionMode.value) ->
+                        fadeOut(tween(durationMillis = CardFlightDurationMillis, easing = CardFlightDetailPopFadeEasing))
+                    isComment -> fadeOut(tween(durationMillis = 1, delayMillis = CardFlightDurationMillis))
+                    else -> materialSharedAxisXOut(false, slideDistance)
                 }
             }
         }
