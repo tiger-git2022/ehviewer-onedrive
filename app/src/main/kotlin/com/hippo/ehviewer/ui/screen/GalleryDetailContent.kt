@@ -41,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +54,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -137,7 +135,6 @@ import com.hippo.ehviewer.ui.getFavoriteIcon
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
 import com.hippo.ehviewer.ui.main.ArchiveList
-import com.hippo.ehviewer.ui.main.CardFlight
 import com.hippo.ehviewer.ui.main.EhPreviewItem
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
@@ -206,6 +203,7 @@ fun GalleryDetailContent(
     state: LazyGridState = rememberLazyGridState(),
     // Fork: fresh links for previews that fail to load, see PreviewRefetcher
     previewRefetcher: PreviewRefetcher? = null,
+    headerFlightVisible: Boolean = true,
 ) {
     val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
     val galleryDetail = galleryInfo.asGalleryDetail()
@@ -298,16 +296,6 @@ fun GalleryDetailContent(
 
     // Fork: a gallery restored from PandaChika has no previews
     val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
-    // Fork: in header-card transition mode, morph the top header card back when visible; once scrolled away, hand off
-    // to CardFlightDetailContainer so returning from comments/previews collapses back via the glass capsule
-    val headerCutoffPx = with(LocalDensity.current) { 100.dp.roundToPx() }
-    val headerFlightVisible by remember(state, headerCutoffPx) {
-        derivedStateOf { state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset < headerCutoffPx }
-    }
-    val detailEntry = currentPageEntry()
-    LaunchedEffect(detailEntry, headerFlightVisible) {
-        CardFlight.setDetailHeaderVisible(detailEntry, headerFlightVisible)
-    }
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),

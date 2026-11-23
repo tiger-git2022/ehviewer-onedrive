@@ -459,9 +459,6 @@
     <string name="category_short_misc">杂项</string>
     <string name="liquid_glass">液态玻璃</string>
     <string name="liquid_glass_summary">搜索栏、同步进度、悬浮按钮和左右侧拉栏改成液态玻璃，折射下面的内容。折射效果需要 Android 13 以上</string>
-    <string name="detail_transition_mode">画廊详情页过渡动画</string>
-    <string name="detail_transition_capsule">玻璃胶囊四边展开（全屏收放）</string>
-    <string name="detail_transition_header_card">卡片变形为顶部信息卡（下滑用玻璃胶囊返回）</string>
     <string name="sheet_glass_blur">侧边栏、弹窗和搜索页的模糊度</string>
     <string name="sheet_glass_blur_summary">数值除以 10 是模糊半径（dp）：0 不模糊，默认 25。模糊需要 Android 12 以上</string>
     <string name="sheet_glass_tint">侧边栏和弹窗的不透明度</string>

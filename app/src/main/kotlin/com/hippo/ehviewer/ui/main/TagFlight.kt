@@ -6,16 +6,19 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
@@ -30,22 +33,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavBackStackEntry
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.floatingGlass
-import com.hippo.ehviewer.Settings
-import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ui.DARK_GLASS_EDGE
 import com.hippo.ehviewer.ui.LocalSharedTransitionScope
 import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.screen.searchTagParts
 import com.kyant.backdrop.backdrops.LayerBackdrop
+import kotlin.math.pow
 
 /** Fork: the page's own enter and exit, given by Screen, for the shared elements between pages. */
 val LocalPageVisibility = compositionLocalOf<AnimatedVisibilityScope?> { null }
@@ -209,6 +213,11 @@ object CardFlight {
     // Exact active List <-> Detail transition pair set by rememberEhNavAnim before frame 0 (eliminates isMatchFound delay)
     private var activeFrom by mutableStateOf<String?>(null)
     private var activeTo by mutableStateOf<String?>(null)
+    private var activeForward by mutableStateOf(true)
+
+    /** Whether the active List <-> Detail transition is entering Detail (true) or returning to the list (false). */
+    val isForward: Boolean
+        get() = activeForward
 
     /** Registers the current live [LayerBackdrop] for screen [entry] so the glass capsule can refract it cleanly. */
     fun registerPageBackdrop(entry: String?, backdrop: LayerBackdrop?) {
@@ -236,7 +245,7 @@ object CardFlight {
         while (entries.size > MAX_ENTRIES) entries.removeAt(0)
     }
 
-    /** Updates whether the top header card on detail page [detailEntry] is still visible (for hybrid return in Mode 1). */
+    /** Updates whether the top header card on detail page [detailEntry] is still visible (controls header vs top-bar return). */
     fun setDetailHeaderVisible(detailEntry: String?, visible: Boolean) {
         if (detailEntry == null) return
         val entry = entries.lastOrNull { it.to == detailEntry } ?: return
@@ -265,9 +274,9 @@ object CardFlight {
     /**
      * Marks [fromId] <-> [toId] as the active card flight when navigating between a list page and its detail page.
      * Called synchronously by [com.hippo.ehviewer.ui.rememberEhNavAnim] before frame 0 so both source and target know
-     * immediately whether to run their flight crossfades without waiting for [SharedContentState.isMatchFound].
+     * immediately whether to run their flight crossfades and which arc direction to use.
      */
-    fun prepareTransition(fromId: String, toId: String): Boolean {
+    fun prepareTransition(fromId: String, toId: String, forward: Boolean): Boolean {
         val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) }
         if (match == null) {
             clearActiveTransition()
@@ -278,6 +287,9 @@ object CardFlight {
             activeFrom = fromId
             activeTo = toId
         }
+        if (activeForward != forward) {
+            activeForward = forward
+        }
         return true
     }
 
@@ -287,16 +299,6 @@ object CardFlight {
             activeFrom = null
             activeTo = null
         }
-    }
-
-    /**
-     * Whether navigation between list page [fromId] and detail page [toId] should use the full-screen glass capsule
-     * container transform (always in Mode 0, and on return in Mode 1 once the top header card has scrolled away).
-     */
-    fun isCapsuleTransition(fromId: String, toId: String, mode: Int): Boolean {
-        val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) } ?: return false
-        if (match.to == null) match.to = toId
-        return mode == DETAIL_TRANSITION_CAPSULE || !match.headerVisible
     }
 
     /** Whether card [gid] on [fromEntry] is the active card participating in the current List <-> Detail transition. */
@@ -313,19 +315,11 @@ object CardFlight {
         return entries.lastOrNull { it.from == from && it.to == detailEntry }?.gid == gid
     }
 
-    /** Whether source card [gid] on [fromEntry] should animate as a glass capsule (Mode 0, or scrolled-down Mode 1). */
-    fun useCapsuleForSource(mode: Int, fromEntry: String?, gid: Long): Boolean {
-        if (mode == DETAIL_TRANSITION_CAPSULE) return true
+    /** Whether source card [gid] on [fromEntry] is receiving a scrolled-down glass top-bar capsule return. */
+    fun useTopBarCapsuleForSource(fromEntry: String?, gid: Long): Boolean {
         if (fromEntry == null) return false
         val entry = entries.lastOrNull { it.from == fromEntry && it.gid == gid } ?: return false
         return !entry.headerVisible
-    }
-
-    /** Whether detail page [detailEntry] of [gid] should animate as a glass capsule (Mode 0, or scrolled-down Mode 1). */
-    fun useCapsuleForDetail(mode: Int, detailEntry: String?, gid: Long): Boolean {
-        if (detailEntry == null) return false
-        val entry = entries.lastOrNull { it.to == detailEntry && it.gid == gid } ?: return false
-        return mode == DETAIL_TRANSITION_CAPSULE || !entry.headerVisible
     }
 
     /** Returns the live [LayerBackdrop] of the list page that opened [detailEntry], or null if unavailable. */
@@ -339,18 +333,17 @@ object CardFlight {
 }
 
 /**
- * Source wrapper for a gallery card in a list/grid/download screen supporting both transition modes:
- * - [DETAIL_TRANSITION_CAPSULE]: card dissolves swiftly into a translucent Liquid Glass capsule that expands its 4
- *   edges to full screen, and fades cleanly back in on top of the landing glass capsule on return.
- * - [DETAIL_TRANSITION_HEADER_CARD]: list card morphs directly into [GalleryDetailHeaderCard] at the top of detail,
- *   and automatically switches to the Liquid Glass capsule return once the user has scrolled past the header card.
+ * Source wrapper for a gallery card in a list/grid/download screen:
+ * - Morphs directly into [GalleryDetailHeaderCard] at the top of detail on enter (horizontal-lead arc) and morphs
+ *   back along the exact reversed path (vertical-lead arc) when returning near the top.
+ * - Once the user scrolls past the header card, receives the Liquid Glass capsule morphing back from the detail
+ *   screen's glass top app bar.
  */
 @Composable
 fun CardFlightSource(
     gid: Long,
     content: @Composable (cardModifier: Modifier, contentModifier: Modifier) -> Unit,
 ) {
-    val mode by Settings.detailTransitionMode.collectAsState()
     val visibility = LocalPageVisibility.current
     val pageEntry = currentPageEntry()
     val key = CardFlight.sourceKey(gid, pageEntry)
@@ -362,7 +355,7 @@ fun CardFlightSource(
     with(shared) {
         val sharedState = rememberSharedContentState(key)
         val active = CardFlight.isActiveSource(gid, pageEntry)
-        val useCapsule = CardFlight.useCapsuleForSource(mode, pageEntry, gid)
+        val useCapsule = CardFlight.useTopBarCapsuleForSource(pageEntry, gid)
         val enter = when {
             !active -> EnterTransition.None
             useCapsule -> CapsuleSourceEnter
@@ -388,16 +381,17 @@ fun CardFlightSource(
 }
 
 /**
- * Full-screen detail container for the Liquid Glass capsule transition (always in [DETAIL_TRANSITION_CAPSULE], and on
- * return in [DETAIL_TRANSITION_HEADER_CARD] once scrolled past the top header card). Always keeps the same outer [Box]
- * around [content] so switching [useCapsule] during scrolling never recreates [Scaffold] or resets scroll state.
+ * Wrapper around the gallery detail screen's glass top app bar. When [active] (the user has scrolled past the top
+ * header card so the top bar is in its glass state), returning to the originating list morphs the glass top bar into
+ * a floating Liquid Glass capsule that refracts the revealed list page and lands back into the originating card.
+ * Keeps the outer [Box] stable so toggling [active] during scrolling never recreates the top bar.
  */
 @Composable
-fun CardFlightDetailContainer(
+fun CardFlightTopBarContainer(
     gid: Long,
+    active: Boolean,
     content: @Composable (contentModifier: Modifier) -> Unit,
 ) {
-    val mode by Settings.detailTransitionMode.collectAsState()
     val visibility = LocalPageVisibility.current
     val detailEntry = currentPageEntry()
     val key = CardFlight.targetKey(gid, detailEntry)
@@ -406,17 +400,12 @@ fun CardFlightDetailContainer(
         return
     }
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
-    val useCapsule = CardFlight.useCapsuleForDetail(mode, detailEntry, gid)
-    val active = CardFlight.isActiveDetail(gid, detailEntry)
+    val flightActive = CardFlight.isActiveDetail(gid, detailEntry)
     with(shared) {
         val contentAlpha by visibility.transition.animateFloat(
             transitionSpec = {
                 if (targetState == EnterExitState.Visible) {
-                    tween(
-                        durationMillis = CapsuleContentEnterMillis,
-                        delayMillis = CapsuleContentEnterDelayMillis,
-                        easing = LinearOutSlowInEasing,
-                    )
+                    tween(durationMillis = 1)
                 } else {
                     tween(
                         durationMillis = CapsuleContentExitMillis,
@@ -424,18 +413,14 @@ fun CardFlightDetailContainer(
                     )
                 }
             },
-            label = "cardCapsuleTargetAlpha",
+            label = "cardTopBarContentAlpha",
         ) { state ->
             if (state == EnterExitState.Visible) 1f else 0f
         }
         val capsuleAlpha by visibility.transition.animateFloat(
             transitionSpec = {
                 if (targetState == EnterExitState.Visible) {
-                    tween(
-                        durationMillis = CapsuleGlassFadeOutMillis,
-                        delayMillis = CapsuleGlassHoldMillis,
-                        easing = LinearOutSlowInEasing,
-                    )
+                    tween(durationMillis = 1)
                 } else {
                     tween(
                         durationMillis = CapsuleGlassFadeInMillis,
@@ -443,11 +428,11 @@ fun CardFlightDetailContainer(
                     )
                 }
             },
-            label = "cardCapsuleGlassAlpha",
+            label = "cardTopBarCapsuleAlpha",
         ) { state ->
             if (state == EnterExitState.Visible) 0f else 1f
         }
-        val boundsModifier = if (useCapsule) {
+        val boundsModifier = if (active) {
             Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key),
                 animatedVisibilityScope = visibility,
@@ -460,8 +445,16 @@ fun CardFlightDetailContainer(
         } else {
             Modifier
         }
-        Box(modifier = Modifier.fillMaxSize().then(boundsModifier)) {
-            if (useCapsule && active && capsuleAlpha > 0f) {
+        Box(modifier = Modifier.fillMaxWidth().then(boundsModifier)) {
+            val topBarModifier = if (active && flightActive) {
+                Modifier
+                    .skipToLookaheadSize()
+                    .graphicsLayer { alpha = contentAlpha }
+            } else {
+                Modifier
+            }
+            content(topBarModifier)
+            if (active && flightActive && capsuleAlpha > 0f) {
                 val sourceBackdrop = CardFlight.sourceBackdropFor(detailEntry, gid)
                 val glass = rememberLiquidGlass(sourceBackdrop)
                 val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -506,28 +499,16 @@ fun CardFlightDetailContainer(
                         .border(1.dp, borderColor, CapsuleFlightShape),
                 )
             }
-            val contentModifier = if (useCapsule && active) {
-                Modifier
-                    .fillMaxSize()
-                    .skipToLookaheadSize()
-                    .graphicsLayer { alpha = contentAlpha }
-            } else {
-                Modifier.fillMaxSize()
-            }
-            content(contentModifier)
         }
     }
 }
 
 /**
- * Target modifier on [GalleryDetailHeaderCard] for [DETAIL_TRANSITION_HEADER_CARD] when [active] (header card visible
- * near the top of the detail page).
+ * Target modifier on [GalleryDetailHeaderCard] when [active] (header card visible near the top of the detail page).
  */
 @Composable
 fun Modifier.cardFlightHeaderTarget(gid: Long, active: Boolean): Modifier {
     if (!active) return this
-    val mode by Settings.detailTransitionMode.collectAsState()
-    if (mode != DETAIL_TRANSITION_HEADER_CARD) return this
     val visibility = LocalPageVisibility.current ?: return this
     val detailEntry = currentPageEntry()
     val key = CardFlight.targetKey(gid, detailEntry) ?: return this
@@ -547,17 +528,12 @@ fun Modifier.cardFlightHeaderTarget(gid: Long, active: Boolean): Modifier {
     }
 }
 
-/** Keeps the content of [GalleryDetailHeaderCard] at its natural lookahead size during [DETAIL_TRANSITION_HEADER_CARD]. */
+/** Keeps the content of [GalleryDetailHeaderCard] at its natural lookahead size during header-card morph. */
 @Composable
 fun Modifier.cardFlightHeaderContent(): Modifier {
-    val mode by Settings.detailTransitionMode.collectAsState()
-    if (mode != DETAIL_TRANSITION_HEADER_CARD) return this
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
     return with(shared) { this@cardFlightHeaderContent.skipToLookaheadSize() }
 }
-
-const val DETAIL_TRANSITION_CAPSULE = 0
-const val DETAIL_TRANSITION_HEADER_CARD = 1
 
 private const val TagFlightKey = "tag-flight"
 private const val QueryFlightKey = "query-flight"
@@ -576,12 +552,12 @@ private val QueryFlightBoundsTransform = BoundsTransform { _, _ ->
 }
 
 const val CardFlightDurationMillis = 380
+const val CardFlightDetailFadeInMillis = 220
+val CardFlightDetailPopFadeEasing = CubicBezierEasing(0.0f, 0.85f, 0.2f, 1.0f)
 private const val CapsuleContentExitMillis = 55
 private const val CapsuleContentEnterDelayMillis = 230
 private const val CapsuleContentEnterMillis = 150
 private const val CapsuleGlassFadeInMillis = 35
-private const val CapsuleGlassHoldMillis = 250
-private const val CapsuleGlassFadeOutMillis = 130
 private const val CapsuleDarkGlassTint = 0.24f
 private const val CapsuleLightGlassTint = 0.34f
 private val CapsuleCornerRadius = 28.dp
@@ -604,6 +580,8 @@ private val CapsuleFlightBoundsTransform = BoundsTransform { _, _ ->
 }
 
 private const val HeaderCardDurationMillis = 380
+private const val HeaderCardArcSteps = 16
+private const val HeaderCardArcExponent = 1.6f
 private const val HeaderCardEnterMillis = 200
 private const val HeaderCardExitDelayMillis = 80
 private const val HeaderCardExitMillis = 180
@@ -621,6 +599,31 @@ private val HeaderCardExit = fadeOut(
     ),
 )
 private val HeaderCardShape = ShapeDefaults.Medium
-private val HeaderCardBoundsTransform = BoundsTransform { _, _ ->
-    tween(durationMillis = HeaderCardDurationMillis, easing = FastOutSlowInEasing)
+
+/**
+ * Symmetric reversed-path arc transform for the gallery card <-> top header card morph:
+ * - Forward (List -> Detail): horizontal leads (`1 - (1 - s)^k`) while vertical trails (`s^k`), sweeping smoothly
+ *   from bottom-left -> right -> top.
+ * - Return (Detail -> List): vertical leads (`1 - (1 - s)^k`) while horizontal trails (`s^k`), tracing the exact
+ *   same geometric curve in reverse from top-right -> down -> left.
+ */
+private val HeaderCardBoundsTransform = BoundsTransform { initialBounds, targetBounds ->
+    val forward = CardFlight.isForward
+    keyframes {
+        durationMillis = HeaderCardDurationMillis
+        for (step in 1 until HeaderCardArcSteps) {
+            val u = step.toFloat() / HeaderCardArcSteps
+            val s = FastOutSlowInEasing.transform(u)
+            val lead = 1f - (1f - s).pow(HeaderCardArcExponent)
+            val lag = s.pow(HeaderCardArcExponent)
+            val fx = if (forward) lead else lag
+            val fy = if (forward) lag else lead
+            Rect(
+                left = lerp(initialBounds.left, targetBounds.left, fx),
+                top = lerp(initialBounds.top, targetBounds.top, fy),
+                right = lerp(initialBounds.right, targetBounds.right, fx),
+                bottom = lerp(initialBounds.bottom, targetBounds.bottom, fy),
+            ) at (HeaderCardDurationMillis * u).toInt() using LinearEasing
+        }
+    }
 }
