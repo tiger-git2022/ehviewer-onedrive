@@ -40,6 +40,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,13 +94,15 @@ import com.hippo.ehviewer.ui.PartialSheetReturn
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.WnacgCheck
 import com.hippo.ehviewer.ui.glassContent
+import com.hippo.ehviewer.ui.main.CardFlight
+import com.hippo.ehviewer.ui.main.CardFlightTopBarContainer
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
-import com.hippo.ehviewer.ui.main.CardFlightDetailContainer
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -283,14 +286,24 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
     }
     val refreshPreviews = stringResource(id = R.string.refresh_previews)
-    CardFlightDetailContainer(gid) { contentModifier ->
+    // Fork: morph the top header card back when visible; once scrolled past it, hand off to the glass top bar so
+    // returning from comments/previews morphs the glass top bar into a capsule back to the originating card
+    val headerCutoffPx = with(LocalDensity.current) { 100.dp.roundToPx() }
+    val headerFlightVisible by remember(gridState, headerCutoffPx) {
+        derivedStateOf { gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < headerCutoffPx }
+    }
+    val detailEntry = currentPageEntry()
+    LaunchedEffect(detailEntry, headerFlightVisible) {
+        CardFlight.setDetailHeaderVisible(detailEntry, headerFlightVisible)
+    }
     Scaffold(
-        modifier = contentModifier,
         topBar = {
-            MediumFlexibleTopAppBar(
-                // Fork: only its bottom edge shows, the top and the sides melt into the screen
-                modifier = Modifier.onGloballyPositioned { barBottom = it.boundsInWindow().bottom }
-                    .edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
+            CardFlightTopBarContainer(gid = gid, active = !headerFlightVisible) { topBarContentModifier ->
+                MediumFlexibleTopAppBar(
+                    // Fork: only its bottom edge shows, the top and the sides melt into the screen
+                    modifier = topBarContentModifier
+                        .onGloballyPositioned { barBottom = it.boundsInWindow().bottom }
+                        .edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 // Fork: over the glass, the buttons in the color of the title, white at night and black by day: the paler
                 // color of the Material buttons got lost over the pages showing through
                 colors = if (backdrop != null) {
@@ -466,6 +479,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     )
                 },
             )
+            }
         },
     ) {
         val gi = galleryInfo
@@ -493,6 +507,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     modifier = Modifier.glassContent(backdrop).expandTopBarOnWheelAtTop(gridState, scrollBehavior),
                     state = gridState,
                     previewRefetcher = previewRefetcher,
+                    headerFlightVisible = headerFlightVisible,
                 )
                 // Fork: how the previews load, floating at the bottom, see PreviewProgressBar
                 if (previewRefetcher != null) {
@@ -513,7 +528,6 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 ShapeLoadingIndicator()
             }
         }
-    }
     }
 }
 

@@ -184,16 +184,6 @@
         <item>2</item>
     </integer-array>
 
-    <string-array name="detail_transition_mode_entries" translatable="false">
-        <item>@string/detail_transition_capsule</item>
-        <item>@string/detail_transition_header_card</item>
-    </string-array>
-
-    <integer-array name="detail_transition_mode_values">
-        <item>0</item>
-        <item>1</item>
-    </integer-array>
-
     <string-array name="download_sort_modes">
         <item>@string/added_time_desc</item>
         <item>@string/added_time_asc</item>
