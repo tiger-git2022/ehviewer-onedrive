@@ -47,6 +47,8 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavBackStackEntry
 import com.ehviewer.core.ui.component.GlassStyle
 import com.ehviewer.core.ui.component.floatingGlass
+import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ui.DARK_GLASS_EDGE
 import com.hippo.ehviewer.ui.LocalSharedTransitionScope
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -345,6 +347,9 @@ object CardFlight {
         return pageBackdrops[entry.from]
     }
 
+    /** Returns the live [LayerBackdrop] registered for screen [entry], or null if unavailable. */
+    fun pageBackdropFor(entry: String?): LayerBackdrop? = entry?.let { pageBackdrops[it] }
+
     private fun keyOf(from: String, gid: Long) = "card-flight:$from:$gid"
 
     private fun coverKeyOf(from: String, gid: Long) = "card-cover:$from:$gid"
@@ -491,52 +496,63 @@ fun CardFlightTopBarAnchor(
                 .height(heightDp),
         ) {
             if (flightActive && capsuleAlpha > 0f) {
-                val sourceBackdrop = CardFlight.sourceBackdropFor(detailEntry, gid)
-                val glass = rememberLiquidGlass(sourceBackdrop)
-                val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
-                    alpha = if (dark) CapsuleDarkGlassTint else CapsuleLightGlassTint,
-                )
-                val sheenTop = Color.White.copy(alpha = if (dark) 0.14f else 0.36f)
-                val sheenMid = Color.White.copy(alpha = if (dark) 0.03f else 0.08f)
-                val sheenBottom = Color.White.copy(alpha = if (dark) 0.08f else 0.22f)
-                val borderColor = if (dark) {
-                    Color.White.copy(alpha = if (glass != null) 0.20f else DARK_GLASS_EDGE)
-                } else {
-                    Color.White.copy(alpha = if (glass != null) 0.50f else 0.72f)
-                }
-                val fallbackFill = if (dark) {
-                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.84f)
-                }
-                val surfaceModifier = if (glass != null) {
-                    Modifier.floatingGlass(glass, CapsuleFlightShape, glassTint, GlassStyle.Panel)
-                } else {
-                    Modifier.drawBehind {
-                        drawRoundRect(
-                            color = fallbackFill,
-                            cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = capsuleAlpha }
-                        .then(surfaceModifier)
-                        .drawBehind {
-                            // Subtle specular highlight sheen so the capsule reads as luminous glass even over AMOLED black
-                            drawRoundRect(
-                                brush = Brush.verticalGradient(listOf(sheenTop, sheenMid, sheenBottom)),
-                                cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
-                            )
-                        }
-                        .border(1.dp, borderColor, CapsuleFlightShape),
+                GlassCapsuleOverlay(
+                    backdrop = CardFlight.sourceBackdropFor(detailEntry, gid),
+                    alpha = capsuleAlpha,
                 )
             }
         }
     }
+}
+
+@Composable
+private fun GlassCapsuleOverlay(
+    backdrop: LayerBackdrop?,
+    alpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    val glass = rememberLiquidGlass(backdrop)
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+        alpha = if (dark) CapsuleDarkGlassTint else CapsuleLightGlassTint,
+    )
+    val sheenTop = Color.White.copy(alpha = if (dark) 0.14f else 0.36f)
+    val sheenMid = Color.White.copy(alpha = if (dark) 0.03f else 0.08f)
+    val sheenBottom = Color.White.copy(alpha = if (dark) 0.08f else 0.22f)
+    val borderColor = if (dark) {
+        Color.White.copy(alpha = if (glass != null) 0.20f else DARK_GLASS_EDGE)
+    } else {
+        Color.White.copy(alpha = if (glass != null) 0.50f else 0.72f)
+    }
+    val fallbackFill = if (dark) {
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.84f)
+    }
+    val surfaceModifier = if (glass != null) {
+        Modifier.floatingGlass(glass, CapsuleFlightShape, glassTint, GlassStyle.Panel)
+    } else {
+        Modifier.drawBehind {
+            drawRoundRect(
+                color = fallbackFill,
+                cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
+            )
+        }
+    }
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer { this.alpha = alpha }
+            .then(surfaceModifier)
+            .drawBehind {
+                // Subtle specular highlight sheen so the capsule reads as luminous glass even over AMOLED black
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(sheenTop, sheenMid, sheenBottom)),
+                    cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
+                )
+            }
+            .border(1.dp, borderColor, CapsuleFlightShape),
+    )
 }
 
 /**
@@ -682,6 +698,352 @@ private val HeaderCardBoundsTransform = BoundsTransform { initialBounds, targetB
                 right = lerp(initialBounds.right, targetBounds.right, fx),
                 bottom = lerp(initialBounds.bottom, targetBounds.bottom, fy),
             ) at (HeaderCardDurationMillis * u).toInt() using LinearEasing
+        }
+    }
+}
+
+const val COMMENT_TRANSITION_CARD = 0
+const val COMMENT_TRANSITION_BUTTON_CAPSULE = 1
+
+private const val CapsuleGlassHoldMillis = 230
+private const val CapsuleGlassFadeOutMillis = 150
+private const val CommentCardContentEnterDelayMillis = 120
+private const val CommentCardContentEnterMillis = 200
+private const val CommentCardContentExitMillis = 90
+
+/**
+ * Fork: container-transform flight between the comments section on [com.hippo.ehviewer.ui.screen.GalleryDetailScreen]
+ * and [com.hippo.ehviewer.ui.screen.GalleryCommentsScreen]. Supports two selectable styles:
+ * - [COMMENT_TRANSITION_CARD]: whole comment [CrystalCard] expands bi-directionally to full screen; returns straight
+ *   back to the card near the top, or via a Liquid Glass capsule from the comments top bar once scrolled.
+ * - [COMMENT_TRANSITION_BUTTON_CAPSULE]: the "more comments" button expands as a Liquid Glass capsule in all
+ *   directions to full screen, and always returns from the comments top bar as a glass capsule back into the button.
+ */
+object CommentFlight {
+    private const val MAX_ENTRIES = 16
+
+    private class Entry(val gid: Long, val from: String, var to: String? = null) {
+        var scrolled by mutableStateOf(false)
+    }
+
+    private val entries = mutableStateListOf<Entry>()
+    private var activeFrom by mutableStateOf<String?>(null)
+    private var activeTo by mutableStateOf<String?>(null)
+
+    /** Records that the comments section of [gid] on detail page [fromEntry] was tapped. */
+    fun start(gid: Long, fromEntry: String?) {
+        if (fromEntry == null) return
+        entries.removeAll { it.from == fromEntry }
+        entries.add(Entry(gid = gid, from = fromEntry))
+        while (entries.size > MAX_ENTRIES) entries.removeAt(0)
+    }
+
+    /** Updates whether [commentsEntry] has scrolled past the top (switches Mode 0 return to top-bar glass capsule). */
+    fun setScrolled(commentsEntry: String?, scrolled: Boolean) {
+        if (commentsEntry == null) return
+        val entry = entries.lastOrNull { it.to == commentsEntry } ?: return
+        if (entry.scrolled != scrolled) {
+            entry.scrolled = scrolled
+        }
+    }
+
+    /** Always returns the page-scoped key for the comments source on detail page [entry] so lookahead bounds are ready. */
+    fun sourceKey(gid: Long, entry: String?): String? = entry?.let { keyOf(it, gid) }
+
+    /** Claims/returns the shared key for [GalleryCommentsScreen] of [gid] on page [entry]. */
+    fun targetKey(gid: Long, entry: String?): String? {
+        if (entry == null) return null
+        val existing = entries.lastOrNull { it.to == entry && it.gid == gid }
+        if (existing != null) return keyOf(existing.from, existing.gid)
+        val pending = entries.lastOrNull { it.to == null && it.gid == gid } ?: return null
+        pending.to = entry
+        return keyOf(pending.from, pending.gid)
+    }
+
+    /** Synchronously marks [fromId] <-> [toId] as the active Detail <-> Comments flight before frame 0. */
+    fun prepareTransition(fromId: String, toId: String): Boolean {
+        val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) }
+        if (match == null) {
+            clearActiveTransition()
+            return false
+        }
+        if (match.to == null) match.to = toId
+        if (activeFrom != fromId || activeTo != toId) {
+            activeFrom = fromId
+            activeTo = toId
+        }
+        return true
+    }
+
+    fun clearActiveTransition() {
+        if (activeFrom != null || activeTo != null) {
+            activeFrom = null
+            activeTo = null
+        }
+    }
+
+    fun isActiveSource(gid: Long, fromEntry: String?): Boolean {
+        if (fromEntry == null || activeFrom != fromEntry) return false
+        val to = activeTo ?: return false
+        return entries.lastOrNull { it.from == fromEntry && it.to == to }?.gid == gid
+    }
+
+    fun isActiveComments(gid: Long, commentsEntry: String?): Boolean {
+        if (commentsEntry == null || activeTo != commentsEntry) return false
+        val from = activeFrom ?: return false
+        return entries.lastOrNull { it.from == from && it.to == commentsEntry }?.gid == gid
+    }
+
+    /** Whether returning from [commentsId] to [detailId] uses the top-bar glass capsule anchor (for popExitTransition). */
+    fun usesTopBarReturn(detailId: String, commentsId: String, mode: Int): Boolean {
+        val match = entries.lastOrNull { it.from == detailId && it.to == commentsId } ?: return false
+        return mode == COMMENT_TRANSITION_BUTTON_CAPSULE || match.scrolled
+    }
+
+    /** Whether the source on [fromEntry] is receiving a glass-capsule return (Mode 1, or scrolled Mode 0). */
+    fun useCapsuleForSource(mode: Int, fromEntry: String?, gid: Long): Boolean {
+        if (mode == COMMENT_TRANSITION_BUTTON_CAPSULE) return true
+        if (fromEntry == null) return false
+        val entry = entries.lastOrNull { it.from == fromEntry && it.gid == gid } ?: return false
+        return entry.scrolled
+    }
+
+    /** Returns the live [LayerBackdrop] of the detail page that opened [commentsEntry], or null if unavailable. */
+    fun sourceBackdropFor(commentsEntry: String?, gid: Long): LayerBackdrop? {
+        if (commentsEntry == null) return null
+        val entry = entries.lastOrNull { it.to == commentsEntry && it.gid == gid } ?: return null
+        return CardFlight.pageBackdropFor(entry.from)
+    }
+
+    private fun keyOf(from: String, gid: Long) = "comment-flight:$from:$gid"
+}
+
+/** Source modifier on the whole comments [CrystalCard] in [COMMENT_TRANSITION_CARD]. */
+@Composable
+fun Modifier.commentFlightCardSource(gid: Long): Modifier {
+    val mode by Settings.commentTransitionMode.collectAsState()
+    if (mode != COMMENT_TRANSITION_CARD) return this
+    return commentFlightSourceInternal(gid = gid, mode = mode)
+}
+
+/** Source modifier on the "more comments" button in [COMMENT_TRANSITION_BUTTON_CAPSULE]. */
+@Composable
+fun Modifier.commentFlightButtonSource(gid: Long): Modifier {
+    val mode by Settings.commentTransitionMode.collectAsState()
+    if (mode != COMMENT_TRANSITION_BUTTON_CAPSULE) return this
+    return commentFlightSourceInternal(gid = gid, mode = mode)
+}
+
+@Composable
+private fun Modifier.commentFlightSourceInternal(gid: Long, mode: Int): Modifier {
+    val visibility = LocalPageVisibility.current ?: return this
+    val pageEntry = currentPageEntry()
+    val key = CommentFlight.sourceKey(gid, pageEntry) ?: return this
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val active = CommentFlight.isActiveSource(gid, pageEntry)
+    val useCapsule = CommentFlight.useCapsuleForSource(mode, pageEntry, gid)
+    val enter = when {
+        !active -> EnterTransition.None
+        useCapsule -> CapsuleSourceEnter
+        else -> HeaderCardEnter
+    }
+    val exit = when {
+        !active -> ExitTransition.None
+        useCapsule -> CapsuleSourceExit
+        else -> HeaderCardExit
+    }
+    val shape = if (useCapsule) CapsuleFlightShape else HeaderCardShape
+    return with(shared) {
+        this@commentFlightSourceInternal.sharedBounds(
+            sharedContentState = rememberSharedContentState(key),
+            animatedVisibilityScope = visibility,
+            enter = enter,
+            exit = exit,
+            boundsTransform = CapsuleFlightBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            zIndexInOverlay = if (active && useCapsule) 0.5f else 0f,
+            clipInOverlayDuringTransition = OverlayClip(shape),
+        )
+    }
+}
+
+/**
+ * Full-screen container for [com.hippo.ehviewer.ui.screen.GalleryCommentsScreen]. Owns the shared bounds during
+ * enter in both modes and during top-of-list return in [COMMENT_TRANSITION_CARD]; hands off the shared bounds to
+ * [CommentFlightTopBarAnchor] once settled in [COMMENT_TRANSITION_BUTTON_CAPSULE] or scrolled in [COMMENT_TRANSITION_CARD].
+ * Always keeps the outer [Box] stable so handoff never recreates [Scaffold] or resets scroll state.
+ */
+@Composable
+fun CommentFlightContainer(
+    gid: Long,
+    useTopBarAnchor: Boolean,
+    content: @Composable (contentModifier: Modifier) -> Unit,
+) {
+    val mode by Settings.commentTransitionMode.collectAsState()
+    val visibility = LocalPageVisibility.current
+    val commentsEntry = currentPageEntry()
+    val key = CommentFlight.targetKey(gid, commentsEntry)
+    if (visibility == null || key == null) {
+        content(Modifier.fillMaxSize())
+        return
+    }
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val active = CommentFlight.isActiveComments(gid, commentsEntry)
+    val ownBounds = !useTopBarAnchor
+    val isButtonCapsule = mode == COMMENT_TRANSITION_BUTTON_CAPSULE
+    with(shared) {
+        val contentAlpha by visibility.transition.animateFloat(
+            transitionSpec = {
+                if (targetState == EnterExitState.Visible) {
+                    tween(
+                        durationMillis = if (isButtonCapsule) CapsuleContentEnterMillis else CommentCardContentEnterMillis,
+                        delayMillis = if (isButtonCapsule) CapsuleContentEnterDelayMillis else CommentCardContentEnterDelayMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                } else {
+                    tween(
+                        durationMillis = if (isButtonCapsule) CapsuleContentExitMillis else CommentCardContentExitMillis,
+                        easing = FastOutLinearInEasing,
+                    )
+                }
+            },
+            label = "commentContainerContentAlpha",
+        ) { state ->
+            if (state == EnterExitState.Visible) 1f else 0f
+        }
+        val capsuleAlpha by visibility.transition.animateFloat(
+            transitionSpec = {
+                if (targetState == EnterExitState.Visible) {
+                    tween(
+                        durationMillis = CapsuleGlassFadeOutMillis,
+                        delayMillis = if (isButtonCapsule) CapsuleGlassHoldMillis else CommentCardContentEnterDelayMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                } else {
+                    tween(
+                        durationMillis = CapsuleGlassFadeInMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                }
+            },
+            label = "commentContainerGlassAlpha",
+        ) { state ->
+            if (state == EnterExitState.Visible) 0f else 1f
+        }
+        val shape = if (isButtonCapsule) CapsuleFlightShape else HeaderCardShape
+        val boundsModifier = if (ownBounds) {
+            Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key),
+                animatedVisibilityScope = visibility,
+                enter = EnterTransition.None,
+                exit = ExitTransition.None,
+                boundsTransform = CapsuleFlightBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                clipInOverlayDuringTransition = OverlayClip(shape),
+            )
+        } else {
+            Modifier
+        }
+        Box(modifier = Modifier.then(boundsModifier).fillMaxSize()) {
+            if (ownBounds && active && capsuleAlpha > 0f) {
+                GlassCapsuleOverlay(
+                    backdrop = CommentFlight.sourceBackdropFor(commentsEntry, gid),
+                    alpha = capsuleAlpha,
+                )
+            }
+            val contentModifier = if (ownBounds && active) {
+                Modifier
+                    .fillMaxSize()
+                    .skipToLookaheadSize()
+                    .graphicsLayer { alpha = contentAlpha }
+            } else {
+                Modifier.fillMaxSize()
+            }
+            content(contentModifier)
+        }
+    }
+}
+
+/** Fades out the real [TopAppBar] on [GalleryCommentsScreen] swiftly when returning via [CommentFlightTopBarAnchor]. */
+@Composable
+fun Modifier.commentFlightTopBarContentFade(gid: Long, active: Boolean): Modifier {
+    if (!active) return this
+    val visibility = LocalPageVisibility.current ?: return this
+    val commentsEntry = currentPageEntry()
+    if (!CommentFlight.isActiveComments(gid, commentsEntry)) return this
+    val contentAlpha by visibility.transition.animateFloat(
+        transitionSpec = {
+            if (targetState == EnterExitState.Visible) {
+                tween(durationMillis = 1)
+            } else {
+                tween(
+                    durationMillis = CapsuleContentExitMillis,
+                    easing = FastOutLinearInEasing,
+                )
+            }
+        },
+        label = "commentTopBarContentAlpha",
+    ) { state ->
+        if (state == EnterExitState.Visible) 1f else 0f
+    }
+    return this.graphicsLayer { alpha = contentAlpha }
+}
+
+/**
+ * Top-bar capsule anchor placed outside [Scaffold] on [GalleryCommentsScreen] (avoiding [Scaffold]'s internal
+ * [SubcomposeLayout]). Morphs the full-width top bar into a Liquid Glass capsule refracting the detail page and
+ * lands back into either the comment card (Mode 0 when scrolled) or the "more comments" button (Mode 1).
+ */
+@Composable
+fun CommentFlightTopBarAnchor(
+    gid: Long,
+    active: Boolean,
+    heightPx: Int,
+    modifier: Modifier = Modifier,
+) {
+    if (!active || heightPx <= 0) return
+    val visibility = LocalPageVisibility.current ?: return
+    val commentsEntry = currentPageEntry()
+    val key = CommentFlight.targetKey(gid, commentsEntry) ?: return
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val flightActive = CommentFlight.isActiveComments(gid, commentsEntry)
+    val heightDp = with(LocalDensity.current) { heightPx.toDp() }
+    with(shared) {
+        val capsuleAlpha by visibility.transition.animateFloat(
+            transitionSpec = {
+                if (targetState == EnterExitState.Visible) {
+                    tween(durationMillis = 1)
+                } else {
+                    tween(
+                        durationMillis = CapsuleGlassFadeInMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                }
+            },
+            label = "commentTopBarCapsuleAlpha",
+        ) { state ->
+            if (state == EnterExitState.Visible) 0f else 1f
+        }
+        Box(
+            modifier = modifier
+                .sharedBounds(
+                    sharedContentState = rememberSharedContentState(key),
+                    animatedVisibilityScope = visibility,
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None,
+                    boundsTransform = CapsuleFlightBoundsTransform,
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                    clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
+                )
+                .fillMaxWidth()
+                .height(heightDp),
+        ) {
+            if (flightActive && capsuleAlpha > 0f) {
+                GlassCapsuleOverlay(
+                    backdrop = CommentFlight.sourceBackdropFor(commentsEntry, gid),
+                    alpha = capsuleAlpha,
+                )
+            }
         }
     }
 }
