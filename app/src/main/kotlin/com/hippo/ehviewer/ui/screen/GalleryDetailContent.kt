@@ -317,6 +317,7 @@ fun GalleryDetailContent(
                     onBlockUploaderIconClick = ::showFilterUploaderDialog.partially1(galleryInfo),
                     onCategoryChipClick = ::onCategoryChipClick,
                     modifier = Modifier.fillMaxWidth().padding(vertical = keylineMargin).cardFlightHeaderTarget(galleryInfo.gid, active = headerFlightVisible),
+                    coverFlightActive = headerFlightVisible,
                 )
             }
             item(
@@ -382,6 +383,7 @@ fun GalleryDetailContent(
                         onBlockUploaderIconClick = ::showFilterUploaderDialog.partially1(galleryInfo),
                         onCategoryChipClick = ::onCategoryChipClick,
                         modifier = Modifier.width(dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_card_landscape_width)).padding(vertical = keylineMargin).cardFlightHeaderTarget(galleryInfo.gid, active = headerFlightVisible),
+                        coverFlightActive = headerFlightVisible,
                     )
                     Column(
                         modifier = Modifier.fillMaxSize(),

@@ -71,7 +71,7 @@ fun DownloadCard(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     val pageEntry = currentPageEntry()
-    CardFlightSource(info.gid) { cardModifier, contentModifier ->
+    CardFlightSource(info.gid) { cardModifier, contentModifier, coverModifier ->
         CrystalCard(
             modifier = modifier.then(cardModifier),
             onClick = onClick,
@@ -88,11 +88,12 @@ fun DownloadCard(
                 }
             }
             if (selectMode) {
-                Card {
+                Card(modifier = coverModifier) {
                     thumb(info)
                 }
             } else {
                 Card(
+                    modifier = coverModifier,
                     onClick = {
                         CardFlight.start(info.gid, pageEntry)
                         onThumbClick()

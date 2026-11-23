@@ -84,14 +84,17 @@ fun GalleryDetailHeaderCard(
     onBlockUploaderIconClick: () -> Unit,
     onCategoryChipClick: () -> Unit,
     modifier: Modifier = Modifier,
+    coverFlightActive: Boolean = false,
 ) = ElevatedCard(modifier = modifier) {
     Row(modifier = Modifier.cardFlightHeaderContent()) {
         EhThumbCard(
             key = remember(info.gid) { info },
-            modifier = Modifier.size(
-                dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_width),
-                dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_height),
-            ),
+            modifier = Modifier
+                .cardFlightHeaderCover(info.gid, active = coverFlightActive)
+                .size(
+                    dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_width),
+                    dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_height),
+                ),
         )
         Spacer(modifier = Modifier.weight(0.5F))
         Column(

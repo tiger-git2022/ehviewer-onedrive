@@ -65,7 +65,7 @@ fun GalleryInfoListItem(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     val pageEntry = currentPageEntry()
-    CardFlightSource(info.gid) { cardModifier, contentModifier ->
+    CardFlightSource(info.gid) { cardModifier, contentModifier, coverModifier ->
         CrystalCard(
             modifier = modifier.then(cardModifier),
             onClick = {
@@ -78,7 +78,7 @@ fun GalleryInfoListItem(
             Row(modifier = contentModifier) {
                 EhThumbCard(
                     key = info,
-                    modifier = Modifier.aspectRatio(DEFAULT_RATIO),
+                    modifier = coverModifier.aspectRatio(DEFAULT_RATIO),
                 )
                 Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
             // Fork: the title takes up to three lines and the space left; the rating, the uploader, the favorite, the
@@ -224,7 +224,7 @@ fun GalleryInfoGridItem(
     pages: Int = info.pages,
 ) {
     val pageEntry = currentPageEntry()
-    CardFlightSource(info.gid) { cardModifier, contentModifier ->
+    CardFlightSource(info.gid) { cardModifier, contentModifier, coverModifier ->
         ElevatedCard(
             modifier = modifier.then(cardModifier),
             onClick = {
@@ -238,7 +238,7 @@ fun GalleryInfoGridItem(
             interactionSource = interactionSource,
         ) {
             Box(modifier = contentModifier) {
-                Box(modifier = Modifier.clip(ShapeDefaults.Medium)) {
+                Box(modifier = coverModifier.clip(ShapeDefaults.Medium)) {
                 var ratio by remember(info) {
                     val ratio = if (info.thumbHeight != 0) {
                         (info.thumbWidth.toFloat() / info.thumbHeight).coerceIn(MIN_RATIO, MAX_RATIO)

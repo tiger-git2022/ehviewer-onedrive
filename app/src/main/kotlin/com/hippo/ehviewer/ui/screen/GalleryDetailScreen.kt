@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -95,13 +96,14 @@ import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.WnacgCheck
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.main.CardFlight
-import com.hippo.ehviewer.ui.main.CardFlightTopBarContainer
+import com.hippo.ehviewer.ui.main.CardFlightTopBarAnchor
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.cardFlightTopBarContentFade
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
@@ -281,6 +283,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     // Fork: the bottom of the top bar in the window, for the glass overflow menu to open below it, see BarActions
     var barBottom by remember { mutableFloatStateOf(0f) }
+    var barHeightPx by remember { mutableIntStateOf(0) }
     // Fork: fresh links for previews that fail to load and "Refresh previews", see PreviewRefetcher
     val previewRefetcher = (galleryInfo as? GalleryDetail)?.takeIf { it.previewList.isNotEmpty() && !it.isWnacg }?.let { detail ->
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
@@ -292,17 +295,22 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val headerFlightVisible by remember(gridState, headerCutoffPx) {
         derivedStateOf { gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < headerCutoffPx }
     }
+    val topBarFlightActive = !headerFlightVisible && barHeightPx > 0
     val detailEntry = currentPageEntry()
     LaunchedEffect(detailEntry, headerFlightVisible) {
         CardFlight.setDetailHeaderVisible(detailEntry, headerFlightVisible)
     }
-    Scaffold(
-        topBar = {
-            CardFlightTopBarContainer(gid = gid, active = !headerFlightVisible) { topBarContentModifier ->
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
                 MediumFlexibleTopAppBar(
                     // Fork: only its bottom edge shows, the top and the sides melt into the screen
-                    modifier = topBarContentModifier
-                        .onGloballyPositioned { barBottom = it.boundsInWindow().bottom }
+                    modifier = Modifier
+                        .onGloballyPositioned {
+                            barBottom = it.boundsInWindow().bottom
+                            barHeightPx = it.size.height
+                        }
+                        .cardFlightTopBarContentFade(gid = gid, active = topBarFlightActive)
                         .edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 // Fork: over the glass, the buttons in the color of the title, white at night and black by day: the paler
                 // color of the Material buttons got lost over the pages showing through
@@ -479,7 +487,6 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     )
                 },
             )
-            }
         },
     ) {
         val gi = galleryInfo
@@ -528,6 +535,14 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 ShapeLoadingIndicator()
             }
         }
+    }
+        // Outside Scaffold's SubcomposeLayout so sharedBounds measures the exact full-width top bar rect
+        CardFlightTopBarAnchor(
+            gid = gid,
+            active = topBarFlightActive,
+            heightPx = barHeightPx,
+            modifier = Modifier.align(Alignment.TopStart),
+        )
     }
 }
 
