@@ -137,6 +137,7 @@ import com.hippo.ehviewer.ui.getFavoriteIcon
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
 import com.hippo.ehviewer.ui.main.ArchiveList
+import com.hippo.ehviewer.ui.main.CardFlight
 import com.hippo.ehviewer.ui.main.EhPreviewItem
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
@@ -297,10 +298,15 @@ fun GalleryDetailContent(
 
     // Fork: a gallery restored from PandaChika has no previews
     val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
-    // Fork: in header-card transition mode, only morph the top header card back when it is still mostly visible
+    // Fork: in header-card transition mode, morph the top header card back when visible; once scrolled away, hand off
+    // to CardFlightDetailContainer so returning from comments/previews collapses back via the glass capsule
     val headerCutoffPx = with(LocalDensity.current) { 100.dp.roundToPx() }
     val headerFlightVisible by remember(state, headerCutoffPx) {
         derivedStateOf { state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset < headerCutoffPx }
+    }
+    val detailEntry = currentPageEntry()
+    LaunchedEffect(detailEntry, headerFlightVisible) {
+        CardFlight.setDetailHeaderVisible(detailEntry, headerFlightVisible)
     }
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(

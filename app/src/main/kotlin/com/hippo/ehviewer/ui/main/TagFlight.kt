@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,20 +23,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavBackStackEntry
+import com.ehviewer.core.ui.component.GlassStyle
+import com.ehviewer.core.ui.component.floatingGlass
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.collectAsState
+import com.hippo.ehviewer.ui.DARK_GLASS_EDGE
 import com.hippo.ehviewer.ui.LocalSharedTransitionScope
+import com.hippo.ehviewer.ui.rememberLiquidGlass
 import com.hippo.ehviewer.ui.screen.searchTagParts
+import com.kyant.backdrop.backdrops.LayerBackdrop
 
 /** Fork: the page's own enter and exit, given by Screen, for the shared elements between pages. */
 val LocalPageVisibility = compositionLocalOf<AnimatedVisibilityScope?> { null }
@@ -186,10 +196,37 @@ fun Modifier.queryFlight(query: String, claim: Boolean = false): Modifier {
 object CardFlight {
     private const val MAX_ENTRIES = 16
 
-    private data class Entry(val gid: Long, val from: String, var to: String? = null)
+    private class Entry(val gid: Long, val from: String, var to: String? = null) {
+        var headerVisible by mutableStateOf(true)
+    }
 
     // SnapshotStateList so the tapped card attaches its sharedBounds immediately before leaving
     private val entries = mutableStateListOf<Entry>()
+
+    // Live LayerBackdrop per active screen entry (updated by Screen in ComposeDefault.kt on compose & popEnter)
+    private val pageBackdrops = mutableStateMapOf<String, LayerBackdrop?>()
+
+    // Exact active List <-> Detail transition pair set by rememberEhNavAnim before frame 0 (eliminates isMatchFound delay)
+    private var activeFrom by mutableStateOf<String?>(null)
+    private var activeTo by mutableStateOf<String?>(null)
+
+    /** Registers the current live [LayerBackdrop] for screen [entry] so the glass capsule can refract it cleanly. */
+    fun registerPageBackdrop(entry: String?, backdrop: LayerBackdrop?) {
+        if (entry == null) return
+        if (backdrop != null) {
+            pageBackdrops[entry] = backdrop
+        } else {
+            pageBackdrops.remove(entry)
+        }
+    }
+
+    /** Unregisters [backdrop] when screen [entry] leaves composition. */
+    fun unregisterPageBackdrop(entry: String?, backdrop: LayerBackdrop?) {
+        if (entry == null) return
+        if (pageBackdrops[entry] === backdrop) {
+            pageBackdrops.remove(entry)
+        }
+    }
 
     /** Records that [gid] on page [fromEntry] was tapped to open its detail page. */
     fun start(gid: Long, fromEntry: String?) {
@@ -197,6 +234,15 @@ object CardFlight {
         entries.removeAll { it.from == fromEntry }
         entries.add(Entry(gid = gid, from = fromEntry))
         while (entries.size > MAX_ENTRIES) entries.removeAt(0)
+    }
+
+    /** Updates whether the top header card on detail page [detailEntry] is still visible (for hybrid return in Mode 1). */
+    fun setDetailHeaderVisible(detailEntry: String?, visible: Boolean) {
+        if (detailEntry == null) return
+        val entry = entries.lastOrNull { it.to == detailEntry } ?: return
+        if (entry.headerVisible != visible) {
+            entry.headerVisible = visible
+        }
     }
 
     /**
@@ -217,13 +263,76 @@ object CardFlight {
     }
 
     /**
-     * Whether navigation between list page [fromId] and detail page [toId] is a card container transform (used by
-     * [com.hippo.ehviewer.ui.rememberEhNavAnim] to keep the list solid underneath instead of sliding/fading away).
+     * Marks [fromId] <-> [toId] as the active card flight when navigating between a list page and its detail page.
+     * Called synchronously by [com.hippo.ehviewer.ui.rememberEhNavAnim] before frame 0 so both source and target know
+     * immediately whether to run their flight crossfades without waiting for [SharedContentState.isMatchFound].
      */
-    fun isCardTransition(fromId: String, toId: String): Boolean {
+    fun prepareTransition(fromId: String, toId: String): Boolean {
+        val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) }
+        if (match == null) {
+            clearActiveTransition()
+            return false
+        }
+        if (match.to == null) match.to = toId
+        if (activeFrom != fromId || activeTo != toId) {
+            activeFrom = fromId
+            activeTo = toId
+        }
+        return true
+    }
+
+    /** Clears the active card-flight pair for non-card transitions (e.g. Detail <-> SimilarList or Settings). */
+    fun clearActiveTransition() {
+        if (activeFrom != null || activeTo != null) {
+            activeFrom = null
+            activeTo = null
+        }
+    }
+
+    /**
+     * Whether navigation between list page [fromId] and detail page [toId] should use the full-screen glass capsule
+     * container transform (always in Mode 0, and on return in Mode 1 once the top header card has scrolled away).
+     */
+    fun isCapsuleTransition(fromId: String, toId: String, mode: Int): Boolean {
         val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) } ?: return false
         if (match.to == null) match.to = toId
-        return true
+        return mode == DETAIL_TRANSITION_CAPSULE || !match.headerVisible
+    }
+
+    /** Whether card [gid] on [fromEntry] is the active card participating in the current List <-> Detail transition. */
+    fun isActiveSource(gid: Long, fromEntry: String?): Boolean {
+        if (fromEntry == null || activeFrom != fromEntry) return false
+        val to = activeTo ?: return false
+        return entries.lastOrNull { it.from == fromEntry && it.to == to }?.gid == gid
+    }
+
+    /** Whether detail page [detailEntry] of [gid] is participating in the current List <-> Detail transition. */
+    fun isActiveDetail(gid: Long, detailEntry: String?): Boolean {
+        if (detailEntry == null || activeTo != detailEntry) return false
+        val from = activeFrom ?: return false
+        return entries.lastOrNull { it.from == from && it.to == detailEntry }?.gid == gid
+    }
+
+    /** Whether source card [gid] on [fromEntry] should animate as a glass capsule (Mode 0, or scrolled-down Mode 1). */
+    fun useCapsuleForSource(mode: Int, fromEntry: String?, gid: Long): Boolean {
+        if (mode == DETAIL_TRANSITION_CAPSULE) return true
+        if (fromEntry == null) return false
+        val entry = entries.lastOrNull { it.from == fromEntry && it.gid == gid } ?: return false
+        return !entry.headerVisible
+    }
+
+    /** Whether detail page [detailEntry] of [gid] should animate as a glass capsule (Mode 0, or scrolled-down Mode 1). */
+    fun useCapsuleForDetail(mode: Int, detailEntry: String?, gid: Long): Boolean {
+        if (detailEntry == null) return false
+        val entry = entries.lastOrNull { it.to == detailEntry && it.gid == gid } ?: return false
+        return mode == DETAIL_TRANSITION_CAPSULE || !entry.headerVisible
+    }
+
+    /** Returns the live [LayerBackdrop] of the list page that opened [detailEntry], or null if unavailable. */
+    fun sourceBackdropFor(detailEntry: String?, gid: Long): LayerBackdrop? {
+        if (detailEntry == null) return null
+        val entry = entries.lastOrNull { it.to == detailEntry && it.gid == gid } ?: return null
+        return pageBackdrops[entry.from]
     }
 
     private fun keyOf(from: String, gid: Long) = "card-flight:$from:$gid"
@@ -231,9 +340,10 @@ object CardFlight {
 
 /**
  * Source wrapper for a gallery card in a list/grid/download screen supporting both transition modes:
- * - [DETAIL_TRANSITION_CAPSULE]: card content fades out immediately into a clean empty rounded capsule that expands its
- *   4 edges to full screen (no text/image scaling), and fades back in only near the end of return.
- * - [DETAIL_TRANSITION_HEADER_CARD]: list card morphs directly into [GalleryDetailHeaderCard] at the top of detail.
+ * - [DETAIL_TRANSITION_CAPSULE]: card dissolves swiftly into a translucent Liquid Glass capsule that expands its 4
+ *   edges to full screen, and fades cleanly back in on top of the landing glass capsule on return.
+ * - [DETAIL_TRANSITION_HEADER_CARD]: list card morphs directly into [GalleryDetailHeaderCard] at the top of detail,
+ *   and automatically switches to the Liquid Glass capsule return once the user has scrolled past the header card.
  */
 @Composable
 fun CardFlightSource(
@@ -242,7 +352,8 @@ fun CardFlightSource(
 ) {
     val mode by Settings.detailTransitionMode.collectAsState()
     val visibility = LocalPageVisibility.current
-    val key = CardFlight.sourceKey(gid, currentPageEntry())
+    val pageEntry = currentPageEntry()
+    val key = CardFlight.sourceKey(gid, pageEntry)
     if (visibility == null || key == null) {
         content(Modifier, Modifier)
         return
@@ -250,63 +361,36 @@ fun CardFlightSource(
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
     with(shared) {
         val sharedState = rememberSharedContentState(key)
-        val transitionTarget = visibility.transition.targetState
-        var matched by remember(transitionTarget, mode) { mutableStateOf(false) }
-        if (sharedState.isMatchFound) matched = true
-        if (mode == DETAIL_TRANSITION_CAPSULE) {
-            val contentAlpha by visibility.transition.animateFloat(
-                transitionSpec = {
-                    if (targetState == EnterExitState.Visible) {
-                        tween(
-                            durationMillis = CapsuleContentEnterMillis,
-                            delayMillis = CapsuleContentEnterDelayMillis,
-                            easing = LinearOutSlowInEasing,
-                        )
-                    } else {
-                        tween(
-                            durationMillis = CapsuleContentExitMillis,
-                            easing = FastOutLinearInEasing,
-                        )
-                    }
-                },
-                label = "cardCapsuleSourceAlpha",
-            ) { state ->
-                if (state == EnterExitState.Visible) 1f else 0f
-            }
-            val cardModifier = Modifier.sharedBounds(
-                sharedContentState = sharedState,
-                animatedVisibilityScope = visibility,
-                enter = EnterTransition.None,
-                exit = ExitTransition.None,
-                boundsTransform = CapsuleFlightBoundsTransform,
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
-            )
-            val contentModifier = Modifier
-                .skipToLookaheadSize()
-                .graphicsLayer {
-                    if (matched) alpha = contentAlpha
-                }
-            content(cardModifier, contentModifier)
-        } else {
-            val cardModifier = Modifier.sharedBounds(
-                sharedContentState = sharedState,
-                animatedVisibilityScope = visibility,
-                enter = if (matched) HeaderCardEnter else EnterTransition.None,
-                exit = if (matched) HeaderCardExit else ExitTransition.None,
-                boundsTransform = HeaderCardBoundsTransform,
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
-            )
-            content(cardModifier, Modifier.skipToLookaheadSize())
+        val active = CardFlight.isActiveSource(gid, pageEntry)
+        val useCapsule = CardFlight.useCapsuleForSource(mode, pageEntry, gid)
+        val enter = when {
+            !active -> EnterTransition.None
+            useCapsule -> CapsuleSourceEnter
+            else -> HeaderCardEnter
         }
+        val exit = when {
+            !active -> ExitTransition.None
+            useCapsule -> CapsuleSourceExit
+            else -> HeaderCardExit
+        }
+        val cardModifier = Modifier.sharedBounds(
+            sharedContentState = sharedState,
+            animatedVisibilityScope = visibility,
+            enter = enter,
+            exit = exit,
+            boundsTransform = if (useCapsule) CapsuleFlightBoundsTransform else HeaderCardBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            zIndexInOverlay = if (active && useCapsule) 0.5f else 0f,
+            clipInOverlayDuringTransition = OverlayClip(if (useCapsule) CapsuleFlightShape else HeaderCardShape),
+        )
+        content(cardModifier, Modifier.skipToLookaheadSize())
     }
 }
 
 /**
- * Full-screen detail container for [DETAIL_TRANSITION_CAPSULE]: renders a clean empty rounded capsule while expanding
- * from / collapsing into the originating card, keeping the full-size [Scaffold] unscaled and fading its content in only
- * near the end of expansion (and fading it out immediately on return from any scroll position).
+ * Full-screen detail container for the Liquid Glass capsule transition (always in [DETAIL_TRANSITION_CAPSULE], and on
+ * return in [DETAIL_TRANSITION_HEADER_CARD] once scrolled past the top header card). Always keeps the same outer [Box]
+ * around [content] so switching [useCapsule] during scrolling never recreates [Scaffold] or resets scroll state.
  */
 @Composable
 fun CardFlightDetailContainer(
@@ -315,18 +399,16 @@ fun CardFlightDetailContainer(
 ) {
     val mode by Settings.detailTransitionMode.collectAsState()
     val visibility = LocalPageVisibility.current
-    val key = if (mode == DETAIL_TRANSITION_CAPSULE) CardFlight.targetKey(gid, currentPageEntry()) else null
+    val detailEntry = currentPageEntry()
+    val key = CardFlight.targetKey(gid, detailEntry)
     if (visibility == null || key == null) {
         content(Modifier)
         return
     }
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
-    val capsuleColor = MaterialTheme.colorScheme.surfaceContainer
+    val useCapsule = CardFlight.useCapsuleForDetail(mode, detailEntry, gid)
+    val active = CardFlight.isActiveDetail(gid, detailEntry)
     with(shared) {
-        val sharedState = rememberSharedContentState(key)
-        val transitionTarget = visibility.transition.targetState
-        var matched by remember(transitionTarget) { mutableStateOf(false) }
-        if (sharedState.isMatchFound) matched = true
         val contentAlpha by visibility.transition.animateFloat(
             transitionSpec = {
                 if (targetState == EnterExitState.Visible) {
@@ -346,35 +428,93 @@ fun CardFlightDetailContainer(
         ) { state ->
             if (state == EnterExitState.Visible) 1f else 0f
         }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .sharedBounds(
-                    sharedContentState = sharedState,
-                    animatedVisibilityScope = visibility,
-                    enter = EnterTransition.None,
-                    exit = ExitTransition.None,
-                    boundsTransform = CapsuleFlightBoundsTransform,
-                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                    clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
+        val capsuleAlpha by visibility.transition.animateFloat(
+            transitionSpec = {
+                if (targetState == EnterExitState.Visible) {
+                    tween(
+                        durationMillis = CapsuleGlassFadeOutMillis,
+                        delayMillis = CapsuleGlassHoldMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                } else {
+                    tween(
+                        durationMillis = CapsuleGlassFadeInMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                }
+            },
+            label = "cardCapsuleGlassAlpha",
+        ) { state ->
+            if (state == EnterExitState.Visible) 0f else 1f
+        }
+        val boundsModifier = if (useCapsule) {
+            Modifier.sharedBounds(
+                sharedContentState = rememberSharedContentState(key),
+                animatedVisibilityScope = visibility,
+                enter = EnterTransition.None,
+                exit = ExitTransition.None,
+                boundsTransform = CapsuleFlightBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
+            )
+        } else {
+            Modifier
+        }
+        Box(modifier = Modifier.fillMaxSize().then(boundsModifier)) {
+            if (useCapsule && active && capsuleAlpha > 0f) {
+                val sourceBackdrop = CardFlight.sourceBackdropFor(detailEntry, gid)
+                val glass = rememberLiquidGlass(sourceBackdrop)
+                val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val glassTint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+                    alpha = if (dark) CapsuleDarkGlassTint else CapsuleLightGlassTint,
                 )
-                .drawBehind {
-                    if (matched && contentAlpha < 1f) {
+                val sheenTop = Color.White.copy(alpha = if (dark) 0.14f else 0.36f)
+                val sheenMid = Color.White.copy(alpha = if (dark) 0.03f else 0.08f)
+                val sheenBottom = Color.White.copy(alpha = if (dark) 0.08f else 0.22f)
+                val borderColor = if (dark) {
+                    Color.White.copy(alpha = if (glass != null) 0.20f else DARK_GLASS_EDGE)
+                } else {
+                    Color.White.copy(alpha = if (glass != null) 0.50f else 0.72f)
+                }
+                val fallbackFill = if (dark) {
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.84f)
+                }
+                val surfaceModifier = if (glass != null) {
+                    Modifier.floatingGlass(glass, CapsuleFlightShape, glassTint, GlassStyle.Panel)
+                } else {
+                    Modifier.drawBehind {
                         drawRoundRect(
-                            color = capsuleColor,
+                            color = fallbackFill,
                             cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
                         )
                     }
-                },
-        ) {
-            content(
+                }
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer { alpha = capsuleAlpha }
+                        .then(surfaceModifier)
+                        .drawBehind {
+                            // Subtle specular highlight sheen so the capsule reads as luminous glass even over AMOLED black
+                            drawRoundRect(
+                                brush = Brush.verticalGradient(listOf(sheenTop, sheenMid, sheenBottom)),
+                                cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
+                            )
+                        }
+                        .border(1.dp, borderColor, CapsuleFlightShape),
+                )
+            }
+            val contentModifier = if (useCapsule && active) {
                 Modifier
                     .fillMaxSize()
                     .skipToLookaheadSize()
-                    .graphicsLayer {
-                        if (matched) alpha = contentAlpha
-                    },
-            )
+                    .graphicsLayer { alpha = contentAlpha }
+            } else {
+                Modifier.fillMaxSize()
+            }
+            content(contentModifier)
         }
     }
 }
@@ -389,16 +529,17 @@ fun Modifier.cardFlightHeaderTarget(gid: Long, active: Boolean): Modifier {
     val mode by Settings.detailTransitionMode.collectAsState()
     if (mode != DETAIL_TRANSITION_HEADER_CARD) return this
     val visibility = LocalPageVisibility.current ?: return this
-    val key = CardFlight.targetKey(gid, currentPageEntry()) ?: return this
+    val detailEntry = currentPageEntry()
+    val key = CardFlight.targetKey(gid, detailEntry) ?: return this
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val flightActive = CardFlight.isActiveDetail(gid, detailEntry)
     return with(shared) {
         val sharedState = rememberSharedContentState(key)
-        val matched = sharedState.isMatchFound
         this@cardFlightHeaderTarget.sharedBounds(
             sharedContentState = sharedState,
             animatedVisibilityScope = visibility,
-            enter = if (matched) HeaderCardEnter else EnterTransition.None,
-            exit = if (matched) HeaderCardExit else ExitTransition.None,
+            enter = if (flightActive) HeaderCardEnter else EnterTransition.None,
+            exit = if (flightActive) HeaderCardExit else ExitTransition.None,
             boundsTransform = HeaderCardBoundsTransform,
             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
@@ -438,26 +579,44 @@ const val CardFlightDurationMillis = 380
 private const val CapsuleContentExitMillis = 55
 private const val CapsuleContentEnterDelayMillis = 230
 private const val CapsuleContentEnterMillis = 150
+private const val CapsuleGlassFadeInMillis = 35
+private const val CapsuleGlassHoldMillis = 250
+private const val CapsuleGlassFadeOutMillis = 130
+private const val CapsuleDarkGlassTint = 0.24f
+private const val CapsuleLightGlassTint = 0.34f
 private val CapsuleCornerRadius = 28.dp
 private val CapsuleFlightShape = RoundedCornerShape(CapsuleCornerRadius)
+private val CapsuleSourceEnter = fadeIn(
+    tween(
+        durationMillis = CapsuleContentEnterMillis,
+        delayMillis = CapsuleContentEnterDelayMillis,
+        easing = LinearOutSlowInEasing,
+    ),
+)
+private val CapsuleSourceExit = fadeOut(
+    tween(
+        durationMillis = CapsuleContentExitMillis,
+        easing = FastOutLinearInEasing,
+    ),
+)
 private val CapsuleFlightBoundsTransform = BoundsTransform { _, _ ->
     tween(durationMillis = CardFlightDurationMillis, easing = FastOutSlowInEasing)
 }
 
 private const val HeaderCardDurationMillis = 380
-private const val HeaderCardExitMillis = 150
-private const val HeaderCardEnterDelayMillis = 80
-private const val HeaderCardEnterMillis = 220
+private const val HeaderCardEnterMillis = 200
+private const val HeaderCardExitDelayMillis = 80
+private const val HeaderCardExitMillis = 180
 private val HeaderCardEnter = fadeIn(
     tween(
         durationMillis = HeaderCardEnterMillis,
-        delayMillis = HeaderCardEnterDelayMillis,
         easing = LinearOutSlowInEasing,
     ),
 )
 private val HeaderCardExit = fadeOut(
     tween(
         durationMillis = HeaderCardExitMillis,
+        delayMillis = HeaderCardExitDelayMillis,
         easing = FastOutLinearInEasing,
     ),
 )
