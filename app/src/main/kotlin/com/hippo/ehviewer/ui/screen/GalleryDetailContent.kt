@@ -146,7 +146,6 @@ import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
 import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
-import com.hippo.ehviewer.ui.main.commentFlightButtonSource
 import com.hippo.ehviewer.ui.main.commentFlightCardSource
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
@@ -548,7 +547,6 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v))
-                    .commentFlightButtonSource(galleryDetail.gid)
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(onClick = ::navigateToCommentScreen),
                 contentAlignment = Alignment.Center,

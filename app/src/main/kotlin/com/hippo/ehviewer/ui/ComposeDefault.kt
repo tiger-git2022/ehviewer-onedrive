@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -16,9 +15,7 @@ import com.ehviewer.core.ui.component.LocalFabGlass
 import com.ehviewer.core.ui.util.NoopTransitionsVisibilityScope
 import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.ehviewer.core.ui.util.togetherWith
-import com.hippo.ehviewer.ui.main.CardFlight
 import com.hippo.ehviewer.ui.main.LocalPageVisibility
-import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.LocalGlobalDialogState
 import com.hippo.ehviewer.util.findActivity
@@ -37,11 +34,6 @@ inline fun <R> Screen(
     val dialogState = with(LocalGlobalDialogState.current) { rememberLocal() }
     // Fork: liquid glass refracting the list of the page, see LiquidGlass.kt
     val backdrop = rememberGlassBackdrop()
-    val pageEntry = currentPageEntry()
-    DisposableEffect(pageEntry, backdrop) {
-        CardFlight.registerPageBackdrop(pageEntry, backdrop)
-        onDispose { CardFlight.unregisterPageBackdrop(pageEntry, backdrop) }
-    }
     // Fork: the page's enter and exit for the tag flying between pages, see TagFlight
     CompositionLocalProvider(LocalPageBackdrop provides backdrop, LocalFabGlass provides rememberLiquidGlass(backdrop), LocalPageVisibility provides scope) {
         with(NoopTransitionsVisibilityScope) {

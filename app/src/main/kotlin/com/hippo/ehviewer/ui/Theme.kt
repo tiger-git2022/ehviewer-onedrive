@@ -19,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavBackStackEntry
 import com.ehviewer.core.ui.util.ProvideVectorPainterCache
-import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.ui.destinations.GalleryCommentsScreenDestination
 import com.hippo.ehviewer.ui.destinations.GalleryDetailScreenDestination
 import com.hippo.ehviewer.ui.main.CardFlight
@@ -27,6 +26,7 @@ import com.hippo.ehviewer.ui.main.CardFlightDetailFadeInMillis
 import com.hippo.ehviewer.ui.main.CardFlightDetailPopFadeEasing
 import com.hippo.ehviewer.ui.main.CardFlightDurationMillis
 import com.hippo.ehviewer.ui.main.CommentFlight
+import com.hippo.ehviewer.ui.main.CommentFlightDurationMillis
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.LocalGlobalDialogState
@@ -91,7 +91,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
                     isCard -> fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.88f)
-                    isComment -> fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.85f)
+                    isComment -> fadeOut(tween(durationMillis = CommentFlightDurationMillis), targetAlpha = 0.88f)
                     else -> materialSharedAxisXOut(true, slideDistance)
                 }
             }
@@ -104,7 +104,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
                     isCard -> fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.88f)
-                    isComment -> fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.85f)
+                    isComment -> fadeIn(tween(durationMillis = CommentFlightDurationMillis), initialAlpha = 0.88f)
                     else -> materialSharedAxisXIn(false, slideDistance)
                 }
             }
@@ -117,9 +117,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
                     isCard -> fadeOut(tween(durationMillis = CardFlightDurationMillis, easing = CardFlightDetailPopFadeEasing))
-                    isComment && CommentFlight.usesTopBarReturn(targetState.id, initialState.id, Settings.commentTransitionMode.value) ->
-                        fadeOut(tween(durationMillis = CardFlightDurationMillis, easing = CardFlightDetailPopFadeEasing))
-                    isComment -> fadeOut(tween(durationMillis = 1, delayMillis = CardFlightDurationMillis))
+                    isComment -> fadeOut(tween(durationMillis = 1, delayMillis = CommentFlightDurationMillis))
                     else -> materialSharedAxisXOut(false, slideDistance)
                 }
             }

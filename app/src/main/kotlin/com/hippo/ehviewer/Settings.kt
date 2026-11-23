@@ -109,9 +109,6 @@ object Settings : DataStorePreferences(null) {
     // Fork: the floating parts as liquid glass, see ui/LiquidGlass.kt
     val liquidGlass = boolPref("liquid_glass", false)
 
-    // Fork: gallery comments transition style: 0 = expand comment card (top bar capsule when scrolled), 1 = button glass capsule expand & top bar capsule return
-    val commentTransitionMode = intPref("comment_transition_mode", 0)
-
     // Fork: the blur (in tenths of a dp) and the tint (in percent) of the drawers and the dialogs over liquid glass
     val sheetGlassBlur = intPref("sheet_glass_blur", 25)
     val sheetGlassTint = intPref("sheet_glass_tint", 40)
