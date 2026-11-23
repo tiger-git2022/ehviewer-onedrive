@@ -18,7 +18,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -261,6 +264,9 @@ object CardFlight {
      */
     fun sourceKey(gid: Long, entry: String?): String? = entry?.let { keyOf(it, gid) }
 
+    /** Page-scoped shared-element key for the gallery cover image on list page [entry]. */
+    fun sourceCoverKey(gid: Long, entry: String?): String? = entry?.let { coverKeyOf(it, gid) }
+
     /** Claims/returns the shared key for [GalleryDetailScreen] of [gid] on page [entry], or null if opened elsewhere. */
     fun targetKey(gid: Long, entry: String?): String? {
         if (entry == null) return null
@@ -269,6 +275,16 @@ object CardFlight {
         val pending = entries.lastOrNull { it.to == null && it.gid == gid } ?: return null
         pending.to = entry
         return keyOf(pending.from, pending.gid)
+    }
+
+    /** Claims/returns the page-scoped cover shared-element key for [GalleryDetailScreen] of [gid] on page [entry]. */
+    fun targetCoverKey(gid: Long, entry: String?): String? {
+        if (entry == null) return null
+        val existing = entries.lastOrNull { it.to == entry && it.gid == gid }
+        if (existing != null) return coverKeyOf(existing.from, existing.gid)
+        val pending = entries.lastOrNull { it.to == null && it.gid == gid } ?: return null
+        pending.to = entry
+        return coverKeyOf(pending.from, pending.gid)
     }
 
     /**
@@ -330,25 +346,29 @@ object CardFlight {
     }
 
     private fun keyOf(from: String, gid: Long) = "card-flight:$from:$gid"
+
+    private fun coverKeyOf(from: String, gid: Long) = "card-cover:$from:$gid"
 }
 
 /**
  * Source wrapper for a gallery card in a list/grid/download screen:
  * - Morphs directly into [GalleryDetailHeaderCard] at the top of detail on enter (horizontal-lead arc) and morphs
- *   back along the exact reversed path (vertical-lead arc) when returning near the top.
+ *   back along the exact reversed path (vertical-lead arc) when returning near the top. Its cover image flies as a
+ *   synchronized [sharedElement] above the card so the full cover scales smoothly without clipping.
  * - Once the user scrolls past the header card, receives the Liquid Glass capsule morphing back from the detail
  *   screen's glass top app bar.
  */
 @Composable
 fun CardFlightSource(
     gid: Long,
-    content: @Composable (cardModifier: Modifier, contentModifier: Modifier) -> Unit,
+    content: @Composable (cardModifier: Modifier, contentModifier: Modifier, coverModifier: Modifier) -> Unit,
 ) {
     val visibility = LocalPageVisibility.current
     val pageEntry = currentPageEntry()
     val key = CardFlight.sourceKey(gid, pageEntry)
-    if (visibility == null || key == null) {
-        content(Modifier, Modifier)
+    val coverKey = CardFlight.sourceCoverKey(gid, pageEntry)
+    if (visibility == null || key == null || coverKey == null) {
+        content(Modifier, Modifier, Modifier)
         return
     }
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
@@ -376,47 +396,71 @@ fun CardFlightSource(
             zIndexInOverlay = if (active && useCapsule) 0.5f else 0f,
             clipInOverlayDuringTransition = OverlayClip(if (useCapsule) CapsuleFlightShape else HeaderCardShape),
         )
-        content(cardModifier, Modifier.skipToLookaheadSize())
+        val coverModifier = if (!useCapsule) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(coverKey),
+                animatedVisibilityScope = visibility,
+                boundsTransform = HeaderCardBoundsTransform,
+                zIndexInOverlay = 1f,
+                clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
+            )
+        } else {
+            Modifier
+        }
+        content(cardModifier, Modifier.skipToLookaheadSize(), coverModifier)
     }
 }
 
 /**
- * Wrapper around the gallery detail screen's glass top app bar. When [active] (the user has scrolled past the top
- * header card so the top bar is in its glass state), returning to the originating list morphs the glass top bar into
- * a floating Liquid Glass capsule that refracts the revealed list page and lands back into the originating card.
- * Keeps the outer [Box] stable so toggling [active] during scrolling never recreates the top bar.
+ * Fades out the real [MediumFlexibleTopAppBar] swiftly when returning from a scrolled-down detail screen so
+ * [CardFlightTopBarAnchor] (placed outside [Scaffold]'s [SubcomposeLayout]) can cleanly take over as the floating
+ * Liquid Glass capsule.
  */
 @Composable
-fun CardFlightTopBarContainer(
+fun Modifier.cardFlightTopBarContentFade(gid: Long, active: Boolean): Modifier {
+    if (!active) return this
+    val visibility = LocalPageVisibility.current ?: return this
+    val detailEntry = currentPageEntry()
+    if (!CardFlight.isActiveDetail(gid, detailEntry)) return this
+    val contentAlpha by visibility.transition.animateFloat(
+        transitionSpec = {
+            if (targetState == EnterExitState.Visible) {
+                tween(durationMillis = 1)
+            } else {
+                tween(
+                    durationMillis = CapsuleContentExitMillis,
+                    easing = FastOutLinearInEasing,
+                )
+            }
+        },
+        label = "cardTopBarContentAlpha",
+    ) { state ->
+        if (state == EnterExitState.Visible) 1f else 0f
+    }
+    return this.graphicsLayer { alpha = contentAlpha }
+}
+
+/**
+ * Top-bar capsule anchor placed outside [Scaffold] (avoiding [Scaffold]'s internal [SubcomposeLayout], which would
+ * otherwise report `(0, 0)` lookahead bounds and make the capsule fly from the top-left corner). Matches the exact
+ * full-width top bar rectangle `(0, 0, width, heightPx)` and morphs into a Liquid Glass capsule refracting the
+ * revealed list page on return.
+ */
+@Composable
+fun CardFlightTopBarAnchor(
     gid: Long,
     active: Boolean,
-    content: @Composable (contentModifier: Modifier) -> Unit,
+    heightPx: Int,
+    modifier: Modifier = Modifier,
 ) {
-    val visibility = LocalPageVisibility.current
+    if (!active || heightPx <= 0) return
+    val visibility = LocalPageVisibility.current ?: return
     val detailEntry = currentPageEntry()
-    val key = CardFlight.targetKey(gid, detailEntry)
-    if (visibility == null || key == null) {
-        content(Modifier)
-        return
-    }
+    val key = CardFlight.targetKey(gid, detailEntry) ?: return
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
     val flightActive = CardFlight.isActiveDetail(gid, detailEntry)
+    val heightDp = with(LocalDensity.current) { heightPx.toDp() }
     with(shared) {
-        val contentAlpha by visibility.transition.animateFloat(
-            transitionSpec = {
-                if (targetState == EnterExitState.Visible) {
-                    tween(durationMillis = 1)
-                } else {
-                    tween(
-                        durationMillis = CapsuleContentExitMillis,
-                        easing = FastOutLinearInEasing,
-                    )
-                }
-            },
-            label = "cardTopBarContentAlpha",
-        ) { state ->
-            if (state == EnterExitState.Visible) 1f else 0f
-        }
         val capsuleAlpha by visibility.transition.animateFloat(
             transitionSpec = {
                 if (targetState == EnterExitState.Visible) {
@@ -432,29 +476,21 @@ fun CardFlightTopBarContainer(
         ) { state ->
             if (state == EnterExitState.Visible) 0f else 1f
         }
-        val boundsModifier = if (active) {
-            Modifier.sharedBounds(
-                sharedContentState = rememberSharedContentState(key),
-                animatedVisibilityScope = visibility,
-                enter = EnterTransition.None,
-                exit = ExitTransition.None,
-                boundsTransform = CapsuleFlightBoundsTransform,
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
-            )
-        } else {
-            Modifier
-        }
-        Box(modifier = Modifier.fillMaxWidth().then(boundsModifier)) {
-            val topBarModifier = if (active && flightActive) {
-                Modifier
-                    .skipToLookaheadSize()
-                    .graphicsLayer { alpha = contentAlpha }
-            } else {
-                Modifier
-            }
-            content(topBarModifier)
-            if (active && flightActive && capsuleAlpha > 0f) {
+        Box(
+            modifier = modifier
+                .sharedBounds(
+                    sharedContentState = rememberSharedContentState(key),
+                    animatedVisibilityScope = visibility,
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None,
+                    boundsTransform = CapsuleFlightBoundsTransform,
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                    clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
+                )
+                .fillMaxWidth()
+                .height(heightDp),
+        ) {
+            if (flightActive && capsuleAlpha > 0f) {
                 val sourceBackdrop = CardFlight.sourceBackdropFor(detailEntry, gid)
                 val glass = rememberLiquidGlass(sourceBackdrop)
                 val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -486,7 +522,7 @@ fun CardFlightTopBarContainer(
                 }
                 Box(
                     modifier = Modifier
-                        .matchParentSize()
+                        .fillMaxSize()
                         .graphicsLayer { alpha = capsuleAlpha }
                         .then(surfaceModifier)
                         .drawBehind {
@@ -523,6 +559,28 @@ fun Modifier.cardFlightHeaderTarget(gid: Long, active: Boolean): Modifier {
             exit = if (flightActive) HeaderCardExit else ExitTransition.None,
             boundsTransform = HeaderCardBoundsTransform,
             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
+        )
+    }
+}
+
+/**
+ * Shared-element modifier on the cover image inside [GalleryDetailHeaderCard] when [active]. Scales the full cover
+ * smoothly in lockstep with [HeaderCardBoundsTransform] above the morphing card so the cover is never clipped.
+ */
+@Composable
+fun Modifier.cardFlightHeaderCover(gid: Long, active: Boolean): Modifier {
+    if (!active) return this
+    val visibility = LocalPageVisibility.current ?: return this
+    val detailEntry = currentPageEntry()
+    val coverKey = CardFlight.targetCoverKey(gid, detailEntry) ?: return this
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    return with(shared) {
+        this@cardFlightHeaderCover.sharedElement(
+            sharedContentState = rememberSharedContentState(coverKey),
+            animatedVisibilityScope = visibility,
+            boundsTransform = HeaderCardBoundsTransform,
+            zIndexInOverlay = 1f,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
     }
