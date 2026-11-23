@@ -85,7 +85,7 @@ fun GalleryDetailHeaderCard(
     onCategoryChipClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) = ElevatedCard(modifier = modifier) {
-    Row {
+    Row(modifier = Modifier.cardFlightHeaderContent()) {
         EhThumbCard(
             key = remember(info.gid) { info },
             modifier = Modifier.size(

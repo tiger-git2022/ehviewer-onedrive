@@ -71,13 +71,14 @@ fun DownloadCard(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     val pageEntry = currentPageEntry()
-    CrystalCard(
-        modifier = modifier.cardFlightSource(info.gid),
-        onClick = onClick,
-        onLongClick = onLongClick,
-        interactionSource = interactionSource,
-    ) {
-        Row {
+    CardFlightSource(info.gid) { cardModifier, contentModifier ->
+        CrystalCard(
+            modifier = modifier.then(cardModifier),
+            onClick = onClick,
+            onLongClick = onLongClick,
+            interactionSource = interactionSource,
+        ) {
+            Row(modifier = contentModifier) {
             val thumb = remember {
                 movableContentOf<DownloadInfo> {
                     EhAsyncCropThumb(
@@ -210,5 +211,6 @@ fun DownloadCard(
             }
         }
     }
+}
 }
 }

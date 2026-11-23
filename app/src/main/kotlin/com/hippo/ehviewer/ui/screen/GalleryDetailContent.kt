@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -144,6 +146,7 @@ import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
 import com.hippo.ehviewer.ui.main.TorrentList
+import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
@@ -294,6 +297,11 @@ fun GalleryDetailContent(
 
     // Fork: a gallery restored from PandaChika has no previews
     val previews = galleryDetail?.takeIf { it.previewList.isNotEmpty() }?.collectPreviewItems()
+    // Fork: in header-card transition mode, only morph the top header card back when it is still mostly visible
+    val headerCutoffPx = with(LocalDensity.current) { 100.dp.roundToPx() }
+    val headerFlightVisible by remember(state, headerCutoffPx) {
+        derivedStateOf { state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset < headerCutoffPx }
+    }
     when {
         !windowSizeClass.isExpanded -> FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(thumbColumns),
@@ -314,7 +322,7 @@ fun GalleryDetailContent(
                     onUploaderChipClick = ::onUploaderChipClick.partially1(galleryInfo),
                     onBlockUploaderIconClick = ::showFilterUploaderDialog.partially1(galleryInfo),
                     onCategoryChipClick = ::onCategoryChipClick,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = keylineMargin),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = keylineMargin).cardFlightHeaderTarget(galleryInfo.gid, active = headerFlightVisible),
                 )
             }
             item(
@@ -379,7 +387,7 @@ fun GalleryDetailContent(
                         onUploaderChipClick = ::onUploaderChipClick.partially1(galleryInfo),
                         onBlockUploaderIconClick = ::showFilterUploaderDialog.partially1(galleryInfo),
                         onCategoryChipClick = ::onCategoryChipClick,
-                        modifier = Modifier.width(dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_card_landscape_width)).padding(vertical = keylineMargin),
+                        modifier = Modifier.width(dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_card_landscape_width)).padding(vertical = keylineMargin).cardFlightHeaderTarget(galleryInfo.gid, active = headerFlightVisible),
                     )
                     Column(
                         modifier = Modifier.fillMaxSize(),

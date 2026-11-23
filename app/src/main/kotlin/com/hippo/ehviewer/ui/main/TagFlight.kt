@@ -13,8 +13,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ShapeDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -22,14 +25,15 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavBackStackEntry
+import com.hippo.ehviewer.Settings
+import com.hippo.ehviewer.collectAsState
 import com.hippo.ehviewer.ui.LocalSharedTransitionScope
 import com.hippo.ehviewer.ui.screen.searchTagParts
 
@@ -225,38 +229,194 @@ object CardFlight {
     private fun keyOf(from: String, gid: Long) = "card-flight:$from:$gid"
 }
 
-/** Container-transform source modifier for a gallery card in a list/grid/download screen. */
+/**
+ * Source wrapper for a gallery card in a list/grid/download screen supporting both transition modes:
+ * - [DETAIL_TRANSITION_CAPSULE]: card content fades out immediately into a clean empty rounded capsule that expands its
+ *   4 edges to full screen (no text/image scaling), and fades back in only near the end of return.
+ * - [DETAIL_TRANSITION_HEADER_CARD]: list card morphs directly into [GalleryDetailHeaderCard] at the top of detail.
+ */
 @Composable
-fun Modifier.cardFlightSource(gid: Long): Modifier {
-    val key = CardFlight.sourceKey(gid, currentPageEntry()) ?: return this
-    return cardFlightBounds(key)
+fun CardFlightSource(
+    gid: Long,
+    content: @Composable (cardModifier: Modifier, contentModifier: Modifier) -> Unit,
+) {
+    val mode by Settings.detailTransitionMode.collectAsState()
+    val visibility = LocalPageVisibility.current
+    val key = CardFlight.sourceKey(gid, currentPageEntry())
+    if (visibility == null || key == null) {
+        content(Modifier, Modifier)
+        return
+    }
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    with(shared) {
+        val sharedState = rememberSharedContentState(key)
+        val transitionTarget = visibility.transition.targetState
+        var matched by remember(transitionTarget, mode) { mutableStateOf(false) }
+        if (sharedState.isMatchFound) matched = true
+        if (mode == DETAIL_TRANSITION_CAPSULE) {
+            val contentAlpha by visibility.transition.animateFloat(
+                transitionSpec = {
+                    if (targetState == EnterExitState.Visible) {
+                        tween(
+                            durationMillis = CapsuleContentEnterMillis,
+                            delayMillis = CapsuleContentEnterDelayMillis,
+                            easing = LinearOutSlowInEasing,
+                        )
+                    } else {
+                        tween(
+                            durationMillis = CapsuleContentExitMillis,
+                            easing = FastOutLinearInEasing,
+                        )
+                    }
+                },
+                label = "cardCapsuleSourceAlpha",
+            ) { state ->
+                if (state == EnterExitState.Visible) 1f else 0f
+            }
+            val cardModifier = Modifier.sharedBounds(
+                sharedContentState = sharedState,
+                animatedVisibilityScope = visibility,
+                enter = EnterTransition.None,
+                exit = ExitTransition.None,
+                boundsTransform = CapsuleFlightBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
+            )
+            val contentModifier = Modifier
+                .skipToLookaheadSize()
+                .graphicsLayer {
+                    if (matched) alpha = contentAlpha
+                }
+            content(cardModifier, contentModifier)
+        } else {
+            val cardModifier = Modifier.sharedBounds(
+                sharedContentState = sharedState,
+                animatedVisibilityScope = visibility,
+                enter = if (matched) HeaderCardEnter else EnterTransition.None,
+                exit = if (matched) HeaderCardExit else ExitTransition.None,
+                boundsTransform = HeaderCardBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
+            )
+            content(cardModifier, Modifier.skipToLookaheadSize())
+        }
+    }
 }
 
-/** Container-transform target modifier for the root [Scaffold] of [GalleryDetailScreen]. */
+/**
+ * Full-screen detail container for [DETAIL_TRANSITION_CAPSULE]: renders a clean empty rounded capsule while expanding
+ * from / collapsing into the originating card, keeping the full-size [Scaffold] unscaled and fading its content in only
+ * near the end of expansion (and fading it out immediately on return from any scroll position).
+ */
 @Composable
-fun Modifier.cardFlightTarget(gid: Long): Modifier {
-    val key = CardFlight.targetKey(gid, currentPageEntry()) ?: return this
-    return cardFlightBounds(key)
+fun CardFlightDetailContainer(
+    gid: Long,
+    content: @Composable (contentModifier: Modifier) -> Unit,
+) {
+    val mode by Settings.detailTransitionMode.collectAsState()
+    val visibility = LocalPageVisibility.current
+    val key = if (mode == DETAIL_TRANSITION_CAPSULE) CardFlight.targetKey(gid, currentPageEntry()) else null
+    if (visibility == null || key == null) {
+        content(Modifier)
+        return
+    }
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val capsuleColor = MaterialTheme.colorScheme.surfaceContainer
+    with(shared) {
+        val sharedState = rememberSharedContentState(key)
+        val transitionTarget = visibility.transition.targetState
+        var matched by remember(transitionTarget) { mutableStateOf(false) }
+        if (sharedState.isMatchFound) matched = true
+        val contentAlpha by visibility.transition.animateFloat(
+            transitionSpec = {
+                if (targetState == EnterExitState.Visible) {
+                    tween(
+                        durationMillis = CapsuleContentEnterMillis,
+                        delayMillis = CapsuleContentEnterDelayMillis,
+                        easing = LinearOutSlowInEasing,
+                    )
+                } else {
+                    tween(
+                        durationMillis = CapsuleContentExitMillis,
+                        easing = FastOutLinearInEasing,
+                    )
+                }
+            },
+            label = "cardCapsuleTargetAlpha",
+        ) { state ->
+            if (state == EnterExitState.Visible) 1f else 0f
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .sharedBounds(
+                    sharedContentState = sharedState,
+                    animatedVisibilityScope = visibility,
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None,
+                    boundsTransform = CapsuleFlightBoundsTransform,
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                    clipInOverlayDuringTransition = OverlayClip(CapsuleFlightShape),
+                )
+                .drawBehind {
+                    if (matched && contentAlpha < 1f) {
+                        drawRoundRect(
+                            color = capsuleColor,
+                            cornerRadius = CornerRadius(CapsuleCornerRadius.toPx()),
+                        )
+                    }
+                },
+        ) {
+            content(
+                Modifier
+                    .fillMaxSize()
+                    .skipToLookaheadSize()
+                    .graphicsLayer {
+                        if (matched) alpha = contentAlpha
+                    },
+            )
+        }
+    }
 }
 
+/**
+ * Target modifier on [GalleryDetailHeaderCard] for [DETAIL_TRANSITION_HEADER_CARD] when [active] (header card visible
+ * near the top of the detail page).
+ */
 @Composable
-private fun Modifier.cardFlightBounds(key: String): Modifier {
+fun Modifier.cardFlightHeaderTarget(gid: Long, active: Boolean): Modifier {
+    if (!active) return this
+    val mode by Settings.detailTransitionMode.collectAsState()
+    if (mode != DETAIL_TRANSITION_HEADER_CARD) return this
     val visibility = LocalPageVisibility.current ?: return this
+    val key = CardFlight.targetKey(gid, currentPageEntry()) ?: return this
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
     return with(shared) {
         val sharedState = rememberSharedContentState(key)
         val matched = sharedState.isMatchFound
-        this@cardFlightBounds.sharedBounds(
+        this@cardFlightHeaderTarget.sharedBounds(
             sharedContentState = sharedState,
             animatedVisibilityScope = visibility,
-            enter = if (matched) CardFlightEnter else EnterTransition.None,
-            exit = if (matched) CardFlightExit else ExitTransition.None,
-            boundsTransform = CardFlightBoundsTransform,
-            resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.Crop, Alignment.Center),
-            clipInOverlayDuringTransition = OverlayClip(CardFlightShape),
+            enter = if (matched) HeaderCardEnter else EnterTransition.None,
+            exit = if (matched) HeaderCardExit else ExitTransition.None,
+            boundsTransform = HeaderCardBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
     }
 }
+
+/** Keeps the content of [GalleryDetailHeaderCard] at its natural lookahead size during [DETAIL_TRANSITION_HEADER_CARD]. */
+@Composable
+fun Modifier.cardFlightHeaderContent(): Modifier {
+    val mode by Settings.detailTransitionMode.collectAsState()
+    if (mode != DETAIL_TRANSITION_HEADER_CARD) return this
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    return with(shared) { this@cardFlightHeaderContent.skipToLookaheadSize() }
+}
+
+const val DETAIL_TRANSITION_CAPSULE = 0
+const val DETAIL_TRANSITION_HEADER_CARD = 1
 
 private const val TagFlightKey = "tag-flight"
 private const val QueryFlightKey = "query-flight"
@@ -274,24 +434,34 @@ private val QueryFlightBoundsTransform = BoundsTransform { _, _ ->
     tween(durationMillis = QueryFlightDurationMillis, easing = FastOutSlowInEasing)
 }
 
-const val CardFlightDurationMillis = 360
-private const val CardFlightExitFadeMillis = 110
-private const val CardFlightEnterDelayMillis = 70
-private const val CardFlightEnterFadeMillis = 180
-private val CardFlightEnter = fadeIn(
+const val CardFlightDurationMillis = 380
+private const val CapsuleContentExitMillis = 55
+private const val CapsuleContentEnterDelayMillis = 230
+private const val CapsuleContentEnterMillis = 150
+private val CapsuleCornerRadius = 28.dp
+private val CapsuleFlightShape = RoundedCornerShape(CapsuleCornerRadius)
+private val CapsuleFlightBoundsTransform = BoundsTransform { _, _ ->
+    tween(durationMillis = CardFlightDurationMillis, easing = FastOutSlowInEasing)
+}
+
+private const val HeaderCardDurationMillis = 380
+private const val HeaderCardExitMillis = 150
+private const val HeaderCardEnterDelayMillis = 80
+private const val HeaderCardEnterMillis = 220
+private val HeaderCardEnter = fadeIn(
     tween(
-        durationMillis = CardFlightEnterFadeMillis,
-        delayMillis = CardFlightEnterDelayMillis,
+        durationMillis = HeaderCardEnterMillis,
+        delayMillis = HeaderCardEnterDelayMillis,
         easing = LinearOutSlowInEasing,
     ),
 )
-private val CardFlightExit = fadeOut(
+private val HeaderCardExit = fadeOut(
     tween(
-        durationMillis = CardFlightExitFadeMillis,
+        durationMillis = HeaderCardExitMillis,
         easing = FastOutLinearInEasing,
     ),
 )
-private val CardFlightShape = RoundedCornerShape(24.dp)
-private val CardFlightBoundsTransform = BoundsTransform { _, _ ->
-    tween(durationMillis = CardFlightDurationMillis, easing = FastOutSlowInEasing)
+private val HeaderCardShape = ShapeDefaults.Medium
+private val HeaderCardBoundsTransform = BoundsTransform { _, _ ->
+    tween(durationMillis = HeaderCardDurationMillis, easing = FastOutSlowInEasing)
 }
