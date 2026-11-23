@@ -453,6 +453,10 @@ object CommentFlight {
     private val entries = mutableStateListOf<Entry>()
     private var activeFrom by mutableStateOf<String?>(null)
     private var activeTo by mutableStateOf<String?>(null)
+    private var activeForward by mutableStateOf(true)
+
+    val isForward: Boolean
+        get() = activeForward
 
     /** Records that the comments card of [gid] on detail page [fromEntry] was tapped. */
     fun start(gid: Long, fromEntry: String?) {
@@ -476,7 +480,7 @@ object CommentFlight {
     }
 
     /** Synchronously marks [fromId] <-> [toId] as the active Detail <-> Comments flight before frame 0. */
-    fun prepareTransition(fromId: String, toId: String): Boolean {
+    fun prepareTransition(fromId: String, toId: String, forward: Boolean): Boolean {
         val match = entries.lastOrNull { it.from == fromId && (it.to == toId || it.to == null) }
         if (match == null) {
             clearActiveTransition()
@@ -487,6 +491,9 @@ object CommentFlight {
             activeFrom = fromId
             activeTo = toId
         }
+        if (activeForward != forward) {
+            activeForward = forward
+        }
         return true
     }
 
@@ -496,6 +503,8 @@ object CommentFlight {
             activeTo = null
         }
     }
+
+    fun isActiveSourcePage(fromEntry: String?): Boolean = fromEntry != null && activeFrom == fromEntry && activeTo != null
 
     fun isActiveSource(gid: Long, fromEntry: String?): Boolean {
         if (fromEntry == null || activeFrom != fromEntry) return false
@@ -530,6 +539,47 @@ fun Modifier.commentFlightCardSource(gid: Long): Modifier {
             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
+    }
+}
+
+/**
+ * Elevates the detail screen's top app bar above the returning comments card during Comments -> Detail pop so a
+ * comment card partially tucked under the top bar settles smoothly underneath it instead of popping behind the bar
+ * after the animation finishes.
+ */
+@Composable
+fun Modifier.commentFlightDetailTopBarOverlay(): Modifier {
+    val visibility = LocalPageVisibility.current ?: return this
+    val pageEntry = currentPageEntry() ?: return this
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val returningToDetail = !CommentFlight.isForward && CommentFlight.isActiveSourcePage(pageEntry)
+    val overlayAlpha by visibility.transition.animateFloat(
+        transitionSpec = {
+            if (targetState == EnterExitState.Visible) {
+                tween(
+                    durationMillis = CommentTopBarRevealMillis,
+                    delayMillis = CommentTopBarRevealDelayMillis,
+                    easing = LinearOutSlowInEasing,
+                )
+            } else {
+                tween(durationMillis = 1)
+            }
+        },
+        label = "commentDetailTopBarOverlayAlpha",
+    ) { state ->
+        if (state == EnterExitState.Visible) 1f else 0f
+    }
+    return with(shared) {
+        this@commentFlightDetailTopBarOverlay
+            .renderInSharedTransitionScopeOverlay(
+                renderInOverlay = { isTransitionActive && !CommentFlight.isForward && CommentFlight.isActiveSourcePage(pageEntry) },
+                zIndexInOverlay = 2f,
+            )
+            .graphicsLayer {
+                if (returningToDetail && isTransitionActive) {
+                    alpha = overlayAlpha
+                }
+            }
     }
 }
 
@@ -706,6 +756,8 @@ private const val CommentContentEnterMillis = 180
 private const val CommentContentExitMillis = 90
 private const val CommentScrimFadeInMillis = 60
 private const val CommentScrimFadeOutMillis = 160
+private const val CommentTopBarRevealDelayMillis = 110
+private const val CommentTopBarRevealMillis = 150
 private val CommentSourceEnter = fadeIn(
     tween(
         durationMillis = 160,
