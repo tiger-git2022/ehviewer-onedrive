@@ -7,7 +7,10 @@ import androidx.compose.animation.core.animate
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
@@ -43,6 +46,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,16 +99,13 @@ import com.hippo.ehviewer.ui.PartialSheetReturn
 import com.hippo.ehviewer.ui.Screen
 import com.hippo.ehviewer.ui.WnacgCheck
 import com.hippo.ehviewer.ui.glassContent
-import com.hippo.ehviewer.ui.main.CardFlight
-import com.hippo.ehviewer.ui.main.CardFlightTopBarAnchor
+import com.hippo.ehviewer.ui.main.CardFlightScrolledHeaderAnchor
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
-import com.hippo.ehviewer.ui.main.cardFlightTopBarContentFade
-import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -289,16 +290,12 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
     }
     val refreshPreviews = stringResource(id = R.string.refresh_previews)
-    // Fork: morph the top header card back when visible; once scrolled past it, hand off to the glass top bar so
-    // returning from comments/previews morphs the glass top bar into a capsule back to the originating card
-    val headerCutoffPx = with(LocalDensity.current) { 100.dp.roundToPx() }
+    // Fork: morph the real top header card back when visible; once scrolled past it, hand off to an invisible top
+    // header-card anchor so returning still flies the full cover + card along the exact same reversed arc
+    val density = LocalDensity.current
+    val headerCutoffPx = with(density) { 100.dp.roundToPx() }
     val headerFlightVisible by remember(gridState, headerCutoffPx) {
         derivedStateOf { gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < headerCutoffPx }
-    }
-    val topBarFlightActive = !headerFlightVisible && barHeightPx > 0
-    val detailEntry = currentPageEntry()
-    LaunchedEffect(detailEntry, headerFlightVisible) {
-        CardFlight.setDetailHeaderVisible(detailEntry, headerFlightVisible)
     }
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -310,7 +307,6 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                             barBottom = it.boundsInWindow().bottom
                             barHeightPx = it.size.height
                         }
-                        .cardFlightTopBarContentFade(gid = gid, active = topBarFlightActive)
                         .edgeGlass(glass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 // Fork: over the glass, the buttons in the color of the title, white at night and black by day: the paler
                 // color of the Material buttons got lost over the pages showing through
@@ -536,13 +532,27 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
             }
         }
     }
-        // Outside Scaffold's SubcomposeLayout so sharedBounds measures the exact full-width top bar rect
-        CardFlightTopBarAnchor(
-            gid = gid,
-            active = topBarFlightActive,
-            heightPx = barHeightPx,
-            modifier = Modifier.align(Alignment.TopStart),
-        )
+        // Outside Scaffold's SubcomposeLayout so sharedBounds/sharedElement launch cleanly from the top header-card rect
+        galleryInfo?.let { gi ->
+            if (!headerFlightVisible && barHeightPx > 0) {
+                val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
+                val topOffset = with(density) { barHeightPx.toDp() } + keylineMargin
+                val anchorWidthModifier = if (windowSizeClass.isExpanded) {
+                    Modifier.width(dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_card_landscape_width))
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+                CardFlightScrolledHeaderAnchor(
+                    info = gi,
+                    active = true,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = topOffset, start = keylineMargin, end = keylineMargin)
+                        .then(anchorWidthModifier)
+                        .height(dimensionResource(id = com.hippo.ehviewer.R.dimen.gallery_detail_thumb_height)),
+                )
+            }
+        }
     }
 }
 

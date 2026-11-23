@@ -11,7 +11,6 @@ import android.text.style.URLSpan
 import androidx.annotation.ColorInt
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.EnterExitState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,7 +56,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
@@ -125,18 +123,12 @@ import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
-import com.hippo.ehviewer.ui.main.COMMENT_TRANSITION_BUTTON_CAPSULE
-import com.hippo.ehviewer.ui.main.CommentFlight
 import com.hippo.ehviewer.ui.main.CommentFlightContainer
-import com.hippo.ehviewer.ui.main.CommentFlightTopBarAnchor
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GlassToggleButton
-import com.hippo.ehviewer.ui.main.LocalPageVisibility
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
-import com.hippo.ehviewer.ui.main.commentFlightTopBarContentFade
-import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
 import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
@@ -353,54 +345,33 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     val barGlass = rememberLiquidGlass(backdrop).takeIf { barScrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     val fabGlass = LocalFabGlass.current
-    // Fork: dual comments transition — card expand (top-bar capsule when scrolled) or button capsule expand + top-bar capsule return
-    val commentMode by Settings.commentTransitionMode.collectAsState()
-    val commentsCutoffPx = with(LocalDensity.current) { 80.dp.roundToPx() }
-    val commentsScrolled by remember(lazyListState, commentsCutoffPx) {
-        derivedStateOf { lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset >= commentsCutoffPx }
-    }
-    val commentsEntry = currentPageEntry()
-    LaunchedEffect(commentsEntry, commentsScrolled) {
-        CommentFlight.setScrolled(commentsEntry, commentsScrolled)
-    }
-    var barHeightPx by remember { mutableIntStateOf(0) }
-    val pageVisibility = LocalPageVisibility.current
-    var hasEntered by remember { mutableStateOf(false) }
-    if (pageVisibility == null || (pageVisibility.transition.currentState == EnterExitState.Visible && pageVisibility.transition.targetState == EnterExitState.Visible)) {
-        hasEntered = true
-    }
-    val useTopBarAnchor = hasEntered && barHeightPx > 0 && (commentMode == COMMENT_TRANSITION_BUTTON_CAPSULE || commentsScrolled)
-    Box(modifier = Modifier.fillMaxSize()) {
-        CommentFlightContainer(gid = galleryDetail.gid, useTopBarAnchor = useTopBarAnchor) { contentModifier ->
-            Scaffold(
-                modifier = contentModifier,
-                topBar = {
-                    TopAppBar(
-                        title = { Text(text = stringResource(id = R.string.gallery_comments)) },
-                        navigationIcon = { NavigationIcon() },
-                        actions = {
-                            val chineseTarget = TargetLanguage.of(translateTarget).primary == "zh"
-                            val toggleDescription = stringResource(R.string.comment_translate_toggle)
-                            GlassToggleButton(
-                                checked = showTranslations && translateConfigured,
-                                onCheckedChange = { on ->
-                                    if (!translateConfigured) {
-                                        launch { snackbar(translateNotConfigured) }
-                                        navigate(CommentTranslateScreenDestination)
-                                    } else {
-                                        showTranslations = on
-                                        flippedComments.clear()
-                                    }
-                                },
-                                modifier = Modifier.semantics { contentDescription = toggleDescription },
-                            ) {
-                                Text(text = if (chineseTarget) "汉" else "译", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            }
-                        },
-                        modifier = Modifier
-                            .onGloballyPositioned { barHeightPx = it.size.height }
-                            .commentFlightTopBarContentFade(gid = galleryDetail.gid, active = useTopBarAnchor)
-                            .edgeGlass(barGlass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
+    CommentFlightContainer(gid = galleryDetail.gid) { contentModifier ->
+        Scaffold(
+            modifier = contentModifier,
+            topBar = {
+                TopAppBar(
+                    title = { Text(text = stringResource(id = R.string.gallery_comments)) },
+                    navigationIcon = { NavigationIcon() },
+                    actions = {
+                        val chineseTarget = TargetLanguage.of(translateTarget).primary == "zh"
+                        val toggleDescription = stringResource(R.string.comment_translate_toggle)
+                        GlassToggleButton(
+                            checked = showTranslations && translateConfigured,
+                            onCheckedChange = { on ->
+                                if (!translateConfigured) {
+                                    launch { snackbar(translateNotConfigured) }
+                                    navigate(CommentTranslateScreenDestination)
+                                } else {
+                                    showTranslations = on
+                                    flippedComments.clear()
+                                }
+                            },
+                            modifier = Modifier.semantics { contentDescription = toggleDescription },
+                        ) {
+                            Text(text = if (chineseTarget) "汉" else "译", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    modifier = Modifier.edgeGlass(barGlass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 colors = if (backdrop != null) {
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
@@ -687,14 +658,6 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                 }
             }
         }
-        }
-        }
-        // Outside Scaffold's SubcomposeLayout so sharedBounds measures the exact full-width top bar rect
-        CommentFlightTopBarAnchor(
-            gid = galleryDetail.gid,
-            active = useTopBarAnchor,
-            heightPx = barHeightPx,
-            modifier = Modifier.align(Alignment.TopStart),
-        )
+    }
     }
 }
