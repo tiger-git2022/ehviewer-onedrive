@@ -73,7 +73,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 val isCard = targetState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(initialState.id, targetState.id, forward = true)
                 val isComment = !isCard && targetState.destination.route == commentsRoute &&
-                    CommentFlight.prepareTransition(initialState.id, targetState.id)
+                    CommentFlight.prepareTransition(initialState.id, targetState.id, forward = true)
                 if (!isCard) CardFlight.clearActiveTransition()
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
@@ -86,7 +86,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 val isCard = targetState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(initialState.id, targetState.id, forward = true)
                 val isComment = !isCard && targetState.destination.route == commentsRoute &&
-                    CommentFlight.prepareTransition(initialState.id, targetState.id)
+                    CommentFlight.prepareTransition(initialState.id, targetState.id, forward = true)
                 if (!isCard) CardFlight.clearActiveTransition()
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
@@ -99,7 +99,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 val isCard = initialState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(targetState.id, initialState.id, forward = false)
                 val isComment = !isCard && initialState.destination.route == commentsRoute &&
-                    CommentFlight.prepareTransition(targetState.id, initialState.id)
+                    CommentFlight.prepareTransition(targetState.id, initialState.id, forward = false)
                 if (!isCard) CardFlight.clearActiveTransition()
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
@@ -112,7 +112,7 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 val isCard = initialState.destination.route == detailRoute &&
                     CardFlight.prepareTransition(targetState.id, initialState.id, forward = false)
                 val isComment = !isCard && initialState.destination.route == commentsRoute &&
-                    CommentFlight.prepareTransition(targetState.id, initialState.id)
+                    CommentFlight.prepareTransition(targetState.id, initialState.id, forward = false)
                 if (!isCard) CardFlight.clearActiveTransition()
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {

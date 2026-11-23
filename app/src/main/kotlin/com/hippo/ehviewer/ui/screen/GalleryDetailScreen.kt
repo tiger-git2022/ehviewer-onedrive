@@ -106,6 +106,7 @@ import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.commentFlightDetailTopBarOverlay
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -303,6 +304,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 MediumFlexibleTopAppBar(
                     // Fork: only its bottom edge shows, the top and the sides melt into the screen
                     modifier = Modifier
+                        .commentFlightDetailTopBarOverlay()
                         .onGloballyPositioned {
                             barBottom = it.boundsInWindow().bottom
                             barHeightPx = it.size.height
