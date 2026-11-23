@@ -22,7 +22,6 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.ui.destinations.GalleryDetailScreenDestination
 import com.hippo.ehviewer.ui.main.CardFlight
 import com.hippo.ehviewer.ui.main.CardFlightDurationMillis
-import com.hippo.ehviewer.ui.main.DETAIL_TRANSITION_CAPSULE
 import com.hippo.ehviewer.ui.theme.EhTheme
 import com.hippo.ehviewer.ui.tools.DialogState
 import com.hippo.ehviewer.ui.tools.LocalGlobalDialogState
@@ -65,44 +64,44 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
     return remember(slideDistance, detailRoute) {
         object : NavHostAnimatedDestinationStyle() {
             override val enterTransition: Ty.() -> EnterTransition = {
-                if (Settings.detailTransitionMode.value == DETAIL_TRANSITION_CAPSULE &&
-                    targetState.destination.route == detailRoute &&
-                    CardFlight.isCardTransition(initialState.id, targetState.id)
-                ) {
-                    // Let CardFlightDetailContainer's empty capsule own the morph without NavHost double-fading Detail
+                val isCard = targetState.destination.route == detailRoute &&
+                    CardFlight.prepareTransition(initialState.id, targetState.id)
+                if (!isCard) CardFlight.clearActiveTransition()
+                if (isCard && CardFlight.isCapsuleTransition(initialState.id, targetState.id, Settings.detailTransitionMode.value)) {
+                    // Let CardFlightDetailContainer's glass capsule own the morph without NavHost double-fading Detail
                     fadeIn(tween(durationMillis = 1))
                 } else {
                     materialSharedAxisXIn(true, slideDistance)
                 }
             }
             override val exitTransition: Ty.() -> ExitTransition = {
-                if (Settings.detailTransitionMode.value == DETAIL_TRANSITION_CAPSULE &&
-                    targetState.destination.route == detailRoute &&
-                    CardFlight.isCardTransition(initialState.id, targetState.id)
-                ) {
-                    // Keep the list solidly visible behind the expanding capsule (gently dimmed to 82%)
+                val isCard = targetState.destination.route == detailRoute &&
+                    CardFlight.prepareTransition(initialState.id, targetState.id)
+                if (!isCard) CardFlight.clearActiveTransition()
+                if (isCard && CardFlight.isCapsuleTransition(initialState.id, targetState.id, Settings.detailTransitionMode.value)) {
+                    // Keep the list solidly visible behind the expanding glass capsule (gently dimmed to 82%)
                     fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.82f)
                 } else {
                     materialSharedAxisXOut(true, slideDistance)
                 }
             }
             override val popEnterTransition: Ty.() -> EnterTransition = {
-                if (Settings.detailTransitionMode.value == DETAIL_TRANSITION_CAPSULE &&
-                    initialState.destination.route == detailRoute &&
-                    CardFlight.isCardTransition(targetState.id, initialState.id)
-                ) {
-                    // List is immediately visible underneath so the shrinking capsule visibly lands back into its card
+                val isCard = initialState.destination.route == detailRoute &&
+                    CardFlight.prepareTransition(targetState.id, initialState.id)
+                if (!isCard) CardFlight.clearActiveTransition()
+                if (isCard && CardFlight.isCapsuleTransition(targetState.id, initialState.id, Settings.detailTransitionMode.value)) {
+                    // List is immediately visible underneath so the shrinking glass capsule visibly lands back into its card
                     fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.82f)
                 } else {
                     materialSharedAxisXIn(false, slideDistance)
                 }
             }
             override val popExitTransition: Ty.() -> ExitTransition = {
-                if (Settings.detailTransitionMode.value == DETAIL_TRANSITION_CAPSULE &&
-                    initialState.destination.route == detailRoute &&
-                    CardFlight.isCardTransition(targetState.id, initialState.id)
-                ) {
-                    // Keep Detail mounted through the full empty-capsule collapse back into the card
+                val isCard = initialState.destination.route == detailRoute &&
+                    CardFlight.prepareTransition(targetState.id, initialState.id)
+                if (!isCard) CardFlight.clearActiveTransition()
+                if (isCard && CardFlight.isCapsuleTransition(targetState.id, initialState.id, Settings.detailTransitionMode.value)) {
+                    // Keep Detail mounted through the full glass-capsule collapse back into the card
                     fadeOut(tween(durationMillis = 1, delayMillis = CardFlightDurationMillis))
                 } else {
                     materialSharedAxisXOut(false, slideDistance)
