@@ -65,21 +65,22 @@ fun GalleryInfoListItem(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     val pageEntry = currentPageEntry()
-    CrystalCard(
-        modifier = modifier.cardFlightSource(info.gid),
-        onClick = {
-            CardFlight.start(info.gid, pageEntry)
-            onClick()
-        },
-        onLongClick = onLongClick,
-        interactionSource = interactionSource,
-    ) {
-        Row {
-            EhThumbCard(
-                key = info,
-                modifier = Modifier.aspectRatio(DEFAULT_RATIO),
-            )
-            Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
+    CardFlightSource(info.gid) { cardModifier, contentModifier ->
+        CrystalCard(
+            modifier = modifier.then(cardModifier),
+            onClick = {
+                CardFlight.start(info.gid, pageEntry)
+                onClick()
+            },
+            onLongClick = onLongClick,
+            interactionSource = interactionSource,
+        ) {
+            Row(modifier = contentModifier) {
+                EhThumbCard(
+                    key = info,
+                    modifier = Modifier.aspectRatio(DEFAULT_RATIO),
+                )
+                Column(modifier = Modifier.padding(start = 8.dp, top = 2.dp, end = 4.dp, bottom = 4.dp)) {
             // Fork: the title takes up to three lines and the space left; the rating, the uploader, the favorite, the
             // language and the pages share one smaller line pinned to the bottom with the category and the date
             Text(
@@ -205,6 +206,7 @@ fun GalleryInfoListItem(
     }
 }
 }
+}
 
 @Composable
 context(_: SharedTransitionScope, _: TransitionsVisibilityScope)
@@ -222,20 +224,21 @@ fun GalleryInfoGridItem(
     pages: Int = info.pages,
 ) {
     val pageEntry = currentPageEntry()
-    ElevatedCard(
-        modifier = modifier.cardFlightSource(info.gid),
-        onClick = {
-            CardFlight.start(info.gid, pageEntry)
-            onClick()
-        },
-        onLongClick = {
-            CardFlight.start(info.gid, pageEntry)
-            onLongClick()
-        },
-        interactionSource = interactionSource,
-    ) {
-        Box {
-            Box(modifier = Modifier.clip(ShapeDefaults.Medium)) {
+    CardFlightSource(info.gid) { cardModifier, contentModifier ->
+        ElevatedCard(
+            modifier = modifier.then(cardModifier),
+            onClick = {
+                CardFlight.start(info.gid, pageEntry)
+                onClick()
+            },
+            onLongClick = {
+                CardFlight.start(info.gid, pageEntry)
+                onLongClick()
+            },
+            interactionSource = interactionSource,
+        ) {
+            Box(modifier = contentModifier) {
+                Box(modifier = Modifier.clip(ShapeDefaults.Medium)) {
                 var ratio by remember(info) {
                     val ratio = if (info.thumbHeight != 0) {
                         (info.thumbWidth.toFloat() / info.thumbHeight).coerceIn(MIN_RATIO, MAX_RATIO)
@@ -290,6 +293,7 @@ fun GalleryInfoGridItem(
             }
         }
     }
+}
 }
 
 private const val MIN_RATIO = 0.5F

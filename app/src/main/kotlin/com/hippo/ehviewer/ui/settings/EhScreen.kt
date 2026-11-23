@@ -259,6 +259,13 @@ fun AnimatedVisibilityScope.EhScreen(navigator: DestinationsNavigator) = Screen(
                     )
                 }
             }
+            // Fork: choose between empty capsule full-screen expand and card-to-header-card morph
+            SimpleMenuPreferenceInt(
+                title = stringResource(id = R.string.detail_transition_mode),
+                entry = com.hippo.ehviewer.R.array.detail_transition_mode_entries,
+                entryValueRes = com.hippo.ehviewer.R.array.detail_transition_mode_values,
+                state = Settings.detailTransitionMode.asMutableState(),
+            )
             SimpleMenuPreferenceInt(
                 title = stringResource(id = R.string.settings_eh_launch_page),
                 entry = com.hippo.ehviewer.R.array.launch_page_entries,

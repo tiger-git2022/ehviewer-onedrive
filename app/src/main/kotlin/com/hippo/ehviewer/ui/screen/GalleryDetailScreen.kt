@@ -97,9 +97,9 @@ import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.OneDriveSyncIcon
 import com.hippo.ehviewer.ui.main.PreviewProgressBar
+import com.hippo.ehviewer.ui.main.CardFlightDetailContainer
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
-import com.hippo.ehviewer.ui.main.cardFlightTarget
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -283,8 +283,9 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
     }
     val refreshPreviews = stringResource(id = R.string.refresh_previews)
+    CardFlightDetailContainer(gid) { contentModifier ->
     Scaffold(
-        modifier = Modifier.cardFlightTarget(gid),
+        modifier = contentModifier,
         topBar = {
             MediumFlexibleTopAppBar(
                 // Fork: only its bottom edge shows, the top and the sides melt into the screen
@@ -512,6 +513,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 ShapeLoadingIndicator()
             }
         }
+    }
     }
 }
 
