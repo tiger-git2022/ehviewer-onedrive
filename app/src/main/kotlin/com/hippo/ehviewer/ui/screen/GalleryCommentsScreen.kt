@@ -688,6 +688,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             }
         }
         }
+        }
         // Outside Scaffold's SubcomposeLayout so sharedBounds measures the exact full-width top bar rect
         CommentFlightTopBarAnchor(
             gid = galleryDetail.gid,
