@@ -90,8 +90,8 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 if (!isCard) CardFlight.clearActiveTransition()
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
-                    isCard -> fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.88f)
-                    isComment -> fadeOut(tween(durationMillis = CommentFlightDurationMillis), targetAlpha = 0.88f)
+                    isCard -> fadeOut(tween(durationMillis = CardFlightDurationMillis), targetAlpha = 0.94f)
+                    isComment -> fadeOut(tween(durationMillis = CommentFlightDurationMillis), targetAlpha = 0.94f)
                     else -> materialSharedAxisXOut(true, slideDistance)
                 }
             }
@@ -103,8 +103,8 @@ fun rememberEhNavAnim(): NavHostAnimatedDestinationStyle {
                 if (!isCard) CardFlight.clearActiveTransition()
                 if (!isComment) CommentFlight.clearActiveTransition()
                 when {
-                    isCard -> fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.88f)
-                    isComment -> fadeIn(tween(durationMillis = CommentFlightDurationMillis), initialAlpha = 0.88f)
+                    isCard -> fadeIn(tween(durationMillis = CardFlightDurationMillis), initialAlpha = 0.94f)
+                    isComment -> fadeIn(tween(durationMillis = CommentFlightDurationMillis), initialAlpha = 0.94f)
                     else -> materialSharedAxisXIn(false, slideDistance)
                 }
             }

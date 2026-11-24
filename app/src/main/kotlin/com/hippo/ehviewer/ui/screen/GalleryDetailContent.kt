@@ -148,6 +148,7 @@ import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
 import com.hippo.ehviewer.ui.main.commentFlightCardContent
 import com.hippo.ehviewer.ui.main.commentFlightCardSource
+import com.hippo.ehviewer.ui.main.commentFlightItemSource
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
@@ -480,9 +481,10 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             commentsList.size <= maxShowCount -> stringResource(R.string.no_more_comments)
             else -> stringResource(R.string.more_comment)
         }
+        val shownComments = commentsList.take(maxShowCount)
         val commentPageEntry = currentPageEntry()
         fun navigateToCommentScreen() {
-            CommentFlight.start(galleryDetail.gid, commentPageEntry)
+            CommentFlight.start(galleryDetail.gid, commentPageEntry, shownComments.map { it.id })
             navigate(GalleryCommentsScreenDestination(galleryDetail.gid))
         }
         // Fork: translated like on the comments page, if set to, see translate/CommentTranslations.kt
@@ -492,7 +494,6 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val translateInDetail by Settings.commentTranslateInDetail.collectAsState()
         val translateTarget by Settings.commentTranslateTarget.collectAsState()
         val translate = apiUrl.isNotBlank() && apiModel.isNotBlank() && autoTranslate && translateInDetail
-        val shownComments = commentsList.take(maxShowCount)
         LaunchedEffect(shownComments, translate, translateTarget) {
             if (translate) CommentTranslations.request(shownComments)
         }
@@ -507,7 +508,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             Column(modifier = Modifier.commentFlightCardContent()) {
             shownComments.forEach { item ->
                 GalleryCommentCard(
-                    modifier = Modifier.padding(vertical = 4.dp),
+                    modifier = Modifier.padding(vertical = 4.dp).commentFlightItemSource(galleryDetail.gid, item.id),
                     comment = item,
                     onCardClick = ::navigateToCommentScreen,
                     onUserClick = ::navigateToCommentScreen,
