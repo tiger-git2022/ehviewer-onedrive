@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.runtime.Composable
@@ -38,6 +37,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -331,10 +331,13 @@ fun CardFlightSource(
             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
-        val coverModifier = Modifier.sharedElement(
+        val coverModifier = Modifier.sharedBounds(
             sharedContentState = rememberSharedContentState(coverKey),
             animatedVisibilityScope = visibility,
+            enter = if (active) CoverFlightEnter else EnterTransition.None,
+            exit = if (active) CoverFlightExit else ExitTransition.None,
             boundsTransform = HeaderCardBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.Crop, Alignment.Center),
             zIndexInOverlay = 1f,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
@@ -368,8 +371,9 @@ fun Modifier.cardFlightHeaderTarget(gid: Long, active: Boolean): Modifier {
 }
 
 /**
- * Shared-element modifier on the cover image inside [GalleryDetailHeaderCard] when [active]. Scales the full cover
- * smoothly in lockstep with [HeaderCardBoundsTransform] above the morphing card so the cover is never clipped.
+ * Shared-bounds modifier on the cover image inside [GalleryDetailHeaderCard] when [active]. Uses overlapped crossfade
+ * + [SharedTransitionScope.ResizeMode.scaleToBounds] above the morphing card so the existing decoded bitmap stays
+ * visible for the first 70ms while Coil resolves the target image, preventing any blank-frame flash or clipping.
  */
 @Composable
 fun Modifier.cardFlightHeaderCover(gid: Long, active: Boolean): Modifier {
@@ -378,11 +382,15 @@ fun Modifier.cardFlightHeaderCover(gid: Long, active: Boolean): Modifier {
     val detailEntry = currentPageEntry()
     val coverKey = CardFlight.targetCoverKey(gid, detailEntry) ?: return this
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val flightActive = CardFlight.isActiveDetail(gid, detailEntry)
     return with(shared) {
-        this@cardFlightHeaderCover.sharedElement(
+        this@cardFlightHeaderCover.sharedBounds(
             sharedContentState = rememberSharedContentState(coverKey),
             animatedVisibilityScope = visibility,
+            enter = if (flightActive) CoverFlightEnter else EnterTransition.None,
+            exit = if (flightActive) CoverFlightExit else ExitTransition.None,
             boundsTransform = HeaderCardBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.Crop, Alignment.Center),
             zIndexInOverlay = 1f,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
@@ -397,10 +405,10 @@ fun Modifier.cardFlightHeaderContent(): Modifier {
 }
 
 /**
- * Invisible top header-card anchor placed outside [Scaffold] when the real [GalleryDetailHeaderCard] has scrolled off
- * screen. It intercepts no touches and remains invisible while browsing; on return to the originating list it becomes
- * active so the cover and header card launch smoothly from the top of the screen along the exact same reversed arc as
- * an unscrolled return.
+ * Non-interactive, invisible top header-card anchor placed outside [Scaffold] when the real [GalleryDetailHeaderCard]
+ * has scrolled off screen. Avoids Material [ElevatedCard]/[Surface] completely so it NEVER intercepts touches in the
+ * upper quarter of the screen while browsing; on return to the originating list it becomes visible and launches the
+ * full cover + card along the exact same reversed arc as an unscrolled return.
  */
 @Composable
 context(_: SharedTransitionScope, _: TransitionsVisibilityScope)
@@ -415,16 +423,23 @@ fun CardFlightScrolledHeaderAnchor(
     val flightActive = CardFlight.isActiveDetail(info.gid, detailEntry)
     val exiting = visibility.transition.targetState != EnterExitState.Visible
     val showAnchor = flightActive && exiting
+    val cardColor = MaterialTheme.colorScheme.surfaceContainerLow
     Box(
         modifier = modifier.graphicsLayer { alpha = if (showAnchor) 1f else 0f },
     ) {
-        ElevatedCard(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .cardFlightHeaderTarget(info.gid, active = true),
+                .cardFlightHeaderTarget(info.gid, active = true)
+                .drawBehind {
+                    drawRoundRect(
+                        color = cardColor,
+                        cornerRadius = CornerRadius(12.dp.toPx()),
+                    )
+                },
         ) {
             Row(modifier = Modifier.cardFlightHeaderContent()) {
-                EhThumbCard(
+                EhThumbImage(
                     key = remember(info.gid) { info },
                     modifier = Modifier
                         .cardFlightHeaderCover(info.gid, active = true)
@@ -442,13 +457,18 @@ fun CardFlightScrolledHeaderAnchor(
 /**
  * Fork: solid Material3 container-transform flight between the comments [CrystalCard] on
  * [com.hippo.ehviewer.ui.screen.GalleryDetailScreen] and [com.hippo.ehviewer.ui.screen.GalleryCommentsScreen].
- * Uses a pure solid surface container (no per-frame liquid glass shader) so the transition stays 120fps-smooth and
- * visually consistent with the solid comment card and comments screen.
+ * Also pairs the previewed comment items shown on the detail screen with their matching items at the top of
+ * [GalleryCommentsScreen] so those comments glide continuously into place without disappearing mid-transition.
  */
 object CommentFlight {
     private const val MAX_ENTRIES = 16
 
-    private class Entry(val gid: Long, val from: String, var to: String? = null)
+    private class Entry(
+        val gid: Long,
+        val from: String,
+        val previewIds: Set<Long>,
+        var to: String? = null,
+    )
 
     private val entries = mutableStateListOf<Entry>()
     private var activeFrom by mutableStateOf<String?>(null)
@@ -458,16 +478,19 @@ object CommentFlight {
     val isForward: Boolean
         get() = activeForward
 
-    /** Records that the comments card of [gid] on detail page [fromEntry] was tapped. */
-    fun start(gid: Long, fromEntry: String?) {
+    /** Records that the comments card of [gid] on detail page [fromEntry] was tapped, with its [previewIds]. */
+    fun start(gid: Long, fromEntry: String?, previewIds: List<Long> = emptyList()) {
         if (fromEntry == null) return
         entries.removeAll { it.from == fromEntry }
-        entries.add(Entry(gid = gid, from = fromEntry))
+        entries.add(Entry(gid = gid, from = fromEntry, previewIds = previewIds.toSet()))
         while (entries.size > MAX_ENTRIES) entries.removeAt(0)
     }
 
     /** Always returns the page-scoped key for the comments card on detail page [entry] so lookahead bounds are ready. */
     fun sourceKey(gid: Long, entry: String?): String? = entry?.let { keyOf(it, gid) }
+
+    /** Page-scoped shared key for a preview comment [commentId] on detail page [entry]. */
+    fun sourceItemKey(gid: Long, entry: String?, commentId: Long): String? = entry?.let { itemKeyOf(it, gid, commentId) }
 
     /** Claims/returns the shared key for [GalleryCommentsScreen] of [gid] on page [entry]. */
     fun targetKey(gid: Long, entry: String?): String? {
@@ -477,6 +500,18 @@ object CommentFlight {
         val pending = entries.lastOrNull { it.to == null && it.gid == gid } ?: return null
         pending.to = entry
         return keyOf(pending.from, pending.gid)
+    }
+
+    /** Returns the shared key for [commentId] on [GalleryCommentsScreen] only if it was previewed on the source detail page. */
+    fun targetItemKey(gid: Long, entry: String?, commentId: Long): String? {
+        if (entry == null) return null
+        val existing = entries.lastOrNull { it.to == entry && it.gid == gid }
+        if (existing != null) {
+            return if (commentId in existing.previewIds) itemKeyOf(existing.from, existing.gid, commentId) else null
+        }
+        val pending = entries.lastOrNull { it.to == null && it.gid == gid } ?: return null
+        pending.to = entry
+        return if (commentId in pending.previewIds) itemKeyOf(pending.from, pending.gid, commentId) else null
     }
 
     /** Synchronously marks [fromId] <-> [toId] as the active Detail <-> Comments flight before frame 0. */
@@ -519,6 +554,8 @@ object CommentFlight {
     }
 
     private fun keyOf(from: String, gid: Long) = "comment-flight:$from:$gid"
+
+    private fun itemKeyOf(from: String, gid: Long, commentId: Long) = "comment-item:$from:$gid:$commentId"
 }
 
 /** Source modifier on the comments [CrystalCard] in [com.hippo.ehviewer.ui.screen.GalleryDetailContent]. */
@@ -537,6 +574,50 @@ fun Modifier.commentFlightCardSource(gid: Long): Modifier {
             exit = if (active) CommentSourceExit else ExitTransition.None,
             boundsTransform = CommentFlightBoundsTransform,
             resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
+        )
+    }
+}
+
+/** Shared-bounds modifier on each preview [GalleryCommentCard] on the detail screen so it glides continuously into the comments page. */
+@Composable
+fun Modifier.commentFlightItemSource(gid: Long, commentId: Long): Modifier {
+    val visibility = LocalPageVisibility.current ?: return this
+    val pageEntry = currentPageEntry()
+    val key = CommentFlight.sourceItemKey(gid, pageEntry, commentId) ?: return this
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val active = CommentFlight.isActiveSource(gid, pageEntry)
+    return with(shared) {
+        this@commentFlightItemSource.sharedBounds(
+            sharedContentState = rememberSharedContentState(key),
+            animatedVisibilityScope = visibility,
+            enter = if (active) CommentItemEnter else EnterTransition.None,
+            exit = if (active) CommentItemExit else ExitTransition.None,
+            boundsTransform = CommentFlightBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            zIndexInOverlay = 1f,
+            clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
+        )
+    }
+}
+
+/** Shared-bounds modifier on matching preview [GalleryCommentCard] items at the top of [GalleryCommentsScreen]. */
+@Composable
+fun Modifier.commentFlightItemTarget(gid: Long, commentId: Long): Modifier {
+    val visibility = LocalPageVisibility.current ?: return this
+    val commentsEntry = currentPageEntry()
+    val key = CommentFlight.targetItemKey(gid, commentsEntry, commentId) ?: return this
+    val shared: SharedTransitionScope = LocalSharedTransitionScope.current
+    val active = CommentFlight.isActiveComments(gid, commentsEntry)
+    return with(shared) {
+        this@commentFlightItemTarget.sharedBounds(
+            sharedContentState = rememberSharedContentState(key),
+            animatedVisibilityScope = visibility,
+            enter = if (active) CommentItemEnter else EnterTransition.None,
+            exit = if (active) CommentItemExit else ExitTransition.None,
+            boundsTransform = CommentFlightBoundsTransform,
+            resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            zIndexInOverlay = 1f,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
     }
@@ -592,8 +673,8 @@ fun Modifier.commentFlightDetailTopBarOverlay(): Modifier {
 
 /**
  * Full-screen solid-surface container for [com.hippo.ehviewer.ui.screen.GalleryCommentsScreen].
- * Expands bi-directionally from the detail screen's comment card and collapses smoothly back into it on return,
- * centered inside the morphing bounds so the top app bar never pulls toward the top-left corner.
+ * Draws a solid backing card behind content (never an opaque scrim on top) and uses overlapped crossfades so
+ * comments stay continuously visible throughout both expand and collapse.
  */
 @Composable
 fun CommentFlightContainer(
@@ -616,12 +697,12 @@ fun CommentFlightContainer(
                 if (targetState == EnterExitState.Visible) {
                     tween(
                         durationMillis = CommentContentEnterMillis,
-                        delayMillis = CommentContentEnterDelayMillis,
                         easing = LinearOutSlowInEasing,
                     )
                 } else {
                     tween(
                         durationMillis = CommentContentExitMillis,
+                        delayMillis = CommentContentExitDelayMillis,
                         easing = FastOutLinearInEasing,
                     )
                 }
@@ -629,25 +710,6 @@ fun CommentFlightContainer(
             label = "commentContentAlpha",
         ) { state ->
             if (state == EnterExitState.Visible) 1f else 0f
-        }
-        val scrimAlpha by visibility.transition.animateFloat(
-            transitionSpec = {
-                if (targetState == EnterExitState.Visible) {
-                    tween(
-                        durationMillis = CommentScrimFadeOutMillis,
-                        delayMillis = CommentContentEnterDelayMillis,
-                        easing = LinearOutSlowInEasing,
-                    )
-                } else {
-                    tween(
-                        durationMillis = CommentScrimFadeInMillis,
-                        easing = LinearOutSlowInEasing,
-                    )
-                }
-            },
-            label = "commentScrimAlpha",
-        ) { state ->
-            if (state == EnterExitState.Visible) 0f else 1f
         }
         Box(
             modifier = Modifier
@@ -660,21 +722,17 @@ fun CommentFlightContainer(
                     resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
                     clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
                 )
-                .fillMaxSize(),
-            contentAlignment = Alignment.Center,
+                .fillMaxSize()
+                .drawBehind {
+                    if (active) {
+                        drawRoundRect(
+                            color = surfaceColor,
+                            cornerRadius = CornerRadius(12.dp.toPx()),
+                        )
+                    }
+                },
+            contentAlignment = Alignment.TopCenter,
         ) {
-            if (active && scrimAlpha > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .drawBehind {
-                            drawRoundRect(
-                                color = surfaceColor.copy(alpha = scrimAlpha),
-                                cornerRadius = CornerRadius(12.dp.toPx()),
-                            )
-                        },
-                )
-            }
             val contentModifier = if (active) {
                 Modifier
                     .fillMaxSize()
@@ -705,8 +763,8 @@ private val QueryFlightBoundsTransform = BoundsTransform { _, _ ->
 }
 
 const val CardFlightDurationMillis = 380
-const val CardFlightDetailFadeInMillis = 220
-val CardFlightDetailPopFadeEasing = CubicBezierEasing(0.0f, 0.85f, 0.2f, 1.0f)
+const val CardFlightDetailFadeInMillis = 240
+val CardFlightDetailPopFadeEasing = CubicBezierEasing(0.2f, 0.55f, 0.35f, 1.0f)
 
 private const val HeaderCardDurationMillis = 380
 private const val HeaderCardArcSteps = 16
@@ -724,6 +782,20 @@ private val HeaderCardExit = fadeOut(
     tween(
         durationMillis = HeaderCardExitMillis,
         delayMillis = HeaderCardExitDelayMillis,
+        easing = FastOutLinearInEasing,
+    ),
+)
+private val CoverFlightEnter = fadeIn(
+    tween(
+        durationMillis = 120,
+        delayMillis = 20,
+        easing = LinearOutSlowInEasing,
+    ),
+)
+private val CoverFlightExit = fadeOut(
+    tween(
+        durationMillis = 120,
+        delayMillis = 70,
         easing = FastOutLinearInEasing,
     ),
 )
@@ -757,24 +829,37 @@ private val HeaderCardBoundsTransform = BoundsTransform { initialBounds, targetB
     }
 }
 
-const val CommentFlightDurationMillis = 330
-private const val CommentContentEnterDelayMillis = 110
-private const val CommentContentEnterMillis = 180
-private const val CommentContentExitMillis = 90
-private const val CommentScrimFadeInMillis = 60
-private const val CommentScrimFadeOutMillis = 160
+const val CommentFlightDurationMillis = 340
+private const val CommentContentEnterMillis = 200
+private const val CommentContentExitDelayMillis = 40
+private const val CommentContentExitMillis = 180
 private const val CommentTopBarRevealDelayMillis = 110
 private const val CommentTopBarRevealMillis = 150
 private val CommentSourceEnter = fadeIn(
     tween(
-        durationMillis = 160,
-        delayMillis = 170,
+        durationMillis = 180,
+        delayMillis = 20,
         easing = LinearOutSlowInEasing,
     ),
 )
 private val CommentSourceExit = fadeOut(
     tween(
-        durationMillis = 90,
+        durationMillis = 180,
+        delayMillis = 60,
+        easing = FastOutLinearInEasing,
+    ),
+)
+private val CommentItemEnter = fadeIn(
+    tween(
+        durationMillis = 160,
+        delayMillis = 20,
+        easing = LinearOutSlowInEasing,
+    ),
+)
+private val CommentItemExit = fadeOut(
+    tween(
+        durationMillis = 160,
+        delayMillis = 60,
         easing = FastOutLinearInEasing,
     ),
 )

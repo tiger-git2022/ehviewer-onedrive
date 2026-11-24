@@ -129,6 +129,7 @@ import com.hippo.ehviewer.ui.main.GlassToggleButton
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.commentFlightItemTarget
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
 import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
@@ -533,7 +534,9 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                     }()
 
                     GalleryCommentCard(
-                        modifier = Modifier.thenIf(animateItems) { animateItem() },
+                        modifier = Modifier
+                            .commentFlightItemTarget(galleryDetail.gid, item.id)
+                            .thenIf(animateItems) { animateItem() },
                         comment = item,
                         onUserClick = {
                             navigate(

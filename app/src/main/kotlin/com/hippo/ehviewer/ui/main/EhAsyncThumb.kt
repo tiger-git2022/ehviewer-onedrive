@@ -101,3 +101,29 @@ fun EhThumbCard(
         RestoredBadge(key.gid, Modifier.align(Alignment.TopEnd))
     }
 }
+
+/**
+ * Non-interactive cover image without Material [Card]/[Surface] or [clickable], used by invisible shared-transition
+ * anchors so they never intercept touches over the underlying screen.
+ */
+@Composable
+fun EhThumbImage(
+    key: GalleryInfo,
+    modifier: Modifier = Modifier,
+) {
+    var contentScale by remember(key.gid) { mutableStateOf(initialContentScale(key)) }
+    val request = requestOf(key)
+    Image(
+        painter = rememberAsyncImagePainter(
+            model = request,
+            onSuccess = {
+                val crop = it.result.image.shouldCrop
+                recordThumbCrop(key.gid, crop)
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit
+            },
+        ),
+        contentDescription = null,
+        modifier = modifier.clip(ShapeDefaults.Medium),
+        contentScale = contentScale,
+    )
+}
