@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -123,15 +124,21 @@ import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
+import com.hippo.ehviewer.ui.main.CommentFlight
 import com.hippo.ehviewer.ui.main.CommentFlightContainer
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GlassToggleButton
 import com.hippo.ehviewer.ui.main.NavigationIcon
 import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
+import com.hippo.ehviewer.ui.main.commentFlightCommentsTopBarOverlay
+import com.hippo.ehviewer.ui.main.commentFlightFabOverlay
 import com.hippo.ehviewer.ui.main.commentFlightItemTarget
+import com.hippo.ehviewer.ui.main.commentFlightNonPreviewItem
+import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
+import com.hippo.ehviewer.ui.main.isCommentFlightTransitioning
 import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
 import com.hippo.ehviewer.ui.main.selectableSections
 import com.hippo.ehviewer.ui.openBrowser
@@ -342,37 +349,47 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     // Taken from the list, not from overlappedFraction: the bar counts the pull to refresh at the top as content
     // scrolled below it, and turned to glass over nothing while the indicator was pulled out
     val lazyListState = rememberLazyListState()
+    val commentsPageEntry = currentPageEntry()
+    LaunchedEffect(lazyListState, commentsPageEntry) {
+        snapshotFlow { lazyListState.firstVisibleItemIndex > 1 }
+            .collect { scrolledPastPreview ->
+                if (scrolledPastPreview) CommentFlight.clearTargetPreviewBottom(galleryDetail.gid, commentsPageEntry)
+            }
+    }
     val barScrolled by remember { derivedStateOf { lazyListState.canScrollBackward } }
     val barGlass = rememberLiquidGlass(backdrop).takeIf { barScrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
     val fabGlass = LocalFabGlass.current
-    CommentFlightContainer(gid = galleryDetail.gid) { contentModifier ->
-        Scaffold(
-            modifier = contentModifier,
-            topBar = {
-                TopAppBar(
-                    title = { Text(text = stringResource(id = R.string.gallery_comments)) },
-                    navigationIcon = { NavigationIcon() },
-                    actions = {
-                        val chineseTarget = TargetLanguage.of(translateTarget).primary == "zh"
-                        val toggleDescription = stringResource(R.string.comment_translate_toggle)
-                        GlassToggleButton(
-                            checked = showTranslations && translateConfigured,
-                            onCheckedChange = { on ->
-                                if (!translateConfigured) {
-                                    launch { snackbar(translateNotConfigured) }
-                                    navigate(CommentTranslateScreenDestination)
-                                } else {
-                                    showTranslations = on
-                                    flippedComments.clear()
-                                }
-                            },
-                            modifier = Modifier.semantics { contentDescription = toggleDescription },
-                        ) {
-                            Text(text = if (chineseTarget) "汉" else "译", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    modifier = Modifier.edgeGlass(barGlass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
+    val flightTransitioning = isCommentFlightTransitioning(galleryDetail.gid)
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = if (flightTransitioning) Color.Transparent else MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text(text = stringResource(id = R.string.gallery_comments)) },
+                navigationIcon = { NavigationIcon() },
+                actions = {
+                    val chineseTarget = TargetLanguage.of(translateTarget).primary == "zh"
+                    val toggleDescription = stringResource(R.string.comment_translate_toggle)
+                    GlassToggleButton(
+                        checked = showTranslations && translateConfigured,
+                        onCheckedChange = { on ->
+                            if (!translateConfigured) {
+                                launch { snackbar(translateNotConfigured) }
+                                navigate(CommentTranslateScreenDestination)
+                            } else {
+                                showTranslations = on
+                                flippedComments.clear()
+                            }
+                        },
+                        modifier = Modifier.semantics { contentDescription = toggleDescription },
+                    ) {
+                        Text(text = if (chineseTarget) "汉" else "译", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                },
+                modifier = Modifier
+                    .commentFlightCommentsTopBarOverlay(galleryDetail.gid)
+                    .edgeGlass(barGlass, GlassEdge.Bottom, barColor.copy(alpha = GLASS_BAR_TINT), GlassStyle.Panel, BAR_GLASS_CORNER),
                 colors = if (backdrop != null) {
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
@@ -396,11 +413,14 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                         }
                         commenting = true
                     },
-                    modifier = Modifier.snackBarPadding().floatingGlass(
-                        fabGlass,
-                        FloatingActionButtonDefaults.shape,
-                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_FAB_TINT),
-                    ),
+                    modifier = Modifier
+                        .commentFlightFabOverlay(galleryDetail.gid)
+                        .snackBarPadding()
+                        .floatingGlass(
+                            fabGlass,
+                            FloatingActionButtonDefaults.shape,
+                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = GLASS_FAB_TINT),
+                        ),
                     containerColor = if (fabGlass != null) Color.Transparent else FloatingActionButtonDefaults.containerColor,
                     contentColor = MaterialTheme.colorScheme.contentColorFor(FloatingActionButtonDefaults.containerColor),
                     elevation = if (fabGlass != null) FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp) else FloatingActionButtonDefaults.elevation(),
@@ -410,31 +430,36 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             }
         },
     ) { paddingValues ->
-        val keylineMargin = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)
-        var editTextMeasured by remember { mutableStateOf(MinimumContentPaddingEditText) }
-        var isRefreshing by remember { mutableStateOf(false) }
-        val refreshState = rememberPullToRefreshState()
-        // Fork: the comments recorded for the glass of the refresh indicator drawn over them, see LiquidGlass.kt
-        val commentsBackdrop = LocalPageBackdrop.current
-        val commentsGlass = rememberLiquidGlass(commentsBackdrop)
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                isRefreshing = true
-                // Fork: pulled at the top, it stays at the top. The list keeps the comment it showed first, and the
-                // comments that came above it (new ones, or all of them loaded) lay hidden below the top bar, which
-                // took them for comments scrolled below it and turned to glass
-                val atTop = !lazyListState.canScrollBackward
-                launchIO {
-                    runSuspendCatching {
-                        refreshComment(true)
-                        if (atTop) withUIContext { lazyListState.scrollToItem(0) }
+        val topBarHeightPx = with(density) { paddingValues.calculateTopPadding().toPx() }
+        CommentFlightContainer(
+            gid = galleryDetail.gid,
+            topBarHeightPx = topBarHeightPx,
+        ) { bodyModifier ->
+            val keylineMargin = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)
+            var editTextMeasured by remember { mutableStateOf(MinimumContentPaddingEditText) }
+            var isRefreshing by remember { mutableStateOf(false) }
+            val refreshState = rememberPullToRefreshState()
+            // Fork: the comments recorded for the glass of the refresh indicator drawn over them, see LiquidGlass.kt
+            val commentsBackdrop = LocalPageBackdrop.current
+            val commentsGlass = rememberLiquidGlass(commentsBackdrop)
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    isRefreshing = true
+                    // Fork: pulled at the top, it stays at the top. The list keeps the comment it showed first, and the
+                    // comments that came above it (new ones, or all of them loaded) lay hidden below the top bar, which
+                    // took them for comments scrolled below it and turned to glass
+                    val atTop = !lazyListState.canScrollBackward
+                    launchIO {
+                        runSuspendCatching {
+                            refreshComment(true)
+                            if (atTop) withUIContext { lazyListState.scrollToItem(0) }
+                        }
+                        isRefreshing = false
                     }
-                    isRefreshing = false
-                }
-            },
-            // Fork: the comments scroll on below the top bar, for its glass to refract them
-            modifier = Modifier.imePadding(),
+                },
+                // Fork: the comments scroll on below the top bar, for its glass to refract them
+                modifier = bodyModifier.imePadding(),
             state = refreshState,
             indicator = {
                 // Fork: like the lists of the search pages, glass refracting the comments
@@ -585,7 +610,11 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                 }
                 if (comments.hasMore) {
                     item {
-                        Crossfade(targetState = refreshing, modifier = Modifier.padding(keylineMargin), label = "refreshing") {
+                        Crossfade(
+                            targetState = refreshing,
+                            modifier = Modifier.commentFlightNonPreviewItem(galleryDetail.gid).padding(keylineMargin),
+                            label = "refreshing",
+                        ) {
                             Box(
                                 modifier = Modifier.fillMaxWidth().height(56.dp),
                                 contentAlignment = Alignment.Center,
