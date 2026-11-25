@@ -20,6 +20,11 @@ class CommentTranslateTest {
         assertEquals(CommentScript.OTHER, CommentScript.guess("这本 is the best of the best"))
         assertEquals(CommentScript.CHINESE, CommentScript.guess("汉化版在这里 https://e-hentai.org/g/123/abcdef/"))
         assertNull(CommentScript.guess("https://e-hentai.org/g/123/abcdef/"))
+        assertNull(CommentScript.guess("lianjia3366@gmail.com"))
+        assertEquals(
+            CommentScript.CHINESE,
+            CommentScript.guess("""<a href="https://exhentai.org/?f_search=Chinese&incest%3realporn%24&advsearch=1&f_sh=on">https://exhentai.org/?f_search=Chinese&incest%3realporn%24&advsearch=1&f_sh=on</a>;;隐藏画廊链接咋用？我点不开呢"""),
+        )
         assertNull(CommentScript.guess("+1 👍 2333"))
     }
 
@@ -277,6 +282,56 @@ class CommentTranslateTest {
         assertEquals(1, enSegments.size)
         assertTrue(enSegments[0].translate)
         assertEquals(multiEn, enSegments[0].text)
+        // Chinese commission notice containing a standalone email line needs no translation
+        val zhWithEmail = """
+            [廉价汉化组]
+            汉化委托联系QQ及邮箱:
+            3683304313
+            lianjia3366@gmail.com
+            非诚勿扰、感谢支持。
+        """.trimIndent()
+        assertTrue(CommentSegments.split(zhWithEmail, zh).none { it.translate })
+        // Escaped HTML link attached directly to Chinese text needs no translation
+        val zhWithHtmlLink = """<a href="https://exhentai.org/?f_search=Chinese&incest%3realporn%24&advsearch=1&f_sh=on">https://exhentai.org/?f_search=Chinese&incest%3realporn%24&advsearch=1&f_sh=on</a>;;隐藏画廊链接咋用？我点不开呢"""
+        assertTrue(CommentSegments.split(zhWithHtmlLink, zh).none { it.translate })
+        // English commission comment with RAW link, email and discord handle translates only the English prose
+        val enCommission = """
+            Japanese (RAW): https://exhentai.org/g/3909596/f9d0d24158/
+
+            Commissioned by: Anonymous
+            If you'd like to commission a translation, contact me via any of the methods below:
+            email: meganekun_tl@outlook.com
+            discord: meganekun_tl
+        """.trimIndent()
+        val commissionSegments = CommentSegments.split(enCommission, zh)
+        assertEquals(enCommission, commissionSegments.joinToString("") { it.text })
+        val commissionToTranslate = commissionSegments.filter { it.translate }
+        assertEquals(1, commissionToTranslate.size)
+        assertEquals(
+            "Commissioned by: Anonymous\nIf you'd like to commission a translation, contact me via any of the methods below:",
+            commissionToTranslate[0].text,
+        )
+        // Translated reply keeping RAW link, email and discord handle must pass isTranslationInto (both verbatim and translated labels)
+        val commissionReplyKeptLabels = """
+            Japanese (RAW): https://exhentai.org/g/3909596/f9d0d24158/
+
+            委托方：匿名
+            如果你想委托翻译，请通过以下任意方式联系我：
+            email: meganekun_tl@outlook.com
+            discord: meganekun_tl
+        """.trimIndent()
+        assertTrue(isTranslationInto(commissionReplyKeptLabels, enCommission, zh))
+        val commissionReplyTranslatedLabels = """
+            生肉：https://exhentai.org/g/3909596/f9d0d24158/
+
+            委托方：匿名
+            如果你想委托翻译，请通过以下任意方式联系我：
+            邮箱：meganekun_tl@outlook.com
+            Discord：meganekun_tl
+        """.trimIndent()
+        assertTrue(isTranslationInto(commissionReplyTranslatedLabels, enCommission, zh))
+        // Untranslated commission comment must still fail isTranslationInto
+        assertFalse(isTranslationInto(enCommission, enCommission, zh))
     }
 
     @Test

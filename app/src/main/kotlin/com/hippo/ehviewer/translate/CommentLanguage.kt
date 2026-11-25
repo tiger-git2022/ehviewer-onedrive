@@ -34,12 +34,9 @@ object CommentScript {
     /** Letters in another script, to be named by ML Kit. */
     const val OTHER = "other"
 
-    // Links say nothing about the language of a comment
-    private val urlRegex = Regex("""(https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
-
-    /** The language by script, [OTHER], or null for a comment without letters (numbers, emoji, links only). */
+    /** The language by script, [OTHER], or null for a comment without letters (numbers, emoji, links/emails only). */
     fun guess(text: String): String? {
-        val stripped = urlRegex.replace(text, " ")
+        val stripped = stripNonProse(text)
         var han = 0
         var kana = 0
         var hangul = 0
@@ -164,7 +161,7 @@ object CommentListing {
 object CommentLinks {
     // With or without "https://": "exhentai.org/g/123/abc", "www.dlsite.com/..."
     private val urlRegex = Regex(
-        """(?:https?://|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|jp|co|me|io|tv|moe|info|to|cc)\b(?:/\S*)?""",
+        """(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|jp|co|me|io|tv|moe|info|to|cc|gg|xyz|cn|tw|hk|kr)\b(?:/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*)?""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -180,18 +177,20 @@ object CommentLinks {
         "color", "colored", "colour", "coloured", "dl", "download", "dlsite", "fanza", "dmm", "melonbooks", "melon",
         "toranoana", "tora", "booth", "fantia", "pixiv", "fanbox", "patreon", "twitter", "skeb", "amazon", "getchu",
         "digiket", "kindle", "previous", "prev", "next", "part", "chapter", "ch", "vol", "volume",
+        "email", "mail", "contact", "discord",
     )
 
     // Japanese, Chinese and Korean labels, longest first: "DL版はこちら", "购买链接", "원본"
     private val cjkLabels = listOf(
         "無修正", "無修整", "同人誌", "単行本", "こちら", "ここ", "購入", "販売", "原作", "原本", "原版", "生肉", "公式", "作者",
         "作品", "リンク", "サイト", "ページ", "支援", "応援", "購買", "购买", "鏈接", "链接", "連結", "连结", "来源", "來源", "出处",
-        "出處", "原图", "原圖", "원본", "구매", "링크", "여기", "版", "元", "先", "は", "で", "の", "から", "より", "在", "这里", "這裡",
+        "出處", "原图", "原圖", "邮箱", "郵箱", "원본", "구매", "링크", "여기", "版", "元", "先", "は", "で", "の", "から", "より", "在", "这里", "這裡",
     )
 
     fun isLinksOnly(text: String): Boolean {
-        val hasLink = urlRegex.containsMatchIn(text)
-        var rest = urlRegex.replace(text, " ")
+        val withoutTags = htmlTagRegex.replace(text, " ")
+        val hasLink = urlRegex.containsMatchIn(withoutTags) || emailRegex.containsMatchIn(withoutTags)
+        var rest = urlRegex.replace(emailRegex.replace(withoutTags, " "), " ")
         // A question about the link is worth reading
         if ('?' in rest || '？' in rest) return false
         val words = rest.split(Regex("""[^\p{L}]+""")).filter(String::isNotEmpty)
@@ -331,7 +330,7 @@ object CommentSegments {
     // rather than short terms ("请帮忙添加Tag和修改Main Gallery Title") still needs translation
     private fun hasEmbeddedForeignSentence(line: String, target: TargetLanguage): Boolean {
         if (target.primary !in setOf(CommentScript.CHINESE, CommentScript.JAPANESE, CommentScript.KOREAN)) return false
-        val stripped = keptUrlRegex.replace(bracketRegex.replace(line, " "), " ")
+        val stripped = stripNonProse(bracketRegex.replace(line, " "))
         var words = 0
         var letters = 0
         lowerLatinWordRegex.findAll(stripped).forEach {
@@ -343,7 +342,7 @@ object CommentSegments {
 
     private fun lineNeedsTranslation(line: String, target: TargetLanguage): Boolean {
         val trimmed = line.trim()
-        if (trimmed.isEmpty() || CommentLinks.isLinksOnly(trimmed)) return false
+        if (trimmed.isEmpty() || CommentLinks.isLinksOnly(trimmed) || contactLineRegex.matches(trimmed)) return false
         val guess = CommentScript.guess(trimmed) ?: return false
         return when (target.primary) {
             CommentScript.CHINESE -> guess != CommentScript.CHINESE || hasEmbeddedForeignSentence(trimmed, target)
@@ -424,7 +423,7 @@ object CommentSegments {
  */
 fun isTranslationInto(result: String, source: String, target: TargetLanguage): Boolean {
     if (result.trim() == source.trim()) {
-        val stripped = keptUrlRegex.replace(result, " ").trim()
+        val stripped = stripNonProse(result).trim()
         if (CommentScript.guess(stripped) == null) return true
         val tokens = tokenRegex.findAll(stripped).map { it.value }.toList()
         if (tokens.size <= 3 && tokens.all { !hasCjk(it) && isNameLike(it) }) return true
@@ -445,19 +444,54 @@ fun isTranslationInto(result: String, source: String, target: TargetLanguage): B
     return CommentSegments.matchesTarget(guess, target)
 }
 
-private val keptUrlRegex = Regex("""(?:https?://|www\.)\S+""", RegexOption.IGNORE_CASE)
+// Escaped HTML tags appearing as literal text in comments, e.g. <a href="...">...</a>
+private val htmlTagRegex = Regex(
+    """</?(?:a|b|i|u|s|p|br|hr|img|div|span|strong|em|code|pre|font|blockquote|url|quote)(?:\s+[^>\n]*)?/?>""",
+    RegexOption.IGNORE_CASE,
+)
+
+private val emailRegex = Regex("""[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}""")
+
+// URLs (http(s)://, www., bare domains) stopping before HTML delimiters, quotes, whitespace, or CJK/fullwidth chars
+// so text immediately following a link ("...</a>;;隐藏画廊") is never swallowed
+private val nonProseUrlRegex = Regex(
+    """(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|jp|cn|tw|hk|kr|io|tv|moe|info|gg|cc|xyz|edu|gov)\b(?:/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*)?|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,4}/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+""",
+    RegexOption.IGNORE_CASE,
+)
+
+private val atHandleRegex = Regex("""(?<![A-Za-z0-9._%+\-])@[A-Za-z0-9_.\-]{2,}""")
+
+// Single-token contact/handle lines like "email: foo@bar.com", "discord: meganekun_tl", "twitter: @artist"
+private val contactLineRegex = Regex(
+    """^(?:e-?mail|mail|discord|twitter|x|pixiv|fanbox|fantia|patreon|skeb|telegram|tg|qq|wechat|wx|line|instagram|ig|bluesky|bsky|reddit|github|steam|twitch|youtube|booth|dlsite|fanza|ko-?fi|gumroad|subscribestar|afdian|ci-en|uid|handle|邮箱|郵箱)\s*[:：]\s*(\S+)$""",
+    RegexOption.IGNORE_CASE,
+)
+
+/** Removes non-prose tokens (HTML tags, emails, URLs, @handles) that carry no language signal and need no translation. */
+internal fun stripNonProse(text: String): String {
+    var s = htmlTagRegex.replace(text, " ")
+    s = emailRegex.replace(s, " ")
+    s = nonProseUrlRegex.replace(s, " ")
+    s = atHandleRegex.replace(s, " ")
+    return s
+}
 
 // [Chococornet (Tenro Aya)], 【...】, 「...」, 『...』, (...), （...）
 private val bracketRegex = Regex("""\[[^\[\]\n]*]|【[^【】\n]*】|「[^「」\n]*」|『[^『』\n]*』|\([^()\n]*\)|（[^（）\n]*）""")
 
-// Letters and digits; a word of Chinese runs to the next space or punctuation
-private val tokenRegex = Regex("""[\p{L}\p{N}\p{M}'’]+""")
+// Letters, digits, and underscores (for kept handles like meganekun_tl); Chinese runs to the next space or punctuation
+private val tokenRegex = Regex("""[\p{L}\p{N}\p{M}'’_]+""")
 
-/** [result] without what it kept as it was in [source]: links, brackets, names and titles. */
+/** [result] without what it kept as it was in [source]: links, emails, contact handles, brackets, names and titles. */
 internal fun withoutKeptNames(result: String, source: String): String {
     val sourceLower = source.lowercase()
     val sourceWords = tokenRegex.findAll(sourceLower).map { it.value }.toSet()
-    var text = keptUrlRegex.replace(result, " ")
+    val withoutContactLines = result.lines().joinToString("\n") { line ->
+        val trimmed = line.trim()
+        val match = contactLineRegex.matchEntire(trimmed)
+        if (match != null && match.groupValues[1].lowercase() in sourceLower) " " else line
+    }
+    var text = stripNonProse(withoutContactLines)
     // Brackets twice: a name in brackets in a title in brackets
     repeat(2) {
         text = bracketRegex.replace(text) { match ->
@@ -481,10 +515,11 @@ private fun hasCjk(token: String) = token.codePoints().anyMatch {
     }
 }
 
-// "Sabbat", "CASE", "02", "杉崎霧香の一週間", "Doujins": a name or a title, not a word of a sentence ("please")
+// "Sabbat", "CASE", "02", "meganekun_tl", "杉崎霧香の一週間", "Doujins": a name, title, or handle, not a prose word ("please")
 private fun isNameLike(token: String): Boolean {
     val first = token.codePointAt(0)
     if (Character.isUpperCase(first) || Character.isDigit(first)) return true
+    if ('_' in token || token.any { it.isDigit() }) return true
     var i = 0
     while (i < token.length) {
         val cp = token.codePointAt(i)

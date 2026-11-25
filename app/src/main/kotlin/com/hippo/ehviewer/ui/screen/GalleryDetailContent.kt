@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.StringRes
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.clickable
@@ -42,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
@@ -53,7 +55,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LocalPinnableContainer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -127,6 +132,7 @@ import com.hippo.ehviewer.restore.restoredNote
 import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.translate.CommentTranslations
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
+import com.hippo.ehviewer.ui.LocalSharedTransitionScope
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.confirmRemoveDownload
 import com.hippo.ehviewer.ui.cycleFavorite
@@ -141,6 +147,7 @@ import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.GalleryDetailHeaderCard
 import com.hippo.ehviewer.ui.main.GalleryTags
+import com.hippo.ehviewer.ui.main.LocalPageVisibility
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
@@ -149,6 +156,7 @@ import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
 import com.hippo.ehviewer.ui.main.commentFlightCardContent
 import com.hippo.ehviewer.ui.main.commentFlightCardSource
 import com.hippo.ehviewer.ui.main.commentFlightItemSource
+import com.hippo.ehviewer.ui.main.commentFlightMoreButton
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
@@ -483,8 +491,29 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         }
         val shownComments = commentsList.take(maxShowCount)
         val commentPageEntry = currentPageEntry()
+        val shared = LocalSharedTransitionScope.current
+        val pageVisibility = LocalPageVisibility.current
+        val density = LocalDensity.current
+        val itemVerticalPaddingPx = with(density) { 4.dp.toPx() }
+        var cardLeftPx by remember { mutableFloatStateOf(0f) }
+        var previewBlockHeightPx by remember { mutableFloatStateOf(0f) }
+        fun isAtRest(): Boolean = !shared.isTransitionActive && (
+            pageVisibility == null || (
+                pageVisibility.transition.currentState == EnterExitState.Visible &&
+                    pageVisibility.transition.targetState == EnterExitState.Visible
+                )
+            )
         fun navigateToCommentScreen() {
-            CommentFlight.start(galleryDetail.gid, commentPageEntry, shownComments.map { it.id })
+            val hasPreview = shownComments.isNotEmpty()
+            val detailPreviewBottomPx = if (hasPreview) (previewBlockHeightPx - itemVerticalPaddingPx).coerceAtLeast(0f) else 0f
+            CommentFlight.start(
+                gid = galleryDetail.gid,
+                fromEntry = commentPageEntry,
+                previewIds = shownComments.map { it.id },
+                cardLeftPx = cardLeftPx,
+                previewTopOffsetPx = if (hasPreview) itemVerticalPaddingPx else 0f,
+                detailPreviewBottomPx = detailPreviewBottomPx,
+            )
             navigate(GalleryCommentsScreenDestination(galleryDetail.gid))
         }
         // Fork: translated like on the comments page, if set to, see translate/CommentTranslations.kt
@@ -504,58 +533,71 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val mihonMissing = stringResource(R.string.mihon_not_installed)
         val originalLabel = stringResource(R.string.comment_original)
         val translationLabel = stringResource(R.string.select_text_translation)
-        CrystalCard(modifier = Modifier.commentFlightCardSource(galleryDetail.gid)) {
+        CrystalCard(
+            modifier = Modifier
+                .onGloballyPositioned { coords ->
+                    if (isAtRest()) cardLeftPx = coords.positionInRoot().x
+                }
+                .commentFlightCardSource(galleryDetail.gid),
+        ) {
             Column(modifier = Modifier.commentFlightCardContent()) {
-            shownComments.forEach { item ->
-                GalleryCommentCard(
-                    modifier = Modifier.padding(vertical = 4.dp).commentFlightItemSource(galleryDetail.gid, item.id),
-                    comment = item,
-                    onCardClick = ::navigateToCommentScreen,
-                    onUserClick = ::navigateToCommentScreen,
-                    onUrlClick = {
-                        if (it.startsWith(ANTHOLOGY_LINK)) {
-                            launch {
-                                anthologyMarks.handleAnthologyLink(
-                                    it,
-                                    anthologyContext,
-                                    galleryDetail,
-                                    showContents = { withUIContext { navigateToCommentScreen() } },
-                                    onMihonMissing = { snackbar(mihonMissing) },
-                                )
-                            }
-                        } else if (it.startsWith("#c")) {
-                            navigateToCommentScreen()
-                        } else {
-                            if (!jumpToReaderByPage(it, galleryDetail)) if (!navWithUrl(it)) openBrowser(it)
-                        }
+                Column(
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        if (isAtRest()) previewBlockHeightPx = coords.size.height.toFloat()
                     },
-                    maxLines = 5,
-                    ellipsis = true,
-                    processComment = { c, ig -> anthologyMarks.decorate(c.comment.parseAsHtml(imageGetter = ig), item, original = c.comment == item.comment, hintFirst = true) },
-                    translation = if (translate) CommentTranslations.stateOf(item) else null,
-                    showOriginal = item.id in originalShown,
-                    onToggleOriginal = { if (!originalShown.remove(item.id)) originalShown.add(item.id) },
-                    onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
-                    onRetranslate = { CommentTranslations.retranslate(item) },
-                    // Fork: a long press picks part of the comment or of its translation, see ui/tools/SelectTextDialog.kt
-                    onCardLongClick = {
-                        launch {
-                            val translation = if (translate) CommentTranslations.stateOf(item) else null
-                            awaitSelectText(item.selectableSections(translation, originalLabel, translationLabel))
-                        }
-                    },
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v))
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable(onClick = ::navigateToCommentScreen),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(commentText)
-            }
+                ) {
+                    shownComments.forEach { item ->
+                        GalleryCommentCard(
+                            modifier = Modifier.padding(vertical = 4.dp).commentFlightItemSource(galleryDetail.gid, item.id),
+                            comment = item,
+                            onCardClick = ::navigateToCommentScreen,
+                            onUserClick = ::navigateToCommentScreen,
+                            onUrlClick = {
+                                if (it.startsWith(ANTHOLOGY_LINK)) {
+                                    launch {
+                                        anthologyMarks.handleAnthologyLink(
+                                            it,
+                                            anthologyContext,
+                                            galleryDetail,
+                                            showContents = { withUIContext { navigateToCommentScreen() } },
+                                            onMihonMissing = { snackbar(mihonMissing) },
+                                        )
+                                    }
+                                } else if (it.startsWith("#c")) {
+                                    navigateToCommentScreen()
+                                } else {
+                                    if (!jumpToReaderByPage(it, galleryDetail)) if (!navWithUrl(it)) openBrowser(it)
+                                }
+                            },
+                            maxLines = 5,
+                            ellipsis = true,
+                            processComment = { c, ig -> anthologyMarks.decorate(c.comment.parseAsHtml(imageGetter = ig), item, original = c.comment == item.comment, hintFirst = true) },
+                            translation = if (translate) CommentTranslations.stateOf(item) else null,
+                            showOriginal = item.id in originalShown,
+                            onToggleOriginal = { if (!originalShown.remove(item.id)) originalShown.add(item.id) },
+                            onRetryTranslation = { CommentTranslations.request(listOf(item), retry = true) },
+                            onRetranslate = { CommentTranslations.retranslate(item) },
+                            // Fork: a long press picks part of the comment or of its translation, see ui/tools/SelectTextDialog.kt
+                            onCardLongClick = {
+                                launch {
+                                    val translation = if (translate) CommentTranslations.stateOf(item) else null
+                                    awaitSelectText(item.selectableSections(translation, originalLabel, translationLabel))
+                                }
+                            },
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .commentFlightMoreButton(galleryDetail.gid)
+                        .fillMaxWidth()
+                        .padding(bottom = dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v))
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(onClick = ::navigateToCommentScreen),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(commentText)
+                }
             }
         }
     }
