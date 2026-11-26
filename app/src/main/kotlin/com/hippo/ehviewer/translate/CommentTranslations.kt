@@ -197,7 +197,13 @@ object CommentTranslations {
         return result
     }
 
-    private suspend fun translateChunk(chunk: List<ToTranslate>, config: TranslateConfig, target: TargetLanguage, cache: LinkedHashMap<String, CachedTranslation>) {
+    private suspend fun translateChunk(
+        chunk: List<ToTranslate>,
+        config: TranslateConfig,
+        target: TargetLanguage,
+        cache: LinkedHashMap<String, CachedTranslation>,
+        isRetry: Boolean = false,
+    ) {
         // Flatten each comment's translatable segments into sequential API items, mapping item id -> (comment, partIndex)
         val items = ArrayList<CommentTranslateApi.Item>()
         val mapping = ArrayList<Pair<ToTranslate, Int>>()
@@ -213,7 +219,7 @@ object CommentTranslations {
             itemIdsByComment[comment] = ids
         }
         val result = try {
-            CommentTranslateApi.translate(config, items, target) { partial ->
+            CommentTranslateApi.translate(config, items, target, strictRetry = isRetry) { partial ->
                 // Streamed: reassemble each comment's segments as translations come in
                 val grouped = HashMap<ToTranslate, MutableMap<Int, String>>()
                 partial.forEach { (id, text) ->
@@ -234,6 +240,8 @@ object CommentTranslations {
             chunk.forEach { states[it.key] = CommentTranslation.Failed(it.language, message) }
             return
         }
+        val retryComments = ArrayList<ToTranslate>()
+        var savedAny = false
         chunk.forEach { comment ->
             val ids = itemIdsByComment.getValue(comment)
             val translatedParts = HashMap<Int, String>()
@@ -250,23 +258,38 @@ object CommentTranslations {
                 }
             }
             if (error != null) {
-                states[comment.key] = CommentTranslation.Failed(comment.language, error!!)
+                if (!isRetry) {
+                    // Short/non-thinking passes occasionally echo short phrases (e.g. "wake up wake up wake up")
+                    // unchanged; retry those items once with thinking enabled (if AUTO) and a stricter prompt.
+                    states[comment.key] = CommentTranslation.Pending(comment.language)
+                    retryComments += comment
+                } else {
+                    states[comment.key] = CommentTranslation.Failed(comment.language, error!!)
+                }
             } else {
                 val assembled = comment.assemble(translatedParts)
                 states[comment.key] = CommentTranslation.Done(comment.language, assembled)
                 synchronized(cache) { cache[comment.key] = CachedTranslation(comment.language, assembled) }
+                savedAny = true
             }
         }
-        saveCache()
+        if (savedAny) saveCache()
+        if (retryComments.isNotEmpty()) {
+            val retryConfig = if (config.thinking == ThinkingMode.AUTO) config.copy(thinking = ThinkingMode.ON) else config
+            translateChunk(retryComments, retryConfig, target, cache, isRetry = true)
+        }
     }
 
     /** Whether [text] needs translating into [target], and its language. */
     private suspend fun detect(text: String, target: TargetLanguage): Pair<Boolean, String?> = when (val guess = CommentScript.guess(text)) {
         null -> false to null
         CommentScript.OTHER -> {
-            // A romanized language ("ja-Latn") is no language the reader reads, it is translated
+            // A romanized language ("ja-Latn") is no language the reader reads, it is translated;
+            // non-CJK script text is never already in a CJK target even if ML Kit mislabels a short phrase.
             val language = identify(text)
-            (language != target.primary) to language
+            val needed = target.primary in setOf(CommentScript.CHINESE, CommentScript.JAPANESE, CommentScript.KOREAN) ||
+                language != target.primary
+            needed to language
         }
         else -> (guess != target.primary) to guess
     }

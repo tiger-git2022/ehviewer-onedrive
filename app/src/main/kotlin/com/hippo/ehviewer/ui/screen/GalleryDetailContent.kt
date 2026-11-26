@@ -4,7 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.StringRes
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.clickable
@@ -56,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.dimensionResource
@@ -132,7 +130,6 @@ import com.hippo.ehviewer.restore.restoredNote
 import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.translate.CommentTranslations
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
-import com.hippo.ehviewer.ui.LocalSharedTransitionScope
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.confirmRemoveDownload
 import com.hippo.ehviewer.ui.cycleFavorite
@@ -147,7 +144,6 @@ import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
 import com.hippo.ehviewer.ui.main.GalleryDetailHeaderCard
 import com.hippo.ehviewer.ui.main.GalleryTags
-import com.hippo.ehviewer.ui.main.LocalPageVisibility
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
@@ -491,18 +487,10 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         }
         val shownComments = commentsList.take(maxShowCount)
         val commentPageEntry = currentPageEntry()
-        val shared = LocalSharedTransitionScope.current
-        val pageVisibility = LocalPageVisibility.current
         val density = LocalDensity.current
         val itemVerticalPaddingPx = with(density) { 4.dp.toPx() }
-        var cardLeftPx by remember { mutableFloatStateOf(0f) }
+        var cardHeightPx by remember { mutableFloatStateOf(0f) }
         var previewBlockHeightPx by remember { mutableFloatStateOf(0f) }
-        fun isAtRest(): Boolean = !shared.isTransitionActive && (
-            pageVisibility == null || (
-                pageVisibility.transition.currentState == EnterExitState.Visible &&
-                    pageVisibility.transition.targetState == EnterExitState.Visible
-                )
-            )
         fun navigateToCommentScreen() {
             val hasPreview = shownComments.isNotEmpty()
             val detailPreviewBottomPx = if (hasPreview) (previewBlockHeightPx - itemVerticalPaddingPx).coerceAtLeast(0f) else 0f
@@ -510,7 +498,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 gid = galleryDetail.gid,
                 fromEntry = commentPageEntry,
                 previewIds = shownComments.map { it.id },
-                cardLeftPx = cardLeftPx,
+                cardHeightPx = cardHeightPx,
                 previewTopOffsetPx = if (hasPreview) itemVerticalPaddingPx else 0f,
                 detailPreviewBottomPx = detailPreviewBottomPx,
             )
@@ -536,14 +524,18 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         CrystalCard(
             modifier = Modifier
                 .onGloballyPositioned { coords ->
-                    if (isAtRest()) cardLeftPx = coords.positionInRoot().x
+                    if (!CommentFlight.isActiveSource(galleryDetail.gid, commentPageEntry)) {
+                        cardHeightPx = coords.size.height.toFloat()
+                    }
                 }
                 .commentFlightCardSource(galleryDetail.gid),
         ) {
-            Column(modifier = Modifier.commentFlightCardContent()) {
+            Column(modifier = Modifier.commentFlightCardContent(galleryDetail.gid)) {
                 Column(
                     modifier = Modifier.onGloballyPositioned { coords ->
-                        if (isAtRest()) previewBlockHeightPx = coords.size.height.toFloat()
+                        if (!CommentFlight.isActiveSource(galleryDetail.gid, commentPageEntry)) {
+                            previewBlockHeightPx = coords.size.height.toFloat()
+                        }
                     },
                 ) {
                     shownComments.forEach { item ->

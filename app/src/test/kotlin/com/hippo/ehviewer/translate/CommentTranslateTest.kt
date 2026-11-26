@@ -332,6 +332,12 @@ class CommentTranslateTest {
         assertTrue(isTranslationInto(commissionReplyTranslatedLabels, enCommission, zh))
         // Untranslated commission comment must still fail isTranslationInto
         assertFalse(isTranslationInto(enCommission, enCommission, zh))
+        // Repeated short English phrase must be selected for translation and rejected if echoed unchanged
+        val repeated = "wake up wake up wake up"
+        assertTrue(CommentSegments.split(repeated, zh).any { it.translate })
+        assertFalse(isTranslationInto(repeated, repeated, zh))
+        assertTrue(isTranslationInto("醒醒 醒醒 醒醒", repeated, zh))
+        assertTrue("MUST translate every text" in CommentTranslateApi.systemPrompt(zh, strictRetry = true))
     }
 
     @Test

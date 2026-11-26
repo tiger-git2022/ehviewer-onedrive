@@ -107,6 +107,7 @@ import com.hippo.ehviewer.ui.main.PreviewProgressBar
 import com.hippo.ehviewer.ui.main.PreviewRefetcher
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.commentFlightDetailTopBarOverlay
+import com.hippo.ehviewer.ui.main.isCardFlightEntering
 import com.hippo.ehviewer.ui.navToReader
 import com.hippo.ehviewer.ui.openBrowser
 import com.hippo.ehviewer.ui.rememberLiquidGlass
@@ -295,9 +296,11 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     // header-card anchor so returning still flies the full cover + card along the exact same reversed arc
     val density = LocalDensity.current
     val headerCutoffPx = with(density) { 100.dp.roundToPx() }
+    val cardFlightEntering = isCardFlightEntering(gid)
     val headerFlightVisible by remember(gridState, headerCutoffPx) {
         derivedStateOf { gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < headerCutoffPx }
     }
+    val effectiveHeaderFlightVisible = headerFlightVisible || cardFlightEntering
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -512,7 +515,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                     modifier = Modifier.glassContent(backdrop).expandTopBarOnWheelAtTop(gridState, scrollBehavior),
                     state = gridState,
                     previewRefetcher = previewRefetcher,
-                    headerFlightVisible = headerFlightVisible,
+                    headerFlightVisible = effectiveHeaderFlightVisible,
                 )
                 // Fork: how the previews load, floating at the bottom, see PreviewProgressBar
                 if (previewRefetcher != null) {
@@ -536,7 +539,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     }
         // Outside Scaffold's SubcomposeLayout so sharedBounds/sharedElement launch cleanly from the top header-card rect
         galleryInfo?.let { gi ->
-            if (!headerFlightVisible && barHeightPx > 0) {
+            if (!effectiveHeaderFlightVisible && barHeightPx > 0) {
                 val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
                 val topOffset = with(density) { barHeightPx.toDp() } + keylineMargin
                 val anchorWidthModifier = if (windowSizeClass.isExpanded) {
