@@ -350,12 +350,6 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     // scrolled below it, and turned to glass over nothing while the indicator was pulled out
     val lazyListState = rememberLazyListState()
     val commentsPageEntry = currentPageEntry()
-    LaunchedEffect(lazyListState, commentsPageEntry) {
-        snapshotFlow { lazyListState.firstVisibleItemIndex > 1 }
-            .collect { scrolledPastPreview ->
-                if (scrolledPastPreview) CommentFlight.clearTargetPreviewBottom(galleryDetail.gid, commentsPageEntry)
-            }
-    }
     val barScrolled by remember { derivedStateOf { lazyListState.canScrollBackward } }
     val barGlass = rememberLiquidGlass(backdrop).takeIf { barScrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
@@ -431,6 +425,19 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
         },
     ) { paddingValues ->
         val topBarHeightPx = with(density) { paddingValues.calculateTopPadding().toPx() }
+        LaunchedEffect(lazyListState, commentsPageEntry, topBarHeightPx) {
+            snapshotFlow {
+                val lastId = CommentFlight.lastPreviewId(galleryDetail.gid, commentsPageEntry) ?: return@snapshotFlow 0f
+                val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == lastId }
+                if (info != null) topBarHeightPx + info.offset + info.size else 0f
+            }.collect { bottomPx ->
+                if (bottomPx > 0f) {
+                    CommentFlight.reportTargetPreviewBottom(galleryDetail.gid, commentsPageEntry, bottomPx)
+                } else {
+                    CommentFlight.clearTargetPreviewBottom(galleryDetail.gid, commentsPageEntry)
+                }
+            }
+        }
         CommentFlightContainer(
             gid = galleryDetail.gid,
             topBarHeightPx = topBarHeightPx,
@@ -488,14 +495,15 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
             val layoutDirection = LocalLayoutDirection.current
             LazyColumn(
                 // Fork: the top bar follows the comments inside the pull to refresh, which no longer passes its pull on
-                // to the bar as a scroll (the bar took the scrolled color at the top)
-                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection).glassContent(commentsBackdrop).fillMaxSize().padding(horizontal = keylineMargin).mouseDragScroll(lazyListState),
+                // to the bar as a scroll (the bar took the scrolled color at the top). Horizontal margin stays in
+                // contentPadding so transitioning items are never clipped horizontally by the list viewport.
+                modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection).glassContent(commentsBackdrop).fillMaxSize().mouseDragScroll(lazyListState),
                 state = lazyListState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(
                     top = paddingValues.calculateTopPadding(),
-                    start = paddingValues.calculateStartPadding(layoutDirection),
-                    end = paddingValues.calculateEndPadding(layoutDirection),
+                    start = paddingValues.calculateStartPadding(layoutDirection) + keylineMargin,
+                    end = paddingValues.calculateEndPadding(layoutDirection) + keylineMargin,
                     bottom = paddingValues.calculateBottomPadding() + additionalPadding,
                 ),
             ) {
