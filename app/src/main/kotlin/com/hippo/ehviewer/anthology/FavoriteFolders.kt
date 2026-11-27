@@ -8,6 +8,7 @@ import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.sync.CLOUD_SLOT_COUNT
 import com.hippo.ehviewer.sync.FavoritesIndexSync
 import com.hippo.ehviewer.todownload.ToDownload
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -18,6 +19,7 @@ import splitties.init.appCtx
  */
 object FavoriteFolders {
     private const val TAG = "FavoriteFolders"
+    private val cache = ConcurrentHashMap<Long, List<String>>()
 
     /** Folder name for a cloud slot (0..9), or null when not a cloud slot. */
     fun cloudFolderName(slot: Int, slotNames: List<String> = emptyList()): String? {
@@ -52,6 +54,17 @@ object FavoriteFolders {
         return result.toList()
     }
 
+    /** Synchronously returns any previously looked-up folder names for [gids] to avoid frame-0 layout jumps. */
+    fun cached(gids: Collection<Long>): Map<Long, List<String>> {
+        if (gids.isEmpty()) return emptyMap()
+        val result = HashMap<Long, List<String>>()
+        for (gid in gids) {
+            val folders = cache[gid]
+            if (!folders.isNullOrEmpty()) result[gid] = folders
+        }
+        return result
+    }
+
     /** Looks up favorite folder name(s) for each gid in [gids] across local favorites and cached cloud favorites. */
     suspend fun lookup(gids: Collection<Long>): Map<Long, List<String>> = withContext(Dispatchers.IO) {
         val wanted = gids.toSet()
@@ -78,6 +91,7 @@ object FavoriteFolders {
                 slotNames = slotNames,
                 toDownload = toDownload,
             )
+            cache[gid] = folders
             if (folders.isNotEmpty()) result[gid] = folders
         }
         result

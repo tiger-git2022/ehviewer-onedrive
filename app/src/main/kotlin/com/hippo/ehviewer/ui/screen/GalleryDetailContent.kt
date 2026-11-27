@@ -156,6 +156,7 @@ import com.hippo.ehviewer.ui.main.commentFlightMoreButton
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
+import com.hippo.ehviewer.ui.main.isCommentFlightSourceTransitioning
 import com.hippo.ehviewer.ui.main.queryFlight
 import com.hippo.ehviewer.ui.main.rememberAnthologyMarks
 import com.hippo.ehviewer.ui.main.selectableSections
@@ -521,10 +522,11 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val mihonMissing = stringResource(R.string.mihon_not_installed)
         val originalLabel = stringResource(R.string.comment_original)
         val translationLabel = stringResource(R.string.select_text_translation)
+        val commentFlightTransitioning = isCommentFlightSourceTransitioning(galleryDetail.gid)
         CrystalCard(
             modifier = Modifier
                 .onGloballyPositioned { coords ->
-                    if (!CommentFlight.isActiveSource(galleryDetail.gid, commentPageEntry)) {
+                    if (!commentFlightTransitioning) {
                         cardHeightPx = coords.size.height.toFloat()
                     }
                 }
@@ -533,7 +535,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             Column(modifier = Modifier.commentFlightCardContent(galleryDetail.gid)) {
                 Column(
                     modifier = Modifier.onGloballyPositioned { coords ->
-                        if (!CommentFlight.isActiveSource(galleryDetail.gid, commentPageEntry)) {
+                        if (!commentFlightTransitioning) {
                             previewBlockHeightPx = coords.size.height.toFloat()
                         }
                     },
