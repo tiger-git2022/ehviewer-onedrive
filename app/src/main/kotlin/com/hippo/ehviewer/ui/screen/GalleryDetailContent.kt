@@ -139,6 +139,7 @@ import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
 import com.hippo.ehviewer.ui.main.ArchiveList
 import com.hippo.ehviewer.ui.main.CommentFlight
+import com.hippo.ehviewer.ui.main.CommentFlightCardSource
 import com.hippo.ehviewer.ui.main.EhPreviewItem
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GalleryDetailErrorTip
@@ -149,9 +150,6 @@ import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.TagFlight
 import com.hippo.ehviewer.ui.main.TorrentList
 import com.hippo.ehviewer.ui.main.cardFlightHeaderTarget
-import com.hippo.ehviewer.ui.main.commentFlightCardContent
-import com.hippo.ehviewer.ui.main.commentFlightCardSource
-import com.hippo.ehviewer.ui.main.commentFlightItemSource
 import com.hippo.ehviewer.ui.main.commentFlightMoreButton
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
@@ -491,17 +489,12 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val density = LocalDensity.current
         val itemVerticalPaddingPx = with(density) { 4.dp.toPx() }
         var cardHeightPx by remember { mutableFloatStateOf(0f) }
-        var previewBlockHeightPx by remember { mutableFloatStateOf(0f) }
         fun navigateToCommentScreen() {
-            val hasPreview = shownComments.isNotEmpty()
-            val detailPreviewBottomPx = if (hasPreview) (previewBlockHeightPx - itemVerticalPaddingPx).coerceAtLeast(0f) else 0f
             CommentFlight.start(
                 gid = galleryDetail.gid,
                 fromEntry = commentPageEntry,
-                previewIds = shownComments.map { it.id },
                 cardHeightPx = cardHeightPx,
-                previewTopOffsetPx = if (hasPreview) itemVerticalPaddingPx else 0f,
-                detailPreviewBottomPx = detailPreviewBottomPx,
+                previewTopOffsetPx = if (shownComments.isNotEmpty()) itemVerticalPaddingPx else 0f,
             )
             navigate(GalleryCommentsScreenDestination(galleryDetail.gid))
         }
@@ -523,26 +516,20 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         val originalLabel = stringResource(R.string.comment_original)
         val translationLabel = stringResource(R.string.select_text_translation)
         val commentFlightTransitioning = isCommentFlightSourceTransitioning(galleryDetail.gid)
-        CrystalCard(
-            modifier = Modifier
-                .onGloballyPositioned { coords ->
-                    if (!commentFlightTransitioning) {
-                        cardHeightPx = coords.size.height.toFloat()
-                    }
-                }
-                .commentFlightCardSource(galleryDetail.gid),
-        ) {
-            Column(modifier = Modifier.commentFlightCardContent(galleryDetail.gid)) {
-                Column(
-                    modifier = Modifier.onGloballyPositioned { coords ->
+        CommentFlightCardSource(gid = galleryDetail.gid) { cardModifier, contentModifier ->
+            CrystalCard(
+                modifier = Modifier
+                    .onGloballyPositioned { coords ->
                         if (!commentFlightTransitioning) {
-                            previewBlockHeightPx = coords.size.height.toFloat()
+                            cardHeightPx = coords.size.height.toFloat()
                         }
-                    },
-                ) {
+                    }
+                    .then(cardModifier),
+            ) {
+                Column(modifier = contentModifier) {
                     shownComments.forEach { item ->
                         GalleryCommentCard(
-                            modifier = Modifier.padding(vertical = 4.dp).commentFlightItemSource(galleryDetail.gid, item.id),
+                            modifier = Modifier.padding(vertical = 4.dp),
                             comment = item,
                             onCardClick = ::navigateToCommentScreen,
                             onUserClick = ::navigateToCommentScreen,
@@ -580,17 +567,17 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                             },
                         )
                     }
-                }
-                Box(
-                    modifier = Modifier
-                        .commentFlightMoreButton(galleryDetail.gid)
-                        .fillMaxWidth()
-                        .padding(bottom = dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v))
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(onClick = ::navigateToCommentScreen),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(commentText)
+                    Box(
+                        modifier = Modifier
+                            .commentFlightMoreButton(galleryDetail.gid)
+                            .fillMaxWidth()
+                            .padding(bottom = dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v))
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(onClick = ::navigateToCommentScreen),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(commentText)
+                    }
                 }
             }
         }

@@ -62,7 +62,6 @@ import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -124,7 +123,6 @@ import com.hippo.ehviewer.ui.destinations.CommentTranslateScreenDestination
 import com.hippo.ehviewer.ui.glassContent
 import com.hippo.ehviewer.ui.jumpToReaderByPage
 import com.hippo.ehviewer.ui.main.ANTHOLOGY_LINK
-import com.hippo.ehviewer.ui.main.CommentFlight
 import com.hippo.ehviewer.ui.main.CommentFlightContainer
 import com.hippo.ehviewer.ui.main.GalleryCommentCard
 import com.hippo.ehviewer.ui.main.GlassToggleButton
@@ -133,8 +131,6 @@ import com.hippo.ehviewer.ui.main.RefreshIndicator
 import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.commentFlightCommentsTopBarOverlay
 import com.hippo.ehviewer.ui.main.commentFlightFabOverlay
-import com.hippo.ehviewer.ui.main.commentFlightItemTarget
-import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
 import com.hippo.ehviewer.ui.main.isCommentFlightTransitioning
@@ -348,7 +344,6 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
     // Taken from the list, not from overlappedFraction: the bar counts the pull to refresh at the top as content
     // scrolled below it, and turned to glass over nothing while the indicator was pulled out
     val lazyListState = rememberLazyListState()
-    val commentsPageEntry = currentPageEntry()
     val barScrolled by remember { derivedStateOf { lazyListState.canScrollBackward } }
     val barGlass = rememberLiquidGlass(backdrop).takeIf { barScrolled }
     val barColor = MaterialTheme.colorScheme.surfaceContainer
@@ -424,24 +419,9 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
         },
     ) { paddingValues ->
         val topBarHeightPx = with(density) { paddingValues.calculateTopPadding().toPx() }
-        fun measureTargetPreviewBottomPx(): Float {
-            val lastId = CommentFlight.lastPreviewId(galleryDetail.gid, commentsPageEntry) ?: return 0f
-            val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == lastId }
-            return if (info != null) topBarHeightPx + info.offset + info.size else 0f
-        }
-        LaunchedEffect(lazyListState, commentsPageEntry, topBarHeightPx) {
-            snapshotFlow { measureTargetPreviewBottomPx() }.collect { bottomPx ->
-                if (bottomPx > 0f) {
-                    CommentFlight.reportTargetPreviewBottom(galleryDetail.gid, commentsPageEntry, bottomPx)
-                } else {
-                    CommentFlight.clearTargetPreviewBottom(galleryDetail.gid, commentsPageEntry)
-                }
-            }
-        }
         CommentFlightContainer(
             gid = galleryDetail.gid,
             topBarHeightPx = topBarHeightPx,
-            measureTargetPreviewBottomPx = ::measureTargetPreviewBottomPx,
         ) { bodyModifier ->
             val keylineMargin = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)
             var editTextMeasured by remember { mutableStateOf(MinimumContentPaddingEditText) }
@@ -568,9 +548,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                     }()
 
                     GalleryCommentCard(
-                        modifier = Modifier
-                            .commentFlightItemTarget(galleryDetail.gid, item.id)
-                            .thenIf(animateItems) { animateItem() },
+                        modifier = Modifier.thenIf(animateItems) { animateItem() },
                         comment = item,
                         onUserClick = {
                             navigate(
