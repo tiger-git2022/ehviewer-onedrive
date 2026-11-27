@@ -134,7 +134,6 @@ import com.hippo.ehviewer.ui.main.ShapeLoadingIndicator
 import com.hippo.ehviewer.ui.main.commentFlightCommentsTopBarOverlay
 import com.hippo.ehviewer.ui.main.commentFlightFabOverlay
 import com.hippo.ehviewer.ui.main.commentFlightItemTarget
-import com.hippo.ehviewer.ui.main.commentFlightNonPreviewItem
 import com.hippo.ehviewer.ui.main.currentPageEntry
 import com.hippo.ehviewer.ui.main.decorate
 import com.hippo.ehviewer.ui.main.handleAnthologyLink
@@ -425,12 +424,13 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
         },
     ) { paddingValues ->
         val topBarHeightPx = with(density) { paddingValues.calculateTopPadding().toPx() }
+        fun measureTargetPreviewBottomPx(): Float {
+            val lastId = CommentFlight.lastPreviewId(galleryDetail.gid, commentsPageEntry) ?: return 0f
+            val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == lastId }
+            return if (info != null) topBarHeightPx + info.offset + info.size else 0f
+        }
         LaunchedEffect(lazyListState, commentsPageEntry, topBarHeightPx) {
-            snapshotFlow {
-                val lastId = CommentFlight.lastPreviewId(galleryDetail.gid, commentsPageEntry) ?: return@snapshotFlow 0f
-                val info = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == lastId }
-                if (info != null) topBarHeightPx + info.offset + info.size else 0f
-            }.collect { bottomPx ->
+            snapshotFlow { measureTargetPreviewBottomPx() }.collect { bottomPx ->
                 if (bottomPx > 0f) {
                     CommentFlight.reportTargetPreviewBottom(galleryDetail.gid, commentsPageEntry, bottomPx)
                 } else {
@@ -441,6 +441,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
         CommentFlightContainer(
             gid = galleryDetail.gid,
             topBarHeightPx = topBarHeightPx,
+            measureTargetPreviewBottomPx = ::measureTargetPreviewBottomPx,
         ) { bodyModifier ->
             val keylineMargin = dimensionResource(id = com.hippo.ehviewer.R.dimen.keyline_margin)
             var editTextMeasured by remember { mutableStateOf(MinimumContentPaddingEditText) }
@@ -620,7 +621,7 @@ fun AnimatedVisibilityScope.GalleryCommentsScreen(gid: Long, navigator: Destinat
                     item {
                         Crossfade(
                             targetState = refreshing,
-                            modifier = Modifier.commentFlightNonPreviewItem(galleryDetail.gid).padding(keylineMargin),
+                            modifier = Modifier.padding(keylineMargin),
                             label = "refreshing",
                         ) {
                             Box(

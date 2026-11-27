@@ -28,10 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -62,6 +59,7 @@ import com.ehviewer.core.ui.util.TransitionsVisibilityScope
 import com.hippo.ehviewer.ui.LocalSharedTransitionScope
 import com.hippo.ehviewer.ui.screen.searchTagParts
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 /** Fork: the page's own enter and exit, given by Screen, for the shared elements between pages. */
 val LocalPageVisibility = compositionLocalOf<AnimatedVisibilityScope?> { null }
@@ -639,12 +637,18 @@ object CommentFlight {
 
     internal fun verticalGapForSource(gid: Long, fromEntry: String?, fallbackTopBarHeightPx: Float): Float {
         val entry = activeSourceEntry(gid, fromEntry) ?: return 0f
-        return verticalGapOf(entry, fallbackTopBarHeightPx)
+        return verticalGapOf(entry, fallbackTopBarHeightPx, entry.targetPreviewBottomPx)
     }
 
-    internal fun verticalGapForComments(gid: Long, commentsEntry: String?, fallbackTopBarHeightPx: Float): Float {
+    internal fun verticalGapForComments(
+        gid: Long,
+        commentsEntry: String?,
+        fallbackTopBarHeightPx: Float,
+        measuredTargetPreviewBottomPx: Float = 0f,
+    ): Float {
         val entry = activeCommentsEntry(gid, commentsEntry) ?: return 0f
-        return verticalGapOf(entry, fallbackTopBarHeightPx)
+        val targetBottom = if (measuredTargetPreviewBottomPx > 0f) measuredTargetPreviewBottomPx else entry.targetPreviewBottomPx
+        return verticalGapOf(entry, fallbackTopBarHeightPx, targetBottom)
     }
 
     internal fun cardHeightForComments(gid: Long, commentsEntry: String?): Float =
@@ -662,9 +666,13 @@ object CommentFlight {
         return entries.lastOrNull { it.from == from && it.to == commentsEntry && it.gid == gid }
     }
 
-    private fun verticalGapOf(entry: Entry, fallbackTopBarHeightPx: Float): Float {
-        if (entry.targetPreviewBottomPx > 0f && entry.detailPreviewBottomPx > 0f) {
-            return entry.targetPreviewBottomPx - entry.detailPreviewBottomPx
+    private fun verticalGapOf(
+        entry: Entry,
+        fallbackTopBarHeightPx: Float,
+        targetPreviewBottomPx: Float,
+    ): Float {
+        if (targetPreviewBottomPx > 0f && entry.detailPreviewBottomPx > 0f) {
+            return targetPreviewBottomPx - entry.detailPreviewBottomPx
         }
         val topBar = if (entry.targetTopBarHeightPx > 0f) entry.targetTopBarHeightPx else fallbackTopBarHeightPx
         return (topBar - entry.previewTopOffsetPx).coerceAtLeast(0f)
@@ -675,49 +683,31 @@ object CommentFlight {
     private fun itemKeyOf(from: String, gid: Long, commentId: Long) = "comment-item:$from:$gid:$commentId"
 }
 
-private class CommentFlightBodyState(
-    val gid: Long,
-    val commentsEntry: String?,
-    val topBarHeightPx: Float,
-    val fallbackProgress: State<Float>,
-    val liveHeightPx: MutableFloatState,
-    val fullHeightPx: MutableFloatState,
-    val inTransition: () -> Boolean,
-) {
-    /** Exact progress `p in [0, 1]` derived directly from the animating container height, with fallback to transition state. */
-    fun progress(): Float {
-        val cardH = CommentFlight.cardHeightForComments(gid, commentsEntry)
-        val liveH = liveHeightPx.floatValue
-        val fullH = fullHeightPx.floatValue
-        val span = fullH - cardH
-        return if (cardH > 0f && liveH > 0f && span > 1f) {
-            ((liveH - cardH) / span).coerceIn(0f, 1f)
-        } else {
-            fallbackProgress.value
-        }
-    }
-}
-
-private val LocalCommentFlightBodyState = compositionLocalOf<CommentFlightBodyState?> { null }
-
 /**
- * Measures the child at its exact full lookahead size (avoiding text reflow) while placing it horizontally centered
- * inside the animating container bounds (`x = (containerWidth - lookaheadWidth) / 2`). Because both the detail
- * comments card and the comments screen are horizontally centered, this cancels the container's horizontal bounds
- * expansion in the same layout pass with zero phase lag and zero horizontal drift.
+ * While [isActive], measures the child at its exact full lookahead size (avoiding text reflow) while placing it
+ * horizontally centered (`x = (containerWidth - lookaheadWidth) / 2`) and vertically offset by [verticalOffsetPx]
+ * inside the animating container bounds in the same layout pass — eliminating both horizontal drift and 1-frame
+ * vertical lag. At rest (`!isActive()`), passes constraints through normally so dynamic content growth (e.g.
+ * asynchronous favorite badges or translations) is never clipped to a stale lookahead height.
  */
 private fun Modifier.skipToLookaheadSizeCentered(
     isActive: () -> Boolean,
-    onHeightMeasured: ((liveHeightPx: Float, lookaheadHeightPx: Float) -> Unit)? = null,
+    verticalOffsetPx: ((liveHeightPx: Float, lookaheadHeightPx: Float) -> Float)? = null,
 ): Modifier = approachLayout(
     isMeasurementApproachInProgress = { isActive() },
 ) { measurable, constraints ->
+    if (!isActive()) {
+        val placeable = measurable.measure(constraints)
+        return@approachLayout layout(placeable.width, placeable.height) {
+            placeable.place(0, 0)
+        }
+    }
     val placeable = measurable.measure(Constraints.fixed(lookaheadSize.width, lookaheadSize.height))
     val width = constraints.constrainWidth(lookaheadSize.width)
     val height = constraints.constrainHeight(lookaheadSize.height)
-    onHeightMeasured?.invoke(height.toFloat(), lookaheadSize.height.toFloat())
+    val offsetY = verticalOffsetPx?.invoke(height.toFloat(), lookaheadSize.height.toFloat())?.roundToInt() ?: 0
     layout(width, height) {
-        placeable.place((width - placeable.width) / 2, 0)
+        placeable.place((width - placeable.width) / 2, offsetY)
     }
 }
 
@@ -727,6 +717,16 @@ fun isCommentFlightTransitioning(gid: Long): Boolean {
     val visibility = LocalPageVisibility.current ?: return false
     val commentsEntry = currentPageEntry() ?: return false
     if (!CommentFlight.isActiveComments(gid, commentsEntry)) return false
+    val shared = LocalSharedTransitionScope.current
+    return shared.isTransitionActive || visibility.transition.currentState != visibility.transition.targetState
+}
+
+/** Whether the detail comments card of [gid] is currently running an active Detail <-> Comments container flight. */
+@Composable
+fun isCommentFlightSourceTransitioning(gid: Long): Boolean {
+    val visibility = LocalPageVisibility.current ?: return false
+    val pageEntry = currentPageEntry() ?: return false
+    if (!CommentFlight.isActiveSource(gid, pageEntry)) return false
     val shared = LocalSharedTransitionScope.current
     return shared.isTransitionActive || visibility.transition.currentState != visibility.transition.targetState
 }
@@ -826,15 +826,14 @@ fun Modifier.commentFlightMoreButton(gid: Long): Modifier {
 /**
  * Modifier on each [GalleryCommentCard] in [GalleryCommentsScreen]:
  * - Previewed comments glide via [sharedBounds] directly between the detail card and the top of the comments list.
- * - Remaining comments counter-offset the container's vertical top-bar delta (while horizontal alignment is locked in
- *   layout by [CommentFlightContainer]) so the entire comment stack moves as one cohesive vertical list.
+ * - Remaining comments ride the list's single rigid layout offset inside [CommentFlightContainer] so the entire comment
+ *   stack moves together with zero phase lag.
  */
 @Composable
 fun Modifier.commentFlightItemTarget(gid: Long, commentId: Long): Modifier {
     val visibility = LocalPageVisibility.current ?: return this
     val commentsEntry = currentPageEntry()
-    val key = CommentFlight.targetItemKey(gid, commentsEntry, commentId)
-        ?: return this.commentFlightNonPreviewItem(gid)
+    val key = CommentFlight.targetItemKey(gid, commentsEntry, commentId) ?: return this
     val shared: SharedTransitionScope = LocalSharedTransitionScope.current
     val active = CommentFlight.isActiveComments(gid, commentsEntry)
     return with(shared) {
@@ -848,25 +847,6 @@ fun Modifier.commentFlightItemTarget(gid: Long, commentId: Long): Modifier {
             zIndexInOverlay = 1f,
             clipInOverlayDuringTransition = OverlayClip(HeaderCardShape),
         )
-    }
-}
-
-/** Aligns non-preview items inside [GalleryCommentsScreen]'s list vertically with the preview comments' straight glide. */
-@Composable
-fun Modifier.commentFlightNonPreviewItem(gid: Long): Modifier {
-    val bodyState = LocalCommentFlightBodyState.current ?: return this
-    if (bodyState.gid != gid) return this
-    val active = CommentFlight.isActiveComments(gid, bodyState.commentsEntry)
-    return this.graphicsLayer {
-        if (active && bodyState.inTransition()) {
-            val verticalGapPx = CommentFlight.verticalGapForComments(
-                gid,
-                bodyState.commentsEntry,
-                bodyState.topBarHeightPx,
-            )
-            val inv = 1f - bodyState.progress()
-            translationY = -inv * verticalGapPx
-        }
     }
 }
 
@@ -1034,6 +1014,7 @@ fun Modifier.commentFlightFabOverlay(gid: Long): Modifier {
 fun CommentFlightContainer(
     gid: Long,
     topBarHeightPx: Float,
+    measureTargetPreviewBottomPx: () -> Float = { 0f },
     content: @Composable (contentModifier: Modifier) -> Unit,
 ) {
     val visibility = LocalPageVisibility.current
@@ -1064,6 +1045,7 @@ fun CommentFlightContainer(
                 if (targetState == EnterExitState.Visible) {
                     tween(
                         durationMillis = CommentContentEnterMillis,
+                        delayMillis = CommentContentEnterDelayMillis,
                         easing = LinearOutSlowInEasing,
                     )
                 } else {
@@ -1078,21 +1060,18 @@ fun CommentFlightContainer(
         ) { state ->
             if (state == EnterExitState.Visible) 1f else 0f
         }
-        val liveHeightState = remember { mutableFloatStateOf(0f) }
-        val fullHeightState = remember { mutableFloatStateOf(0f) }
+        val fullHeightRef = remember { FloatArray(1) }
         val inTransition: () -> Boolean = {
             isTransitionActive || visibility.transition.currentState != visibility.transition.targetState
         }
-        val bodyState = remember(gid, commentsEntry, topBarHeightPx, progressState, visibility) {
-            CommentFlightBodyState(
-                gid = gid,
-                commentsEntry = commentsEntry,
-                topBarHeightPx = topBarHeightPx,
-                fallbackProgress = progressState,
-                liveHeightPx = liveHeightState,
-                fullHeightPx = fullHeightState,
-                inTransition = inTransition,
-            )
+        fun progressOf(liveH: Float, fullH: Float): Float {
+            val cardH = CommentFlight.cardHeightForComments(gid, commentsEntry)
+            val span = fullH - cardH
+            return if (cardH > 0f && liveH > 0f && span > 1f) {
+                ((liveH - cardH) / span).coerceIn(0f, 1f)
+            } else {
+                progressState.value
+            }
         }
         Box(
             modifier = Modifier
@@ -1108,7 +1087,7 @@ fun CommentFlightContainer(
                 .fillMaxSize()
                 .drawBehind {
                     if (active && inTransition()) {
-                        val p = bodyState.progress()
+                        val p = progressOf(size.height, fullHeightRef[0])
                         drawRoundRect(
                             color = lerpColor(surfaceColor, backgroundColor, p),
                             cornerRadius = CornerRadius(lerp(12.dp.toPx(), 0f, p)),
@@ -1122,9 +1101,19 @@ fun CommentFlightContainer(
                     .fillMaxSize()
                     .skipToLookaheadSizeCentered(
                         isActive = inTransition,
-                        onHeightMeasured = { liveH, fullH ->
-                            if (liveHeightState.floatValue != liveH) liveHeightState.floatValue = liveH
-                            if (fullHeightState.floatValue != fullH) fullHeightState.floatValue = fullH
+                        verticalOffsetPx = { liveH, fullH ->
+                            fullHeightRef[0] = fullH
+                            val targetBottom = measureTargetPreviewBottomPx()
+                            if (targetBottom > 0f) {
+                                CommentFlight.reportTargetPreviewBottom(gid, commentsEntry, targetBottom)
+                            }
+                            val verticalGapPx = CommentFlight.verticalGapForComments(
+                                gid = gid,
+                                commentsEntry = commentsEntry,
+                                fallbackTopBarHeightPx = topBarHeightPx,
+                                measuredTargetPreviewBottomPx = targetBottom,
+                            )
+                            -(1f - progressOf(liveH, fullH)) * verticalGapPx
                         },
                     )
                     .graphicsLayer {
@@ -1135,9 +1124,7 @@ fun CommentFlightContainer(
             } else {
                 Modifier.fillMaxSize()
             }
-            CompositionLocalProvider(LocalCommentFlightBodyState provides bodyState) {
-                content(contentModifier)
-            }
+            content(contentModifier)
         }
     }
 }
@@ -1226,7 +1213,8 @@ private val HeaderCardBoundsTransform = BoundsTransform { initialBounds, targetB
 }
 
 const val CommentFlightDurationMillis = 340
-private const val CommentContentEnterMillis = 200
+private const val CommentContentEnterDelayMillis = 20
+private const val CommentContentEnterMillis = 160
 private const val CommentContentExitDelayMillis = 20
 private const val CommentContentExitMillis = 140
 private const val CommentTopBarExitMillis = 100

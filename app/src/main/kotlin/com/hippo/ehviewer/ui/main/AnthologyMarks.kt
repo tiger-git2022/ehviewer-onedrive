@@ -133,7 +133,8 @@ fun rememberAnthologyMarks(gid: Long, pages: Int, comments: List<GalleryComment>
             }
         }
     }
-    val folders by produceState<Map<Long, List<String>>>(emptyMap(), gidsToCheck, cloudVersion, toDownload, favRevision) {
+    val initialFolders = remember(gidsToCheck) { FavoriteFolders.cached(gidsToCheck) }
+    val folders by produceState(initialFolders, gidsToCheck, cloudVersion, toDownload, favRevision) {
         value = if (gidsToCheck.isEmpty()) emptyMap() else FavoriteFolders.lookup(gidsToCheck)
     }
     return remember(gid, contents, state, hints, folders) { AnthologyMarks(gid, contents, state, hints, folders) }

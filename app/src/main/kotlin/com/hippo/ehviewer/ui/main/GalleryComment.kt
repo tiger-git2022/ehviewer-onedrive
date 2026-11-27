@@ -15,10 +15,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,7 +96,7 @@ fun GalleryCommentCard(
         }
         val textColor = LocalContentColor.current.toArgb()
         val linkTextColor = MaterialTheme.colorScheme.primary.toArgb()
-        val redrawSignal = remember { mutableStateOf(Unit, neverEqualPolicy()) }
+        var redrawCount by remember { mutableIntStateOf(0) }
         // Fork: the translation as the text of the comment, so the score and the edit time follow it as they do the original;
         // streamed, the translation so far
         val translated = when (translation) {
@@ -103,10 +105,11 @@ fun GalleryCommentCard(
             else -> null
         }
         val shown = if (translated != null && !showOriginal) comment.copy(comment = translated.toCommentHtml()) else comment
-        val commentText = processComment(shown, CoilImageGetter { redrawSignal.value = Unit })
-        // Fork: a new text view for another text. Set on the same view, a shorter text (the translation after the original)
-        // left the list spaced for the longer one below the card
-        key(shown.comment) {
+        val commentText = processComment(shown, CoilImageGetter { redrawCount++ })
+        // Fork: a new text view whenever the rendered text (including translations, anthology/favorite badges, or inline
+        // images) changes. Updating view.text in place inside LookaheadScope/LazyColumn leaves lookahead size stale,
+        // either leaving extra blank space when text shrinks or clipping/overlapping neighbors when text grows
+        key(commentText.toString(), redrawCount) {
             AndroidView(
                 factory = { context ->
                     LinkifyTextView(context) { targetUrl.value = it }.apply {
@@ -119,7 +122,6 @@ fun GalleryCommentCard(
                 modifier = Modifier.padding(start = margin, end = margin, bottom = 8.dp),
             ) { view ->
                 view.text = commentText
-                redrawSignal.value
             }
         }
         if (translation != null) {
