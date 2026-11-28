@@ -134,6 +134,7 @@ fun AnimatedVisibilityScope.AnthologyChaptersScreen(
     var loadError by rememberSaveable(gid) { mutableStateOf("") }
 
     LaunchedEffect(gid, token, loadError) {
+        withIOContext { AnthologyChapters.ensureLoaded() }
         if (loadError.isNotEmpty()) return@LaunchedEffect
         if (contents != null && parentDetail != null) {
             loading = false

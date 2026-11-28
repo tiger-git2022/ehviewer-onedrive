@@ -110,15 +110,25 @@ object AnthologyChapters {
     private val checkedFile get() = File(appCtx.filesDir, CHECKED_FILE)
 
     private val mutableCheckedByParent = MutableStateFlow<Map<Long, Set<Long>>>(emptyMap())
-    val checkedByParent: StateFlow<Map<Long, Set<Long>>> = mutableCheckedByParent.asStateFlow()
+    private val checkedByParentFlow = mutableCheckedByParent.asStateFlow()
+    val checkedByParent: StateFlow<Map<Long, Set<Long>>>
+        get() {
+            if (!loaded) scope.launch { ensureLoaded() }
+            return checkedByParentFlow
+        }
 
     private val mutableOnlyUnchecked = MutableStateFlow(false)
-    val onlyUnchecked: StateFlow<Boolean> = mutableOnlyUnchecked.asStateFlow()
+    private val onlyUncheckedFlow = mutableOnlyUnchecked.asStateFlow()
+    val onlyUnchecked: StateFlow<Boolean>
+        get() {
+            if (!loaded) scope.launch { ensureLoaded() }
+            return onlyUncheckedFlow
+        }
 
     @Volatile
     private var loaded = false
 
-    private fun ensureLoaded() {
+    fun ensureLoaded() {
         if (loaded) return
         synchronized(this) {
             if (loaded) return
