@@ -41,7 +41,7 @@ fun getV2PreviewKey(url: String) = "$".plus(
 val GalleryInfo.thumbUrl
     get() = keyToUrl(thumbKey!!)
 
-fun keyToUrl(key: String) = if (key.startsWith("https:")) {
+fun keyToUrl(key: String) = if (key.startsWith("https:") || key.startsWith(com.hippo.ehviewer.anthology.CHAPTER_THUMB_PREFIX)) {
     key
 } else {
     if (key.endsWith("webp")) {

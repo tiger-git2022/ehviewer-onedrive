@@ -419,8 +419,8 @@ object EhEngine {
         }
     }.fetchUsingAsText(String::parseAs)
 
-    // Fork: not the albums of 紳士漫畫 in the local favorites, the history or the downloads, see wnacg/
-    suspend fun fillGalleryListByApi(galleryInfoList: List<GalleryInfo>, referer: String? = null) = galleryInfoList.filterNot { isWnacg(it.gid) }.chunked(MAX_REQUEST_SIZE).chunked(MAX_SEQUENTIAL_REQUESTS).forEachIndexed { index, chunk ->
+    // Fork: not the albums of 紳士漫畫 or virtual anthology chapters in the local favorites, the history or the downloads
+    suspend fun fillGalleryListByApi(galleryInfoList: List<GalleryInfo>, referer: String? = null) = galleryInfoList.filterNot { isWnacg(it.gid) || com.hippo.ehviewer.anthology.isAnthologyChapter(it.gid) }.chunked(MAX_REQUEST_SIZE).chunked(MAX_SEQUENTIAL_REQUESTS).forEachIndexed { index, chunk ->
         if (index != 0) {
             delay(REQUEST_INTERVAL)
         }

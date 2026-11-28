@@ -2,6 +2,7 @@ package com.hippo.ehviewer.wnacg
 
 import com.ehviewer.core.model.BaseGalleryInfo
 import com.ehviewer.core.model.GalleryInfo
+import com.hippo.ehviewer.anthology.isAnthologyChapter
 import com.hippo.ehviewer.chapters.Wnacg
 import com.hippo.ehviewer.client.EhUtils
 import com.hippo.ehviewer.client.parser.ParserUtils
@@ -17,7 +18,7 @@ const val WNACG_TOKEN = "wnacg"
 fun wnacgGid(aid: Long) = -aid
 
 /** Whether [gid] is the one of an album of 紳士漫畫. */
-fun isWnacg(gid: Long) = gid < -1
+fun isWnacg(gid: Long) = gid < -1 && !isAnthologyChapter(gid)
 
 val GalleryInfo.isWnacg get() = isWnacg(gid)
 

@@ -1077,4 +1077,24 @@
     <string name="search_site_found">%d found</string>
     <string name="search_site_blocked">Needs its check first</string>
     <string name="search_site_failed">Failed</string>
+    <!-- Fork: split an anthology into virtual chapter galleries by its comment TOC, see anthology/AnthologyChapters.kt -->
+    <string name="anthology_split_chapters">Split into chapters (%d)</string>
+    <string name="anthology_split_chapters_progress">Split into chapters (%1$d/%2$d checked)</string>
+    <string name="anthology_chapters_title">Chapters (%d)</string>
+    <string name="anthology_chapters_only_unchecked_title">Unchecked chapters (%d)</string>
+    <string name="anthology_chapters_search_hint">Filter by artist, title, or page</string>
+    <string name="anthology_chapters_summary">%1$d chapters · %2$d checked · %3$d favorited</string>
+    <string name="anthology_chapters_only_unchecked">Only unchecked &amp; unfavorited</string>
+    <string name="anthology_chapters_resume">Resume: #%1$d %2$s</string>
+    <string name="anthology_chapters_checked_badge">Checked</string>
+    <string name="anthology_chapters_matched_favorite">♥ Favorited (%s)</string>
+    <string name="anthology_chapters_reset_checked">Reset checked marks</string>
+    <string name="anthology_chapters_mark_all_checked">Mark all checked</string>
+    <string name="anthology_chapters_open_parent">Open anthology</string>
+    <string name="anthology_chapters_empty">No contents list found in comments</string>
+    <string name="anthology_chapters_filtered_empty">No matching chapters</string>
+    <string name="anthology_chapter_parent_banner">From anthology: %1$s (pages %2$d–%3$d)</string>
+    <string name="anthology_chapter_open_parent_short">Anthology</string>
+    <string name="page_picker_mode_toc">Contents</string>
+    <string name="page_picker_mode_compare">Favorites compare</string>
 </resources>

@@ -154,11 +154,32 @@ fun ColumnScope.PagePicker(
         Text(text = stringResource(R.string.download_partial), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
         if (detail != null) {
-            if (ChapterCompare.isTankoubon(detail)) {
+            val isTankoubon = ChapterCompare.isTankoubon(detail)
+            val contents = remember(detail, detail.comments) { AnthologyMatches.contentsOf(detail.gid, detail.pages, detail.comments.comments) }
+            if (isTankoubon && contents != null) {
+                val multiArtistToc = remember(contents) {
+                    contents.entries.mapNotNull { e -> e.names.firstOrNull()?.text?.lowercase() }.distinct().size >= 2
+                }
+                var showToc by remember(detail.gid) { mutableStateOf(multiArtistToc) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                    SheetChip(
+                        onClick = { showToc = true },
+                        label = stringResource(R.string.page_picker_mode_toc),
+                    )
+                    SheetChip(
+                        onClick = { showToc = false },
+                        label = stringResource(R.string.page_picker_mode_compare),
+                    )
+                }
+                if (showToc) {
+                    AnthologySection(detail, contents, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
+                } else {
+                    ChapterSection(detail, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
+                }
+            } else if (contents != null) {
+                AnthologySection(detail, contents, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
+            } else if (isTankoubon) {
                 ChapterSection(detail, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
-            } else {
-                val contents = remember(detail) { AnthologyMatches.contentsOf(detail.gid, detail.pages, detail.comments.comments) }
-                if (contents != null) AnthologySection(detail, contents, picked = picked, onPick = ::set, onOpen = { onOpen(it, PageRanges.format(runs)) })
             }
         }
         Spacer(Modifier.height(8.dp))

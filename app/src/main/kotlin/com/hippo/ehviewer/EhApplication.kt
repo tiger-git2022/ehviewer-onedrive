@@ -190,6 +190,7 @@ class EhApplication : Application(), SingletonImageLoader.Factory {
             )
             add(MergeInterceptor)
             add(DownloadThumbInterceptor)
+            add(com.hippo.ehviewer.coil.AnthologyThumbInterceptor)
             if (isAtLeastO) {
                 add(HardwareBitmapInterceptor)
             } else {
