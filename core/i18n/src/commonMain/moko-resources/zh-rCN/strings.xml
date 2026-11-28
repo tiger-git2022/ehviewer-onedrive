@@ -1059,4 +1059,24 @@
     <string name="search_site_found">%d 本</string>
     <string name="search_site_blocked">要先验证</string>
     <string name="search_site_failed">失败</string>
+    <!-- Fork: 合集按评论区目录拆分为虚拟单章，见 anthology/AnthologyChapters.kt -->
+    <string name="anthology_split_chapters">拆分单章（%d）</string>
+    <string name="anthology_split_chapters_progress">拆分单章（已检阅 %2$d/%1$d）</string>
+    <string name="anthology_chapters_title">单章列表（%d）</string>
+    <string name="anthology_chapters_only_unchecked_title">待检阅单章（%d）</string>
+    <string name="anthology_chapters_search_hint">筛选作者、作品名或页码</string>
+    <string name="anthology_chapters_summary">共 %1$d 章 · 已检阅 %2$d · 已收藏 %3$d</string>
+    <string name="anthology_chapters_only_unchecked">只看未检阅且未收藏</string>
+    <string name="anthology_chapters_resume">继续检阅：#%1$d %2$s</string>
+    <string name="anthology_chapters_checked_badge">已检阅</string>
+    <string name="anthology_chapters_matched_favorite">♥ 已有同作（%s）</string>
+    <string name="anthology_chapters_reset_checked">重置检阅记录</string>
+    <string name="anthology_chapters_mark_all_checked">全部标为已检阅</string>
+    <string name="anthology_chapters_open_parent">打开原合集</string>
+    <string name="anthology_chapters_empty">评论区未识别到目录</string>
+    <string name="anthology_chapters_filtered_empty">没有符合筛选条件的单章</string>
+    <string name="anthology_chapter_parent_banner">来自合集：%1$s（第 %2$d–%3$d 页）</string>
+    <string name="anthology_chapter_open_parent_short">原合集</string>
+    <string name="page_picker_mode_toc">评论目录</string>
+    <string name="page_picker_mode_compare">收藏对比</string>
 </resources>

@@ -129,10 +129,14 @@ import com.hippo.ehviewer.restore.isRestored
 import com.hippo.ehviewer.restore.restoredNote
 import com.hippo.ehviewer.sync.MihonSearch
 import com.hippo.ehviewer.translate.CommentTranslations
+import com.hippo.ehviewer.anthology.AnthologyChapters
+import com.hippo.ehviewer.anthology.AnthologyMatches
+import com.hippo.ehviewer.anthology.isAnthologyChapter
 import com.hippo.ehviewer.ui.GalleryInfoBottomSheet
 import com.hippo.ehviewer.ui.MainActivity
 import com.hippo.ehviewer.ui.confirmRemoveDownload
 import com.hippo.ehviewer.ui.cycleFavorite
+import com.hippo.ehviewer.ui.destinations.AnthologyChaptersScreenDestination
 import com.hippo.ehviewer.ui.destinations.GalleryCommentsScreenDestination
 import com.hippo.ehviewer.ui.getFavoriteIcon
 import com.hippo.ehviewer.ui.jumpToReaderByPage
@@ -595,6 +599,59 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
     }
     val keylineMargin = dimensionResource(com.hippo.ehviewer.R.dimen.keyline_margin)
     Spacer(modifier = Modifier.size(keylineMargin))
+    val chapterSlice = remember(galleryDetail.gid) { AnthologyChapters.decode(galleryDetail.gid) }
+    var anthologyContents by remember(galleryDetail.gid, galleryDetail.comments) {
+        mutableStateOf(
+            if (chapterSlice == null) {
+                AnthologyMatches.contentsOf(galleryDetail.gid, galleryDetail.pages, galleryDetail.comments.comments)
+            } else {
+                null
+            },
+        )
+    }
+    if (chapterSlice == null && anthologyContents == null) {
+        LaunchedEffect(galleryDetail.gid) {
+            withIOContext { AnthologyChapters.ensureContents(galleryDetail) }?.let { anthologyContents = it }
+        }
+    }
+    if (chapterSlice != null) {
+        val parentTitle = galleryDetail.parent
+            ?: AnthologyChapters.parentTitleOf(chapterSlice.parentGid)
+            ?: "#${chapterSlice.parentGid}"
+        CrystalCard(
+            onClick = { navigate(chapterSlice.parentGid asDstWith galleryDetail.token) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.anthology_chapter_parent_banner, parentTitle, chapterSlice.first, chapterSlice.last),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+        Spacer(modifier = Modifier.size(keylineMargin))
+    } else if (anthologyContents != null) {
+        val checkedMap by AnthologyChapters.checkedByParent.collectAsState()
+        val checkedSet = checkedMap[galleryDetail.gid].orEmpty()
+        val entryGids = remember(galleryDetail.gid, anthologyContents) {
+            anthologyContents!!.entries.mapNotNull { AnthologyChapters.encodeGid(galleryDetail.gid, it.first, it.last) }
+        }
+        val checkedCount = remember(entryGids, checkedSet) { entryGids.count { it in checkedSet } }
+        val buttonLabel = if (checkedCount > 0) {
+            stringResource(R.string.anthology_split_chapters_progress, entryGids.size, checkedCount)
+        } else {
+            stringResource(R.string.anthology_split_chapters, entryGids.size)
+        }
+        FilledTonalButton(
+            onClick = { navigate(AnthologyChaptersScreenDestination(galleryDetail.gid, galleryDetail.token)) },
+            shapes = ButtonDefaults.shapes(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        ) {
+            Text(text = buttonLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(modifier = Modifier.size(keylineMargin))
+    }
     if (galleryDetail.newerVersions.isNotEmpty()) {
         Box(contentAlignment = Alignment.Center) {
             CrystalCard(
@@ -740,117 +797,121 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
                 }
             }
         }
-        EhIconButton(
-            icon = Icons.Default.FolderZip,
-            text = stringResource(id = R.string.archive),
-            onClick = ::showArchiveDialog,
-        )
-        val torrentText = stringResource(R.string.torrent_count, galleryDetail.torrentCount)
-        val noTorrents = stringResource(R.string.no_torrents)
-        val torrentResult = remember(galleryDetail) {
-            async(Dispatchers.IO + Job(), CoroutineStart.LAZY) {
-                parZip(
-                    { EhEngine.getTorrentList(galleryDetail.gid, galleryDetail.token) },
-                    { EhEngine.getTorrentKey() },
-                    { list, key -> list to key },
-                )
-            }
-        }
-        suspend fun showTorrentDialog() {
-            val (torrentList, key) = bgWork { torrentResult.await() }
-            if (torrentList.isEmpty()) {
-                snackbar(noTorrents)
-            } else {
-                val selected = showNoButton(false) {
-                    TorrentList(
-                        items = torrentList,
-                        onItemClick = { resume(it) },
+        if (chapterSlice == null) {
+            EhIconButton(
+                icon = Icons.Default.FolderZip,
+                text = stringResource(id = R.string.archive),
+                onClick = ::showArchiveDialog,
+            )
+            val torrentText = stringResource(R.string.torrent_count, galleryDetail.torrentCount)
+            val noTorrents = stringResource(R.string.no_torrents)
+            val torrentResult = remember(galleryDetail) {
+                async(Dispatchers.IO + Job(), CoroutineStart.LAZY) {
+                    parZip(
+                        { EhEngine.getTorrentList(galleryDetail.gid, galleryDetail.token) },
+                        { EhEngine.getTorrentKey() },
+                        { list, key -> list to key },
                     )
                 }
-                val hash = selected.url.dropLast(8).takeLast(40)
-                val name = selected.name.encodeURLParameter()
-                val tracker = EhUrl.getTrackerUrl(galleryDetail.gid, key).encodeURLParameter()
-                val link = "magnet:?xt=urn:btih:$hash&dn=$name&tr=$tracker"
-                val intent = Intent(Intent.ACTION_VIEW, link.toUri())
-                try {
-                    ctx.startActivity(intent)
-                } catch (_: ActivityNotFoundException) {
-                    withUIContext { addTextToClipboard(link, true) }
-                }
             }
-        }
-        EhIconButton(
-            icon = EhIcons.Default.Magnet,
-            text = torrentText,
-            onClick = {
-                launchIO {
-                    when {
-                        galleryDetail.torrentCount <= 0 -> snackbar(noTorrents)
-                        else -> runSwallowingWithUI { showTorrentDialog() }
+            suspend fun showTorrentDialog() {
+                val (torrentList, key) = bgWork { torrentResult.await() }
+                if (torrentList.isEmpty()) {
+                    snackbar(noTorrents)
+                } else {
+                    val selected = showNoButton(false) {
+                        TorrentList(
+                            items = torrentList,
+                            onItemClick = { resume(it) },
+                        )
+                    }
+                    val hash = selected.url.dropLast(8).takeLast(40)
+                    val name = selected.name.encodeURLParameter()
+                    val tracker = EhUrl.getTrackerUrl(galleryDetail.gid, key).encodeURLParameter()
+                    val link = "magnet:?xt=urn:btih:$hash&dn=$name&tr=$tracker"
+                    val intent = Intent(Intent.ACTION_VIEW, link.toUri())
+                    try {
+                        ctx.startActivity(intent)
+                    } catch (_: ActivityNotFoundException) {
+                        withUIContext { addTextToClipboard(link, true) }
                     }
                 }
-            },
+            }
+            EhIconButton(
+                icon = EhIcons.Default.Magnet,
+                text = torrentText,
+                onClick = {
+                    launchIO {
+                        when {
+                            galleryDetail.torrentCount <= 0 -> snackbar(noTorrents)
+                            else -> runSwallowingWithUI { showTorrentDialog() }
+                        }
+                    }
+                },
+            )
+        }
+    }
+    Spacer(modifier = Modifier.size(keylineMargin))
+    if (chapterSlice == null) {
+        fun getAllRatingText(rating: Float, ratingCount: Int): String = string(
+            R.string.rating_text,
+            string(getRatingText(rating)),
+            rating,
+            ratingCount,
         )
-    }
-    Spacer(modifier = Modifier.size(keylineMargin))
-    fun getAllRatingText(rating: Float, ratingCount: Int): String = string(
-        R.string.rating_text,
-        string(getRatingText(rating)),
-        rating,
-        ratingCount,
-    )
-    var ratingText by rememberSaveable {
-        mutableStateOf(getAllRatingText(galleryDetail.rating, galleryDetail.ratingCount))
-    }
-    val rateSucceed = stringResource(R.string.rate_successfully)
-    val rateFailed = stringResource(R.string.rate_failed)
-    val signInFirst = stringResource(R.string.sign_in_first)
-    fun showRateDialog() {
-        launchIO {
-            if (galleryDetail.apiUid < 0) {
-                snackbar(signInFirst)
-                return@launchIO
-            }
-            val pendingRating = awaitResult(galleryDetail.rating.coerceAtLeast(.5f), title = R.string.rate) {
-                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    var text by remember { mutableIntStateOf(getRatingText(expectedValue)) }
-                    Text(text = stringResource(id = text), style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.size(keylineMargin))
-                    GalleryRatingBar(
-                        rating = expectedValue,
-                        onRatingChange = {
-                            expectedValue = it.coerceAtLeast(.5f)
-                            text = getRatingText(expectedValue)
-                        },
-                    )
+        var ratingText by rememberSaveable {
+            mutableStateOf(getAllRatingText(galleryDetail.rating, galleryDetail.ratingCount))
+        }
+        val rateSucceed = stringResource(R.string.rate_successfully)
+        val rateFailed = stringResource(R.string.rate_failed)
+        val signInFirst = stringResource(R.string.sign_in_first)
+        fun showRateDialog() {
+            launchIO {
+                if (galleryDetail.apiUid < 0) {
+                    snackbar(signInFirst)
+                    return@launchIO
+                }
+                val pendingRating = awaitResult(galleryDetail.rating.coerceAtLeast(.5f), title = R.string.rate) {
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        var text by remember { mutableIntStateOf(getRatingText(expectedValue)) }
+                        Text(text = stringResource(id = text), style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.size(keylineMargin))
+                        GalleryRatingBar(
+                            rating = expectedValue,
+                            onRatingChange = {
+                                expectedValue = it.coerceAtLeast(.5f)
+                                text = getRatingText(expectedValue)
+                            },
+                        )
+                    }
+                }
+                galleryDetail.runSuspendCatching {
+                    EhEngine.rateGallery(apiUid, apiKey, gid, token, pendingRating)
+                }.onSuccess { result ->
+                    galleryDetail.apply {
+                        rating = result.rating
+                        ratingCount = result.ratingCount
+                    }
+                    ratingText = getAllRatingText(result.rating, result.ratingCount)
+                    snackbar(rateSucceed)
+                }.onFailure {
+                    logcat(it)
+                    snackbar(rateFailed)
                 }
             }
-            galleryDetail.runSuspendCatching {
-                EhEngine.rateGallery(apiUid, apiKey, gid, token, pendingRating)
-            }.onSuccess { result ->
-                galleryDetail.apply {
-                    rating = result.rating
-                    ratingCount = result.ratingCount
-                }
-                ratingText = getAllRatingText(result.rating, result.ratingCount)
-                snackbar(rateSucceed)
-            }.onFailure {
-                logcat(it)
-                snackbar(rateFailed)
+        }
+        CrystalCard(onClick = ::showRateDialog) {
+            Column(
+                modifier = Modifier.padding(8.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                GalleryDetailRating(rating = galleryDetail.rating)
+                Spacer(modifier = Modifier.size(keylineMargin))
+                Text(text = ratingText)
             }
         }
+        Spacer(modifier = Modifier.size(keylineMargin))
     }
-    CrystalCard(onClick = ::showRateDialog) {
-        Column(
-            modifier = Modifier.padding(8.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            GalleryDetailRating(rating = galleryDetail.rating)
-            Spacer(modifier = Modifier.size(keylineMargin))
-            Text(text = ratingText)
-        }
-    }
-    Spacer(modifier = Modifier.size(keylineMargin))
     val tags = galleryDetail.tagGroups
     if (tags.isEmpty()) {
         Box(
@@ -923,7 +984,7 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
         )
     }
     Spacer(modifier = Modifier.size(keylineMargin))
-    if (Settings.showComments.value) {
+    if (Settings.showComments.value && chapterSlice == null) {
         GalleryDetailComment(galleryDetail.comments.comments)
         Spacer(modifier = Modifier.size(dimensionResource(id = com.hippo.ehviewer.R.dimen.strip_item_padding_v)))
     }
@@ -969,8 +1030,9 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                 runSuspendCatching {
                     (up..end).filterNot { it in previewPagesMap }.map { it / pageSize }.toSet()
                         .parMap(concurrency = Settings.multiThreadDownload.value) { page ->
-                            // Fork: those of an album of 紳士漫畫 from its pages, see wnacg/
+                            // Fork: those of an album of 紳士漫畫 from its pages, see wnacg/; of a split chapter from its slice
                             if (isWnacg(gid)) return@parMap wnacgPreviewPage(gid, page, pageSize)
+                            if (isAnthologyChapter(gid)) return@parMap AnthologyChapters.previewPage(gid, token, page, pageSize)
                             val url = EhUrl.getGalleryDetailUrl(gid, token, page)
                             EhEngine.getPreviewList(url).previews
                         }.flattenForEach {
@@ -982,6 +1044,7 @@ private fun GalleryDetail.collectPreviewItems() = rememberInVM(previewList) {
                 }.foldToLoadResult {
                     // Fork: an album of 紳士漫畫 may show fewer pages than it tells
                     if (isWnacg(gid)) (up..end).forEach { previewPagesMap.getOrPut(it) { wnacgMissingPreview(it) } }
+                    if (isAnthologyChapter(gid)) (up..end).forEach { previewPagesMap.getOrPut(it) { AnthologyChapters.missingPreview(it) } }
                     val r = (up..end).map { requireNotNull(previewPagesMap[it]) }
                     val prevK = if (up <= 0 || r.isEmpty()) null else up
                     val nextK = if (end == pages - 1) null else end + 1

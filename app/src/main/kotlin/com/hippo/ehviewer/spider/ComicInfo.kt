@@ -89,7 +89,7 @@ fun GalleryInfo.getComicInfo(): ComicInfo {
         writer = groups.ifEmpty { null },
         penciller = artists.ifEmpty { null },
         genre = otherTags.ifEmpty { null },
-        web = EhUrl.getGalleryDetailUrl(gid, token),
+        web = com.hippo.ehviewer.anthology.AnthologyChapters.pageUrl(gid, token),
         pageCount = pages,
         languageISO = simpleLanguage?.lowercase(),
         characters = characters.ifEmpty { null },

@@ -423,8 +423,8 @@ fun AnimatedVisibilityScope.FavouritesScreen(navigator: DestinationsNavigator, v
                             // Fork: out of 「待下载」, still a local favorite
                             ToDownload.remove(info.map { it.gid })
                         } else if (FavListUrlBuilder(srcCat).isLocal) {
-                            // Move from local to cloud. Fork: not an album of 紳士漫畫, E-Hentai has none of them
-                            val moved = info.filterNot { it.isWnacg }
+                            // Move from local to cloud. Fork: not an album of 紳士漫畫 or a virtual anthology chapter
+                            val moved = info.filterNot { it.isWnacg || com.hippo.ehviewer.anthology.isAnthologyChapter(it.gid) }
                             if (moved.isNotEmpty()) {
                                 val galleryList = moved.map { it.gid to it.token }
                                 EhEngine.addFavorites(galleryList, dstCat)

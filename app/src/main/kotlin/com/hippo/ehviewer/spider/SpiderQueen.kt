@@ -67,6 +67,9 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
     lateinit var spiderInfo: SpiderInfo
 
     val spiderDen: SpiderDen = SpiderDen(galleryInfo)
+    private val chapterSlice = com.hippo.ehviewer.anthology.AnthologyChapters.decode(galleryInfo.gid)
+    private val ehGid = chapterSlice?.parentGid ?: galleryInfo.gid
+    private fun ehIndex(index: Int) = if (chapterSlice != null) chapterSlice.parentFirstIndex + index else index
     private val mPageStateLock = Any()
     private val mDownloadedPages = AtomicInt(0)
     private val mFinishedPages = AtomicInt(0)
@@ -249,10 +252,10 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
         spiderDen.initDownloadDirIfExist()
         val pages = Either.catch {
             spiderInfo = readSpiderInfoFromLocal() ?: readSpiderInfoFromInternet()
-            spiderInfo.pages
+            chapterSlice?.pageCount ?: spiderInfo.pages
         }.getOrElse {
             logcat(it)
-            galleryInfo.pages
+            chapterSlice?.pageCount ?: galleryInfo.pages
         }
         check(pages > 0)
         pageStates = IntArray(pages)
@@ -358,9 +361,9 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
     }
 
     private suspend fun readSpiderInfoFromInternet() = EhEngine.getPreviewList(
-        getGalleryDetailUrl(galleryInfo.gid, galleryInfo.token),
+        getGalleryDetailUrl(ehGid, galleryInfo.token),
     ).run {
-        val spiderInfo = SpiderInfo(galleryInfo.gid, galleryInfo.token, total)
+        val spiderInfo = SpiderInfo(galleryInfo.gid, galleryInfo.token, chapterSlice?.pageCount ?: total)
         readPreviews(previews, 0, spiderInfo)
         spiderInfo
     }
@@ -370,7 +373,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
     suspend fun getPTokenFromMultiPageViewer(index: Int): String? {
         if (!isMpvAvailable) return null
         return runSuspendCatching {
-            EhEngine.getPTokenListFromMpv(galleryInfo.gid, galleryInfo.token).forEachIndexed { index, s ->
+            EhEngine.getPTokenListFromMpv(ehGid, galleryInfo.token).forEachIndexed { index, s ->
                 spiderInfo.pTokenMap[index] = s
             }
             spiderInfo.pTokenMap[index]
@@ -386,7 +389,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
         } else {
             0
         }
-        val url = getGalleryDetailUrl(galleryInfo.gid, galleryInfo.token, previewIndex)
+        val url = getGalleryDetailUrl(ehGid, galleryInfo.token, previewIndex)
         return runSuspendCatching {
             EhEngine.getPreviewList(url).run {
                 readPreviews(previews, previewIndex, spiderInfo)
@@ -573,22 +576,23 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
         }
 
         private suspend fun doInJob(index: Int, force: Boolean, orgImg: Boolean, skipHath: Boolean) {
-            suspend fun getPToken(index: Int): String? {
-                if (!isReady || index !in 0 until size) return null
-                return spiderInfo.pTokenMap[index]
-                    ?: getPTokenFromMultiPageViewer(index)
-                    ?: getPTokenFromInternet(index)
+            suspend fun getPToken(ehIdx: Int): String? {
+                if (!isReady || ehIdx < 0 || (chapterSlice == null && ehIdx >= size)) return null
+                return spiderInfo.pTokenMap[ehIdx]
+                    ?: getPTokenFromMultiPageViewer(ehIdx)
+                    ?: getPTokenFromInternet(ehIdx)
                     // Preview size may changed, so try to get pToken twice
-                    ?: getPTokenFromInternet(index)
+                    ?: getPTokenFromInternet(ehIdx)
             }
+            val targetEhIndex = ehIndex(index)
             val previousPToken: String?
             val pToken: String
             pTokenLock.withLock {
                 if (!force && index in spiderDen) {
                     return updatePageState(index, STATE_FINISHED)
                 }
-                pToken = getPToken(index) ?: return updatePageState(index, STATE_FAILED, pTokenFailedMessage)
-                previousPToken = getPToken(index - 1)
+                pToken = getPToken(targetEhIndex) ?: return updatePageState(index, STATE_FAILED, pTokenFailedMessage)
+                previousPToken = getPToken(targetEhIndex - 1)
 
                 // The lock for delay should be acquired before anything else to maintain FIFO order
                 delay(downloadDelay - lastRequestTime.elapsedNow())
@@ -612,8 +616,8 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
                         localShowKey = showKey
                         if (localShowKey == null || forceHtml) {
                             // Skipping H@H costs 50 points, only use it as last resort
-                            val pageUrl = EhUrl.getPageUrl(galleryInfo.gid, index, pToken, skipHathKey)
-                            EhEngine.getGalleryPage(pageUrl, galleryInfo.gid, galleryInfo.token)
+                            val pageUrl = EhUrl.getPageUrl(ehGid, targetEhIndex, pToken, skipHathKey)
+                            EhEngine.getGalleryPage(pageUrl, ehGid, galleryInfo.token)
                                 .let { result ->
                                     check509(result.imageUrl)
                                     imageUrl = result.imageUrl
@@ -628,8 +632,8 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
                     if (imageUrl == null) {
                         runSuspendCatching {
                             EhEngine.getGalleryPageApi(
-                                galleryInfo.gid,
-                                index,
+                                ehGid,
+                                targetEhIndex,
                                 pToken,
                                 localShowKey,
                                 previousPToken,
@@ -655,7 +659,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
                         if (retries == 1 && skipHathKey != null) {
                             originImageUrl += "?nl=$skipHathKey"
                         }
-                        val pageUrl = EhUrl.getPageUrl(galleryInfo.gid, index, pToken)
+                        val pageUrl = EhUrl.getPageUrl(ehGid, targetEhIndex, pToken)
                         EhEngine.getOriginalImageUrl(originImageUrl!!, pageUrl) to referer
                     } else {
                         // Original image url won't change, so only set forceHtml in this case
@@ -690,7 +694,7 @@ class SpiderQueen private constructor(val galleryInfo: GalleryInfo) : CoroutineS
                 error = it.displayString()
                 if (error == "Invalid page.") {
                     pTokenLock.withLock {
-                        spiderInfo.pTokenMap.remove(index)
+                        spiderInfo.pTokenMap.remove(targetEhIndex)
                     }
                 }
             }

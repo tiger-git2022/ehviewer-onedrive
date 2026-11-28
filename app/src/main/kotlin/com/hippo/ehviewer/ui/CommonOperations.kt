@@ -196,8 +196,8 @@ suspend fun startDownload(forceDefault: Boolean, vararg galleryInfos: BaseGaller
 context(_: DialogState)
 suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): Boolean {
     val localFavorited = EhDB.containLocalFavorites(galleryInfo.gid)
-    // Fork: an album of 紳士漫畫 is in the local favorites only, see wnacg/
-    if (Settings.hasSignedIn.value && !galleryInfo.isWnacg) {
+    // Fork: an album of 紳士漫畫 or a split anthology chapter is in the local favorites / 「待下载」 only
+    if (Settings.hasSignedIn.value && !galleryInfo.isWnacg && !com.hippo.ehviewer.anthology.isAnthologyChapter(galleryInfo.gid)) {
         val isFavorited = galleryInfo.favoriteSlot != NOT_FAVORITED
         val defaultFavSlot = Settings.defaultFavSlot.value
         if (defaultFavSlot == -2 || choose) {
@@ -231,7 +231,7 @@ suspend fun modifyFavorites(galleryInfo: GalleryInfo, choose: Boolean = false): 
             return doModifyFavorites(galleryInfo, if (isFavorited) NOT_FAVORITED else defaultFavSlot, localFavorited)
         }
     } else if (choose) {
-        // Fork: signed out, or an album of 紳士漫畫: the local favorites or 「待下载」
+        // Fork: signed out, an album of 紳士漫畫, or a split chapter: the local favorites or 「待下载」
         val items = buildList {
             if (localFavorited) add(Icons.Default.HeartBroken to appCtx.getString(R.string.remove_from_favourites))
             add(getFavoriteIcon(localFavorited) to appCtx.getString(R.string.local_favorites))
@@ -266,7 +266,7 @@ suspend fun addToDownload(galleryInfo: GalleryInfo): Boolean {
  */
 context(_: DialogState)
 suspend fun cycleFavorite(galleryInfo: GalleryInfo): Boolean {
-    if (!Settings.hasSignedIn.value || galleryInfo.isWnacg) return modifyFavorites(galleryInfo)
+    if (!Settings.hasSignedIn.value || galleryInfo.isWnacg || com.hippo.ehviewer.anthology.isAnthologyChapter(galleryInfo.gid)) return modifyFavorites(galleryInfo)
     val localFavorited = EhDB.containLocalFavorites(galleryInfo.gid)
     return when {
         galleryInfo.favoriteSlot >= 0 -> {

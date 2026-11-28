@@ -646,9 +646,50 @@ object ChapterCompare {
     /** The hashes of the thumbnails of a gallery, by page from 0, kept in the cache; [onPages] gets how many are done. */
     private suspend fun galleryHashes(gid: Long, token: String, pages: Int, onPages: (Int) -> Unit): List<LongArray?> {
         val file = File(hashDir, "$gid")
-        readHashes(file)?.takeIf { pages <= 0 || it.size == pages }?.let {
+        val slice = com.hippo.ehviewer.anthology.AnthologyChapters.decode(gid)
+        val expectedPages = slice?.pageCount ?: pages
+        readHashes(file)?.takeIf { expectedPages <= 0 || it.size == expectedPages }?.let {
             onPages(it.size)
             return it
+        }
+        if (slice != null) {
+            val first = previewGate.withPermit {
+                EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(slice.parentGid, token)).also { delay(PREVIEW_PAGE_GAP) }
+            }
+            if (first.previews.isEmpty()) return List(slice.pageCount) { null }
+            val perPage = first.previews.size
+            val hashes = arrayOfNulls<LongArray>(slice.pageCount)
+            val done = AtomicInteger(0)
+            suspend fun readSlice(previews: List<GalleryPreview>) {
+                val relevant = previews.filter { it.position in slice.parentFirstIndex..slice.parentLastIndex }
+                if (relevant.isEmpty()) return
+                hashPreviews(relevant).forEach { (position, hash) ->
+                    val localIdx = position - slice.parentFirstIndex
+                    if (localIdx in hashes.indices) hashes[localIdx] = hash
+                }
+                onPages(done.addAndGet(relevant.size).coerceAtMost(slice.pageCount))
+            }
+            val firstSheet = slice.parentFirstIndex / perPage
+            val lastSheet = slice.parentLastIndex / perPage
+            if (firstSheet == 0) readSlice(first.previews)
+            coroutineScope {
+                (maxOf(1, firstSheet)..lastSheet).map { index ->
+                    launch {
+                        val previews = previewGate.withPermit {
+                            EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(slice.parentGid, token, index)).previews.also { delay(PREVIEW_PAGE_GAP) }
+                        }
+                        readSlice(previews)
+                    }
+                }.joinAll()
+            }
+            val list = hashes.toList()
+            if (list.all { it != null }) {
+                runCatching {
+                    hashDir.mkdirs()
+                    file.writeText(list.joinToString("\n") { ThumbHash.toHex(it!!) })
+                }.onFailure { logcat(TAG, it) }
+            }
+            return list
         }
         // Each fetch spaced as a reader turning pages, not to be taken for a crawler
         val first = previewGate.withPermit { EhEngine.getPreviewList(EhUrl.getGalleryDetailUrl(gid, token)).also { delay(PREVIEW_PAGE_GAP) } }

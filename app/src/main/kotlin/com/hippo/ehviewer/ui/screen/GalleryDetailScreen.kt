@@ -125,6 +125,8 @@ import com.hippo.ehviewer.util.MemoryReport
 import com.hippo.ehviewer.util.awaitActivityResult
 import com.hippo.ehviewer.util.bgWork
 import com.hippo.ehviewer.util.displayString
+import com.hippo.ehviewer.anthology.AnthologyChapters
+import com.hippo.ehviewer.anthology.isAnthologyChapter
 import com.hippo.ehviewer.wnacg.isWnacg
 import com.hippo.ehviewer.wnacg.wnacgDetail
 import com.ramcosta.composedestinations.annotation.Destination
@@ -166,8 +168,14 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
             is TokenArgs -> args.gid to args.token
         }
     }
-    // Fork: an album of 紳士漫畫 is on its site, see wnacg/
-    val galleryDetailUrl = remember(gid, token) { if (isWnacg(gid)) Wnacg.albumUrl(-gid) else EhUrl.getGalleryDetailUrl(gid, token) }
+    // Fork: an album of 紳士漫畫 is on its site, see wnacg/; a split chapter links to its parent anthology
+    val galleryDetailUrl = remember(gid, token) {
+        when {
+            isWnacg(gid) -> Wnacg.albumUrl(-gid)
+            isAnthologyChapter(gid) -> AnthologyChapters.pageUrl(gid, token)
+            else -> EhUrl.getGalleryDetailUrl(gid, token)
+        }
+    }
     contextOf<MainActivity>().ProvideAssistContent(galleryDetailUrl)
     // Fork: the memory in use in the log, see MemoryReport
     LaunchedEffect(gid) { MemoryReport.onGalleryOpened(gid) }
@@ -220,9 +228,11 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 ?: runSuspendCatching {
                     withIOContext {
                         // Fork: a gallery E-Hentai removed opens from its backup on PandaChika, see restore/; an album
-                        // of 紳士漫畫 from its page, see wnacg/
+                        // of 紳士漫畫 from its page, see wnacg/; a split chapter from its parent anthology
                         if (isWnacg(gid)) {
                             wnacgDetail(gid, galleryInfo)
+                        } else if (isAnthologyChapter(gid)) {
+                            AnthologyChapters.detail(gid, token, galleryInfo)
                         } else {
                             try {
                                 EhEngine.getGalleryDetail(galleryDetailUrl).also { RestoredGalleries.dismiss(it.gid) }
@@ -235,12 +245,16 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                 }.onSuccess { galleryDetail ->
                     detailCache[galleryDetail.gid] = galleryDetail
                 }.onFailure { e ->
-                    galleryInfo?.let { EhDB.putHistoryInfo(it) }
+                    if (!isAnthologyChapter(gid)) galleryInfo?.let { EhDB.putHistoryInfo(it) }
                     getDetailError = e.displayString()
                     if (e is Wnacg.BlockedException) wnacgCheck = true
                 }.getOrNull()
             galleryDetail?.let {
-                EhDB.putHistoryInfo(it)
+                if (isAnthologyChapter(gid)) {
+                    AnthologyChapters.markChecked(gid)
+                } else {
+                    EhDB.putHistoryInfo(it)
+                }
                 galleryInfo = it
                 // Fork: in no favorites, it goes to the local favorites
                 AutoLocalFavorite.onOpened(it, (args as? GalleryInfoArgs)?.galleryInfo)
@@ -269,6 +283,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     val openInBrowser = stringResource(id = R.string.open_in_other_app)
     val searchInMihon = stringResource(id = R.string.search_in_mihon)
     val downloadPartial = stringResource(id = R.string.download_partial)
+    val openParentAnthology = stringResource(id = R.string.anthology_chapters_open_parent)
     val mihonNotInstalled = stringResource(id = R.string.mihon_not_installed)
     val exportArchive = stringResource(id = R.string.export_as_archive)
     val exportSuccess = stringResource(id = R.string.export_as_archive_success)
@@ -288,7 +303,7 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
     var barBottom by remember { mutableFloatStateOf(0f) }
     var barHeightPx by remember { mutableIntStateOf(0) }
     // Fork: fresh links for previews that fail to load and "Refresh previews", see PreviewRefetcher
-    val previewRefetcher = (galleryInfo as? GalleryDetail)?.takeIf { it.previewList.isNotEmpty() && !it.isWnacg }?.let { detail ->
+    val previewRefetcher = (galleryInfo as? GalleryDetail)?.takeIf { it.previewList.isNotEmpty() && !it.isWnacg && !isAnthologyChapter(it.gid) }?.let { detail ->
         rememberInVM(detail.previewList) { PreviewRefetcher(detail.gid, detail.token, detail.previewList.size, viewModelScope) }
     }
     val refreshPreviews = stringResource(id = R.string.refresh_previews)
@@ -363,22 +378,24 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         // Fork: with a OneDrive account, the sync state (a ring with the progress while syncing)
                         // takes the place of the share button, as in the search bar; sharing moves to the menu
                         if (!syncIconShown) add(shareAction)
-                        add(
-                            BarAction(addTag, Icons.Default.NewLabel) {
-                                val detail = galleryInfo as? GalleryDetail ?: return@BarAction
-                                launchIO {
-                                    if (detail.apiUid < 0) {
-                                        snackbar(signInFirst)
-                                    } else {
-                                        val tags = awaitSelectTags()
-                                        if (tags.isNotEmpty()) {
-                                            val text = tags.fastJoinToString(",")
-                                            detail.voteTag(text, 1)
+                        if (!isWnacg(gid) && !isAnthologyChapter(gid)) {
+                            add(
+                                BarAction(addTag, Icons.Default.NewLabel) {
+                                    val detail = galleryInfo as? GalleryDetail ?: return@BarAction
+                                    launchIO {
+                                        if (detail.apiUid < 0) {
+                                            snackbar(signInFirst)
+                                        } else {
+                                            val tags = awaitSelectTags()
+                                            if (tags.isNotEmpty()) {
+                                                val text = tags.fastJoinToString(",")
+                                                detail.voteTag(text, 1)
+                                            }
                                         }
                                     }
-                                }
-                            },
-                        )
+                                },
+                            )
+                        }
                         add(
                             BarAction(refresh, Icons.Default.Refresh) {
                                 // Invalidate cache
@@ -393,14 +410,17 @@ fun AnimatedVisibilityScope.GalleryDetailScreen(args: GalleryDetailScreenArgs, n
                         // floating bar at the bottom, see PreviewProgressBar
                         if (previewRefetcher != null) add(BarAction(refreshPreviews) { previewRefetcher.refreshFailed(contextOf<MainActivity>()) })
                         // Fork: only the pages picked, see PartialDownload.kt; a tankoubon is compared with the favorites.
-                        // An album of 紳士漫畫 downloads whole
-                        if (!isWnacg(gid)) {
+                        // An album of 紳士漫畫 or a virtual single chapter downloads whole
+                        if (!isWnacg(gid) && !isAnthologyChapter(gid)) {
                             add(
                                 BarAction(downloadPartial) {
                                     val detail = galleryInfo as? GalleryDetail ?: return@BarAction
                                     launchIO { partialDownload(detail) }
                                 },
                             )
+                        }
+                        AnthologyChapters.decode(gid)?.let { slice ->
+                            add(BarAction(openParentAnthology) { navigator.navigate(slice.parentGid asDstWith token) })
                         }
                         if (syncIconShown) add(shareAction)
                         add(

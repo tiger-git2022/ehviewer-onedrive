@@ -214,12 +214,23 @@ object AnthologyMatches {
             if (kept == null) set(gid, AnthologyMatchState.Running(index + 1, names.size))
         }
         // Japanese titles for those without, to tell the work by its title as listed
-        val all = found.values.flatten().distinctBy { it.gid }.filter { it.gid != gid && !isWnacg(it.gid) }
+        val all = found.values.flatten().distinctBy { it.gid }.filter { it.gid != gid && !isWnacg(it.gid) && !isAnthologyChapter(it.gid) }
         val withoutJpn = all.filter { it.titleJpn.isNullOrBlank() }
         if (withoutJpn.isNotEmpty()) runCatching { EhEngine.fillGalleryListByApi(withoutJpn, EhUrl.referer) }.onFailure { logcat(TAG, it) }
         val matches = entries.associate { entry ->
             val sources = ArrayList<ChapterSource>()
             entry.galleryLink?.let(::linkedSource)?.let { sources += it }
+            AnthologyChapters.encodeGid(gid, entry.first, entry.last)?.let { chapterGid ->
+                localByGid[chapterGid]?.let { fav ->
+                    sources += ChapterSource(
+                        gid = fav.gid,
+                        token = fav.token,
+                        title = fav.titleJpn?.takeIf(String::isNotBlank) ?: fav.title ?: fav.gid.toString(),
+                        thumbKey = fav.thumbKey,
+                        favoriteFolder = folderOf(fav),
+                    )
+                }
+            }
             val title = entry.title
             if (title != null) {
                 queries[entry].orEmpty().flatMap { found[it.lowercase()].orEmpty() }.distinctBy { it.gid }
@@ -307,6 +318,17 @@ object AnthologyMatches {
         val matches = entries.associate { entry ->
             val sources = ArrayList<ChapterSource>()
             entry.galleryLink?.let(linkedSource)?.let { sources += it }
+            AnthologyChapters.encodeGid(gid, entry.first, entry.last)?.let { chapterGid ->
+                localByGid[chapterGid]?.let { fav ->
+                    sources += ChapterSource(
+                        gid = fav.gid,
+                        token = fav.token,
+                        title = fav.titleJpn?.takeIf(String::isNotBlank) ?: fav.title ?: fav.gid.toString(),
+                        thumbKey = fav.thumbKey,
+                        favoriteFolder = FavoriteFolders.localFolderName(fav.gid, toDownload),
+                    )
+                }
+            }
             val title = entry.title
             if (title != null) {
                 val entryKey = AnthologyTitles.key(title)
