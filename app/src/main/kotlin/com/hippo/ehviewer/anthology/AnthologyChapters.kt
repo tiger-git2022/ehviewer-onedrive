@@ -231,7 +231,7 @@ object AnthologyChapters {
         localFavorites: Set<Long> = emptySet(),
         toDownload: Set<Long> = emptySet(),
     ): List<AnthologyChapterItem> {
-        if (parentDetails.size >= 8 && parent.gid !in parentDetails) parentDetails.clear()
+        if (parentDetails.size >= 8 && !parentDetails.containsKey(parent.gid)) parentDetails.clear()
         parentDetails[parent.gid] = parent
         parentTitles[parent.gid] = EhUtils.getSuitableTitle(parent)
         val langTags = languageTagsOf(parent)
@@ -398,7 +398,7 @@ object AnthologyChapters {
         val parentDetail = detailCache[slice.parentGid] ?: parentDetails[slice.parentGid] ?: runSuspendCatching {
             EhEngine.getGalleryDetail(EhUrl.getGalleryDetailUrl(slice.parentGid, effectiveToken)).also {
                 detailCache[it.gid] = it
-                if (parentDetails.size >= 8) parentDetails.clear()
+                if (parentDetails.size >= 8 && !parentDetails.containsKey(it.gid)) parentDetails.clear()
                 parentDetails[it.gid] = it
             }
         }.getOrNull()
