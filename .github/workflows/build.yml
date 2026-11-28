@@ -145,7 +145,10 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew assembleDefaultRelease -Ptiger.version=${{ steps.version.outputs.version_name }} 2>&1 | tee gradle-build.log || {
-            grep -E '^e: |FAILURE:|What went wrong|^> ' gradle-build.log | head -n 20 | while IFS= read -r line; do echo "::error::$line"; done
+            {
+              grep -E '^e: ' gradle-build.log | head -n 5 || true
+              awk '/^\* What went wrong:/{f=1;next} /^\* Try:/{f=0} f && NF' gradle-build.log | head -n 5 || true
+            } | while IFS= read -r line; do echo "::error::$line"; done
             exit 1
           }
 
@@ -154,7 +157,10 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew testDefaultDebugUnitTest 2>&1 | tee gradle-test.log || {
-            grep -E '^e: |FAILURE:|What went wrong|^> |FAILED' gradle-test.log | head -n 20 | while IFS= read -r line; do echo "::error::$line"; done
+            {
+              grep -E '^e: |FAILED' gradle-test.log | grep -v '^> Task ' | head -n 5 || true
+              awk '/^\* What went wrong:/{f=1;next} /^\* Try:/{f=0} f && NF' gradle-test.log | head -n 5 || true
+            } | while IFS= read -r line; do echo "::error::$line"; done
             exit 1
           }
 
