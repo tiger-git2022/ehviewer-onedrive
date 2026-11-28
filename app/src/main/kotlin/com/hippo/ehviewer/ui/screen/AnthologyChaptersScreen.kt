@@ -27,9 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -48,7 +48,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ehviewer.core.i18n.R
 import com.ehviewer.core.model.BaseGalleryInfo
-import com.ehviewer.core.model.GalleryDetail
 import com.ehviewer.core.model.GalleryInfo.Companion.LOCAL_FAVORITED
 import com.ehviewer.core.model.GalleryInfo.Companion.NOT_FAVORITED
 import com.ehviewer.core.ui.component.FastScrollLazyVerticalGrid
@@ -79,7 +77,6 @@ import com.hippo.ehviewer.EhDB
 import com.hippo.ehviewer.Settings
 import com.hippo.ehviewer.anthology.AnthologyChapterItem
 import com.hippo.ehviewer.anthology.AnthologyChapters
-import com.hippo.ehviewer.anthology.AnthologyContents
 import com.hippo.ehviewer.anthology.AnthologyMatchState
 import com.hippo.ehviewer.anthology.AnthologyMatches
 import com.hippo.ehviewer.anthology.FavoriteFolders
@@ -105,7 +102,6 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 import moe.tarsin.coroutines.runSuspendCatching
 import moe.tarsin.navigate
 
@@ -125,7 +121,6 @@ fun AnimatedVisibilityScope.AnthologyChaptersScreen(
     navigator: DestinationsNavigator,
 ) = Screen(navigator, recordsGlass = true) {
     val context = LocalContext.current
-    val uiScope = rememberCoroutineScope()
     val searchFieldState = rememberTextFieldState()
     var searchBarExpanded by rememberSaveable { mutableStateOf(false) }
     var searchBarOffsetY by rememberSaveable { mutableIntStateOf(0) }
@@ -277,7 +272,7 @@ fun AnimatedVisibilityScope.AnthologyChaptersScreen(
     fun jumpToChapter(target: AnthologyChapterItem) {
         val idxInShown = shownItems.indexOfFirst { it.slice.gid == target.slice.gid }
         if (idxInShown >= 0) {
-            uiScope.launch {
+            launch {
                 // +1 accounts for the summary header item at index 0
                 if (listMode == 0) {
                     detailGridState.animateScrollToItem(idxInShown + 1)
@@ -508,7 +503,7 @@ private fun ChaptersSummaryHeader(
                 onClick = onResume,
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
+                        imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.size(AssistChipDefaults.IconSize),
                     )

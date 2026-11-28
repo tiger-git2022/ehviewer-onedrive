@@ -1061,7 +1061,7 @@
     <string name="search_site_failed">失败</string>
     <!-- Fork: 合集按评论区目录拆分为虚拟单章，见 anthology/AnthologyChapters.kt -->
     <string name="anthology_split_chapters">拆分单章（%d）</string>
-    <string name="anthology_split_chapters_progress">拆分单章（已检阅 %2$d/%1$d）</string>
+    <string name="anthology_split_chapters_progress">拆分单章（已检阅 %1$d/%2$d）</string>
     <string name="anthology_chapters_title">单章列表（%d）</string>
     <string name="anthology_chapters_only_unchecked_title">待检阅单章（%d）</string>
     <string name="anthology_chapters_search_hint">筛选作者、作品名或页码</string>

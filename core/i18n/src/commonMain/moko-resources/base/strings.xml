@@ -1079,7 +1079,7 @@
     <string name="search_site_failed">Failed</string>
     <!-- Fork: split an anthology into virtual chapter galleries by its comment TOC, see anthology/AnthologyChapters.kt -->
     <string name="anthology_split_chapters">Split into chapters (%d)</string>
-    <string name="anthology_split_chapters_progress">Split into chapters (%2$d/%1$d checked)</string>
+    <string name="anthology_split_chapters_progress">Split into chapters (%1$d/%2$d checked)</string>
     <string name="anthology_chapters_title">Chapters (%d)</string>
     <string name="anthology_chapters_only_unchecked_title">Unchecked chapters (%d)</string>
     <string name="anthology_chapters_search_hint">Filter by artist, title, or page</string>

@@ -631,26 +631,29 @@ fun BelowHeader(galleryDetail: GalleryDetail, voteTag: VoteTag) {
             )
         }
         Spacer(modifier = Modifier.size(keylineMargin))
-    } else if (anthologyContents != null) {
-        val checkedMap by AnthologyChapters.checkedByParent.collectAsState()
-        val checkedSet = checkedMap[galleryDetail.gid].orEmpty()
-        val entryGids = remember(galleryDetail.gid, anthologyContents) {
-            anthologyContents!!.entries.mapNotNull { AnthologyChapters.encodeGid(galleryDetail.gid, it.first, it.last) }
+    } else {
+        val currentContents = anthologyContents
+        if (currentContents != null) {
+            val checkedMap by AnthologyChapters.checkedByParent.collectAsState()
+            val checkedSet = checkedMap[galleryDetail.gid].orEmpty()
+            val entryGids = remember(galleryDetail.gid, currentContents) {
+                currentContents.entries.mapNotNull { AnthologyChapters.encodeGid(galleryDetail.gid, it.first, it.last) }
+            }
+            val checkedCount = remember(entryGids, checkedSet) { entryGids.count { it in checkedSet } }
+            val buttonLabel = if (checkedCount > 0) {
+                stringResource(R.string.anthology_split_chapters_progress, checkedCount, entryGids.size)
+            } else {
+                stringResource(R.string.anthology_split_chapters, entryGids.size)
+            }
+            FilledTonalButton(
+                onClick = { navigate(AnthologyChaptersScreenDestination(galleryDetail.gid, galleryDetail.token)) },
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            ) {
+                Text(text = buttonLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(modifier = Modifier.size(keylineMargin))
         }
-        val checkedCount = remember(entryGids, checkedSet) { entryGids.count { it in checkedSet } }
-        val buttonLabel = if (checkedCount > 0) {
-            stringResource(R.string.anthology_split_chapters_progress, entryGids.size, checkedCount)
-        } else {
-            stringResource(R.string.anthology_split_chapters, entryGids.size)
-        }
-        FilledTonalButton(
-            onClick = { navigate(AnthologyChaptersScreenDestination(galleryDetail.gid, galleryDetail.token)) },
-            shapes = ButtonDefaults.shapes(),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        ) {
-            Text(text = buttonLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Spacer(modifier = Modifier.size(keylineMargin))
     }
     if (galleryDetail.newerVersions.isNotEmpty()) {
         Box(contentAlignment = Alignment.Center) {

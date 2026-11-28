@@ -5,7 +5,6 @@ import coil3.BitmapImage
 import coil3.decode.DataSource
 import coil3.imageLoader
 import coil3.intercept.Interceptor
-import coil3.memory.MemoryCache
 import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
@@ -33,22 +32,10 @@ object AnthologyThumbInterceptor : Interceptor {
         val req = chain.request
         val cacheKey = req.diskCacheKey ?: raw
 
-        if (req.memoryCachePolicy.readEnabled) {
-            val memKey = req.memoryCacheKey?.let { MemoryCache.Key(it, req.memoryCacheKeyExtras) }
-            val cached = memKey?.let { req.context.imageLoader.memoryCache?.get(it) }
-            if (cached != null) {
-                return SuccessResult(
-                    image = cached.image,
-                    request = req,
-                    dataSource = DataSource.MEMORY_CACHE,
-                    memoryCacheKey = memKey,
-                )
-            }
-        }
-
-        thumbCache.openSnapshot(cacheKey)?.use { snapshot ->
-            val fileReq = req.newBuilder().data(snapshot.data.toUri()).build()
-            val result = chain.withRequest(fileReq).proceed()
+        thumbCache.read(cacheKey) {
+            val fileReq = req.newBuilder().data(data.toUri()).build()
+            chain.withRequest(fileReq).proceed()
+        }?.let { result ->
             if (result is SuccessResult) return result.copy(request = req)
         }
 
@@ -95,9 +82,10 @@ object AnthologyThumbInterceptor : Interceptor {
             }
         }
 
-        thumbCache.openSnapshot(cacheKey)?.use { snapshot ->
-            val fileReq = req.newBuilder().data(snapshot.data.toUri()).build()
-            val result = chain.withRequest(fileReq).proceed()
+        thumbCache.read(cacheKey) {
+            val fileReq = req.newBuilder().data(data.toUri()).build()
+            chain.withRequest(fileReq).proceed()
+        }?.let { result ->
             if (result is SuccessResult) return result.copy(request = req, dataSource = DataSource.NETWORK)
         }
         return ErrorResult(req.error(), req, IllegalStateException("Failed to read cached chapter cover"))
